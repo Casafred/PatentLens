@@ -11835,11 +11835,11 @@ function renderTimeline(data) {
 
   // ── 稳定S轴布局参数（倒序：第一行从左到右是最新→较旧，蛇形向下） ──
   const COL_WIDTH = 200;
-  const ROW_HEIGHT = 240;
+  const ROW_HEIGHT = 320; // 增大行距：上下两排相向的卡片间留出明显空隙，避免贴合误认
   const EDGE_PAD = 80;
   const CURVE_R = 22;
-  const TOP_PAD = 120;
-  const BOTTOM_PAD = 120;
+  const TOP_PAD = 150;
+  const BOTTOM_PAD = 150;
 
   const boardWidth = Math.max(board.clientWidth || 960, 640);
   const usableWidth = boardWidth - 48;
@@ -11991,8 +11991,8 @@ function renderTimeline(data) {
       html += `</div>`;
     }
 
-    // 连接器
-    html += `<div class="tl-s-connector"></div>`;
+    // 连接器（带类型颜色与箭头，指向所属卡片）
+    html += `<div class="tl-s-connector ${dotClass}"></div>`;
 
     // 节点圆点
     const dotSizeClass = g.hasKey ? 'tl-s-dot-key' : 'tl-s-dot-mini';

@@ -5249,18 +5249,47 @@ body {
   left: 50%;
   width: 2px;
   transform: translateX(-50%);
-  background: linear-gradient(var(--conn-dir, to top), rgba(148,163,184,0.35), transparent);
+  --conn-color: #64748b;
+  background: linear-gradient(var(--conn-dir, to top), color-mix(in srgb, var(--conn-color) 30%, transparent), color-mix(in srgb, var(--conn-color) 90%, transparent));
+}
+/* 箭头：指向所属文档卡片，明确归属方向 */
+.tl-s-connector::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
 }
 .tl-s-above .tl-s-connector {
   --conn-dir: to top;
   bottom: 100%;
-  height: 50px;
+  height: 38px;
+}
+.tl-s-above .tl-s-connector::after {
+  top: -7px;
+  border-bottom: 7px solid color-mix(in srgb, var(--conn-color) 90%, transparent);
 }
 .tl-s-below .tl-s-connector {
   --conn-dir: to bottom;
   top: 100%;
-  height: 50px;
+  height: 38px;
 }
+.tl-s-below .tl-s-connector::after {
+  bottom: -7px;
+  border-top: 7px solid color-mix(in srgb, var(--conn-color) 90%, transparent);
+}
+/* 连接线按文档类型着色，便于辨识卡片归属 */
+.tl-s-connector.tl-dot-response { --conn-color: #3b82f6; }
+.tl-s-connector.tl-dot-oa { --conn-color: #ef4444; }
+.tl-s-connector.tl-dot-patentdoc { --conn-color: #6366f1; }
+.tl-s-connector.tl-dot-allowance { --conn-color: #22c55e; }
+.tl-s-connector.tl-dot-notification { --conn-color: #8b5cf6; }
+.tl-s-connector.tl-dot-request { --conn-color: #f59e0b; }
+.tl-s-connector.tl-dot-citation { --conn-color: #0ea5e9; }
+.tl-s-connector.tl-dot-misc { --conn-color: #6b7280; }
 /* Only key nodes have visible connector */
 .tl-s-folded-node .tl-s-connector {
   display: none;
@@ -5346,11 +5375,11 @@ body {
   animation: tl-s-card-in 0.35s ease-out backwards;
 }
 .tl-s-above .tl-s-card-wrap {
-  bottom: calc(100% + 60px);
+  bottom: calc(100% + 48px);
   transform: translateX(-50%);
 }
 .tl-s-below .tl-s-card-wrap {
-  top: calc(100% + 60px);
+  top: calc(100% + 48px);
   transform: translateX(-50%);
 }
 @keyframes tl-s-card-in {
@@ -5421,24 +5450,45 @@ body {
   transform: translateX(-50%) translateY(6px);
   min-width: 250px;
   max-width: 310px;
-  background: color-mix(in srgb, var(--bg) 94%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.1);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
+  transition: opacity 0.22s cubic-bezier(0.4,0,0.2,1), visibility 0.22s, transform 0.22s cubic-bezier(0.4,0,0.2,1);
+  transition-delay: 0.2s; /* 离开后延迟收起，避免误关 */
   z-index: 100;
 }
-.tl-s-node:hover .tl-s-popup {
+/* 隐形桥接区：填补节点与弹层之间的空隙，鼠标移入条目不会断开 hover */
+.tl-s-popup::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  height: 22px;
+}
+.tl-s-popup::before,
+.tl-s-above .tl-s-popup::before {
+  top: -20px;
+}
+.tl-s-below .tl-s-popup::before {
+  top: auto;
+  bottom: -20px;
+}
+.tl-s-node:hover .tl-s-popup,
+.tl-s-popup:hover {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
   transform: translateX(-50%) translateY(0);
+  transition-delay: 0s;
+}
+/* 悬浮时该节点整体提升层级，避免弹层被相邻卡片遮挡 */
+.tl-s-node:hover {
+  z-index: 60;
 }
 .tl-s-above .tl-s-popup {
   top: calc(100% + 12px);
