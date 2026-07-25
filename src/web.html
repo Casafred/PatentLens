@@ -176,17 +176,39 @@
               </div>
             </div>
             <div id="tl-select-bar" class="tl-select-bar hidden">
-              <div class="tl-select-info">
-                <span id="tl-select-mode-label">选择要AI梳理的文档</span>
-                <span id="tl-selected-summary" class="tl-selected-summary"></span>
+              <div class="tl-select-top">
+                <span id="tl-select-mode-label" class="tl-select-mode-label">选择要AI梳理的文档</span>
+                <div class="tl-select-progress">
+                  <div class="tl-sel-progress"><div id="tl-sel-progress-bar" class="tl-sel-progress-bar"></div></div>
+                  <span id="tl-sel-count" class="tl-sel-count">已选 0 / 0</span>
+                  <span id="tl-sel-pct" class="tl-sel-pct">0%</span>
+                </div>
+                <div class="tl-select-actions">
+                  <button id="tl-select-all-btn" class="btn-small btn-extract">全选</button>
+                  <button id="tl-select-key-btn" class="btn-small btn-extract">关键节点</button>
+                  <button id="tl-select-invert-btn" class="btn-small btn-extract">反选</button>
+                  <button id="tl-select-default-btn" class="btn-small btn-extract">默认选择</button>
+                  <button id="tl-select-none-btn" class="btn-small btn-extract">全不选</button>
+                  <button id="tl-select-cancel-btn" class="btn-small btn-secondary">取消</button>
+                  <button id="tl-select-confirm-btn" class="btn-primary btn-small" disabled>确认并开始AI梳理</button>
+                </div>
               </div>
-              <div class="tl-select-actions">
-                <button id="tl-select-all-btn" class="btn-small btn-extract">全选</button>
-                <button id="tl-select-default-btn" class="btn-small btn-extract">默认选择</button>
-                <button id="tl-select-none-btn" class="btn-small btn-extract">全不选</button>
-                <button id="tl-select-cancel-btn" class="btn-small btn-secondary">取消</button>
-                <button id="tl-select-confirm-btn" class="btn-primary btn-small" disabled>确认并开始AI梳理</button>
+              <div class="tl-selected-panel">
+                <div class="tl-selected-panel-head">
+                  <span class="tl-selected-panel-title">已选文档聚合</span>
+                  <button id="tl-sel-collapse-btn" class="btn-ghost btn-tiny">收起 ▼</button>
+                </div>
+                <div id="tl-selected-summary" class="tl-selected-summary"></div>
               </div>
+            </div>
+            <div id="tl-fab" class="tl-fab hidden">
+              <div class="tl-fab-menu">
+                <button id="tl-fab-all" class="tl-fab-item">全选</button>
+                <button id="tl-fab-key" class="tl-fab-item">关键节点</button>
+                <button id="tl-fab-invert" class="tl-fab-item">反选</button>
+                <button id="tl-fab-none" class="tl-fab-item">全不选</button>
+              </div>
+              <button id="tl-fab-btn" class="tl-fab-btn" aria-expanded="false" title="批量操作">⚙</button>
             </div>
             <div id="tl-filter-bar" class="tl-filter-bar"></div>
             <div id="tl-board" class="tl-board">

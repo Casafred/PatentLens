@@ -11455,10 +11455,19 @@ function exitTimelineSelectMode() {
   _tlSelectMode = null;
   _tlSelected.clear();
   const board = document.getElementById("tl-board");
-  if (board) board.classList.remove("select-mode");
+  if (board) {
+    board.classList.remove("select-mode");
+    board.classList.remove("tl-all-selected");
+  }
   const selectBar = document.getElementById("tl-select-bar");
   if (selectBar) selectBar.classList.add("hidden");
+  const fab = document.getElementById("tl-fab");
+  if (fab) {
+    fab.classList.add("hidden");
+    fab.classList.remove("open");
+  }
   document.querySelectorAll(".tl-node.selected").forEach(n => n.classList.remove("selected"));
+  _applyTimelineSelection();
 }
 
 function enterTimelineSelectMode(mode) {
@@ -11478,6 +11487,11 @@ function enterTimelineSelectMode(mode) {
   if (board) board.classList.add("select-mode");
   const selectBar = document.getElementById("tl-select-bar");
   if (selectBar) selectBar.classList.remove("hidden");
+  const fab = document.getElementById("tl-fab");
+  if (fab) {
+    fab.classList.remove("hidden");
+    fab.classList.remove("open");
+  }
   const modeLabel = document.getElementById("tl-select-mode-label");
   if (modeLabel) {
     if (mode === "citedRefs") modeLabel.textContent = "选择引用文献文件";
@@ -11510,6 +11524,7 @@ function enterTimelineSelectMode(mode) {
 }
 
 function _applyTimelineSelection() {
+  // 旧版 .tl-node（兼容）
   document.querySelectorAll(".tl-node").forEach(node => {
     const idx = parseInt(node.dataset.idx);
     if (_tlSelected.has(idx)) {
@@ -11518,23 +11533,176 @@ function _applyTimelineSelection() {
       node.classList.remove("selected");
     }
   });
+  // 新版时间轴 .tl-s-node：实时刷新勾选态（避免整树重渲染丢失滚动位置）
+  document.querySelectorAll(".tl-s-node[data-tl-idx]").forEach(node => {
+    const idx = parseInt(node.dataset.tlIdx, 10);
+    const sel = _tlSelected.has(idx);
+    node.classList.toggle("tl-s-selected", sel);
+    const card = node.querySelector(".tl-s-card");
+    if (card) {
+      card.classList.toggle("tl-s-selected", sel);
+      card.setAttribute("aria-checked", sel ? "true" : "false");
+    }
+    const check = node.querySelector(".tl-s-check");
+    if (check) check.classList.toggle("checked", sel);
+  });
+  // 悬浮弹层里的条目
+  document.querySelectorAll(".tl-s-popup-item[data-tl-idx]").forEach(item => {
+    const idx = parseInt(item.dataset.tlIdx, 10);
+    const sel = _tlSelected.has(idx);
+    item.classList.toggle("tl-s-popup-selected", sel);
+    const check = item.querySelector(".tl-s-popup-check");
+    if (check) check.classList.toggle("checked", sel);
+  });
+  // 批量勾选态：勾选数 == 总数 时父容器标记“全选”
+  const board = document.getElementById("tl-board");
+  if (board) {
+    board.classList.toggle("select-mode", _tlSelectMode !== null);
+    const total = kanbanState.documents ? kanbanState.documents.length : 0;
+    board.classList.toggle("tl-all-selected", total > 0 && _tlSelected.size >= total);
+  }
 }
 
 function _updateTimelineSelectSummary() {
-  const summaryEl = document.getElementById("tl-selected-summary");
-  const confirmBtn = document.getElementById("tl-select-confirm-btn");
-  if (!summaryEl) return;
-  const count = _tlSelected.size;
-  if (count === 0) {
-    summaryEl.innerHTML = '<span class="summary-empty">未选择任何文档</span>';
-  } else {
-    const names = [..._tlSelected].map(idx => {
-      const it = (kanbanState.documents || []).find(d => d.idx === idx);
-      return it ? escapeHtml(it.docCode + ' - ' + (it.name || '')) : '';
-    }).filter(Boolean);
-    summaryEl.innerHTML = '<span class="summary-label">已选 ' + count + ' 份：</span>' + names.join('<span class="summary-sep">、</span>');
+  const dotClassMap = {
+    office_action: "tl-dot-oa",
+    response: "tl-dot-response",
+    request: "tl-dot-request",
+    allowance: "tl-dot-allowance",
+    notification: "tl-dot-notification",
+    citation: "tl-dot-citation",
+    patent_doc: "tl-dot-patentdoc",
+    misc: "tl-dot-misc",
+  };
+  const typeLabelMap = {
+    office_action: "审查意见",
+    response: "申请人答复",
+    request: "申请人请求",
+    allowance: "授权通知",
+    notification: "通知",
+    citation: "审查员引用",
+    patent_doc: "专利文件",
+    misc: "其他",
+  };
+  const docs = kanbanState.documents || [];
+  const total = docs.length;
+  const selectedIdxs = [..._tlSelected];
+  const count = selectedIdxs.length;
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+
+  // 计数与进度条
+  const countEl = document.getElementById("tl-sel-count");
+  if (countEl) countEl.textContent = `已选 ${count} / ${total}`;
+  const pctEl = document.getElementById("tl-sel-pct");
+  if (pctEl) pctEl.textContent = pct + "%";
+  const barEl = document.getElementById("tl-sel-progress-bar");
+  if (barEl) barEl.style.width = pct + "%";
+
+  // 聚合列表（按类型分组，可滚动，不再截断）
+  const listEl = document.getElementById("tl-selected-summary");
+  if (listEl) {
+    if (count === 0) {
+      listEl.innerHTML = '<div class="tl-sel-empty">未选择任何文档 —— 点击时间轴卡片即可勾选</div>';
+    } else {
+      const groups = {};
+      selectedIdxs.forEach(idx => {
+        const it = docs.find(d => d.idx === idx);
+        if (!it) return;
+        const type = it.type || "misc";
+        (groups[type] = groups[type] || []).push(it);
+      });
+      let html = "";
+      Object.keys(groups).forEach(type => {
+        const items = groups[type];
+        const label = (typeLabelMap[type] || "其他");
+        html += `<div class="tl-sel-group"><span class="tl-sel-group-label">${label}<i>${items.length}</i></span>`;
+        items.forEach(it => {
+          const name = it.name || it.docCode || "";
+          const dotCls = dotClassMap[it.type] || "tl-dot-misc";
+          html += `<span class="tl-sel-chip" data-tl-idx="${it.idx}" title="${escapeHtml(name)}">` +
+                    `<span class="tl-sel-chip-dot ${dotCls}"></span>` +
+                    `<span class="tl-sel-chip-text">${escapeHtml(it.docCode || '')}</span>` +
+                    `<button class="tl-sel-chip-x" type="button" aria-label="移除" onclick="event.stopPropagation();_tlRemoveSelected(${it.idx})">×</button>` +
+                  `</span>`;
+        });
+        html += `</div>`;
+      });
+      listEl.innerHTML = html;
+    }
   }
+
+  const confirmBtn = document.getElementById("tl-select-confirm-btn");
   if (confirmBtn) confirmBtn.disabled = count === 0;
+  const allBtn = document.getElementById("tl-select-all-btn");
+  if (allBtn) allBtn.disabled = (total > 0 && count >= total);
+}
+
+function _tlRemoveSelected(idx) {
+  if (!_tlSelectMode) return;
+  _tlSelected.delete(idx);
+  _applyTimelineSelection();
+  _updateTimelineSelectSummary();
+  _syncFabState();
+}
+
+function _tlSelectAll() {
+  if (!_tlSelectMode) return;
+  _tlSelected.clear();
+  (kanbanState.documents || []).forEach(it => _tlSelected.add(it.idx));
+  _applyTimelineSelection();
+  _updateTimelineSelectSummary();
+  _syncFabState();
+}
+
+function _tlSelectNone() {
+  if (!_tlSelectMode) return;
+  _tlSelected.clear();
+  _applyTimelineSelection();
+  _updateTimelineSelectSummary();
+  _syncFabState();
+}
+
+function _tlSelectInvert() {
+  if (!_tlSelectMode) return;
+  (kanbanState.documents || []).forEach(it => {
+    if (_tlSelected.has(it.idx)) _tlSelected.delete(it.idx);
+    else _tlSelected.add(it.idx);
+  });
+  _applyTimelineSelection();
+  _updateTimelineSelectSummary();
+  _syncFabState();
+}
+
+function _tlSelectKey() {
+  if (!_tlSelectMode) return;
+  _tlSelected.clear();
+  const keyTypes = new Set(["response", "office_action", "patent_doc"]);
+  (kanbanState.documents || []).forEach(it => {
+    if (keyTypes.has(it.type)) _tlSelected.add(it.idx);
+  });
+  _applyTimelineSelection();
+  _updateTimelineSelectSummary();
+  _syncFabState();
+}
+
+function _tlSelectDefault() {
+  if (!_tlSelectMode) return;
+  _tlSelected.clear();
+  (kanbanState.documents || []).forEach(it => {
+    let shouldSelect = false;
+    if (_tlSelectMode === "review") {
+      shouldSelect = shouldDefaultSelectForAnalysis(it);
+    } else if (_tlSelectMode === "mergeExport") {
+      shouldSelect = shouldDefaultSelectForAnalysis(it) && !!buildMergeDownloadUrl(it);
+    } else {
+      const CITED_DOC_CODES = ["FOR", "892", "1449", "IDS", "SRNT", "SRFW"];
+      shouldSelect = CITED_DOC_CODES.includes(it.docCode);
+    }
+    if (shouldSelect) _tlSelected.add(it.idx);
+  });
+  _applyTimelineSelection();
+  _updateTimelineSelectSummary();
+  _syncFabState();
 }
 
 function _toggleTimelineNode(idx) {
@@ -11546,6 +11714,20 @@ function _toggleTimelineNode(idx) {
   }
   _applyTimelineSelection();
   _updateTimelineSelectSummary();
+  _syncFabState();
+}
+
+function _toggleTimelineFab(open) {
+  const fab = document.getElementById("tl-fab");
+  if (!fab) return;
+  const willOpen = open !== undefined ? open : !fab.classList.contains("open");
+  fab.classList.toggle("open", willOpen);
+  const btn = document.getElementById("tl-fab-btn");
+  if (btn) btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+}
+
+function _syncFabState() {
+  // 占位：后续可在此同步浮动按钮的选中计数
 }
 
 function _jumpToDocFromTimeline(idx) {
@@ -11751,7 +11933,9 @@ function renderTimeline(data) {
     const keyClass = isKey ? ' tl-s-key tl-s-key-' + dotClass : '';
     const selectedClass = isSelected ? ' tl-s-selected' : '';
 
-    let h = `<div class="tl-s-card${keyClass}${selectedClass}" onclick="_jumpToDocFromTimeline(${it.idx})">`;
+    let h = `<div class="tl-s-card${keyClass}${selectedClass}" data-tl-idx="${it.idx}" role="checkbox" aria-checked="${isSelected ? 'true' : 'false'}" tabindex="0" onclick="_jumpToDocFromTimeline(${it.idx})">`;
+    // 勾选框指示器（选择模式下显示）
+    h += `<span class="tl-s-check${isSelected ? ' checked' : ''}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>`;
     if (displayCn) {
       h += `<div class="tl-s-cn">${escapeHtml(displayCn)}</div>`;
       h += `<div class="tl-s-en" title="${escapeHtml(enName)}">${escapeHtml(enName)}</div>`;
@@ -11797,7 +11981,7 @@ function renderTimeline(data) {
     const totalAtDate = g.items.length;
     const hasFolded = totalAtDate > 1;
 
-    html += `<div class="tl-s-node ${cardsAbove ? 'tl-s-above' : 'tl-s-below'}${g.hasKey ? '' : ' tl-s-folded-node'}" style="left:${x}px;top:${y}px;">`;
+    html += `<div class="tl-s-node ${cardsAbove ? 'tl-s-above' : 'tl-s-below'}${g.hasKey ? '' : ' tl-s-folded-node'}" data-tl-idx="${primaryItem.idx}" style="left:${x}px;top:${y}px;">`;
 
     // 年份标记（仅在每行第一个或新年份时显示）
     if (isYearStart && g.year) {
@@ -11843,7 +12027,9 @@ function renderTimeline(data) {
       const pLabel = typeLabelMap[popIt.type] || "其他";
       const pIcon = typeIconMap[popIt.type] || typeIconMap.misc;
       const { enName: pEn, displayCn: pCn } = extractCnTitle(popIt);
-      html += `<div class="tl-s-popup-item${pk ? ' tl-s-popup-key' : ''}" onclick="_jumpToDocFromTimeline(${popIt.idx})">`;
+      const pSel = _tlSelected.has(popIt.idx);
+      html += `<div class="tl-s-popup-item${pk ? ' tl-s-popup-key' : ''}${pSel ? ' tl-s-popup-selected' : ''}" data-tl-idx="${popIt.idx}" onclick="_jumpToDocFromTimeline(${popIt.idx})">`;
+      html += `  <span class="tl-s-popup-check${pSel ? ' checked' : ''}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>`;
       html += `  <span class="tl-s-popup-dot ${pdc}">${pIcon}</span>`;
       html += `  <div class="tl-s-popup-text">`;
       if (pCn) html += `<div class="tl-s-popup-cn">${escapeHtml(pCn)}</div>`;
@@ -11892,49 +12078,19 @@ function parseDate(dateStr) {
 
 // ── Timeline select bar button bindings ──
 function _bindTimelineSelectButtons() {
-  const tlAll = document.getElementById("tl-select-all-btn");
-  if (tlAll && !tlAll._bound) {
-    tlAll._bound = true;
-    tlAll.addEventListener("click", () => {
-      if (!_tlSelectMode) return;
-      _tlSelected.clear();
-      kanbanState.documents.forEach(it => _tlSelected.add(it.idx));
-      _applyTimelineSelection();
-      _updateTimelineSelectSummary();
-    });
-  }
-  const tlNone = document.getElementById("tl-select-none-btn");
-  if (tlNone && !tlNone._bound) {
-    tlNone._bound = true;
-    tlNone.addEventListener("click", () => {
-      if (!_tlSelectMode) return;
-      _tlSelected.clear();
-      _applyTimelineSelection();
-      _updateTimelineSelectSummary();
-    });
-  }
-  const tlDefault = document.getElementById("tl-select-default-btn");
-  if (tlDefault && !tlDefault._bound) {
-    tlDefault._bound = true;
-    tlDefault.addEventListener("click", () => {
-      if (!_tlSelectMode) return;
-      _tlSelected.clear();
-      kanbanState.documents.forEach(it => {
-        let shouldSelect = false;
-        if (_tlSelectMode === "review") {
-          shouldSelect = shouldDefaultSelectForAnalysis(it);
-        } else if (_tlSelectMode === "mergeExport") {
-          shouldSelect = shouldDefaultSelectForAnalysis(it) && !!buildMergeDownloadUrl(it);
-        } else {
-          const CITED_DOC_CODES = ["FOR", "892", "1449", "IDS", "SRNT", "SRFW"];
-          shouldSelect = CITED_DOC_CODES.includes(it.docCode);
-        }
-        if (shouldSelect) _tlSelected.add(it.idx);
-      });
-      _applyTimelineSelection();
-      _updateTimelineSelectSummary();
-    });
-  }
+  const bind = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el && !el._bound) {
+      el._bound = true;
+      el.addEventListener("click", fn);
+    }
+  };
+
+  bind("tl-select-all-btn", () => _tlSelectAll());
+  bind("tl-select-none-btn", () => _tlSelectNone());
+  bind("tl-select-default-btn", () => _tlSelectDefault());
+  bind("tl-select-key-btn", () => _tlSelectKey());
+  bind("tl-select-invert-btn", () => _tlSelectInvert());
   const tlCancel = document.getElementById("tl-select-cancel-btn");
   if (tlCancel && !tlCancel._bound) {
     tlCancel._bound = true;
@@ -11963,6 +12119,39 @@ function _bindTimelineSelectButtons() {
       }
     });
   }
+
+  // 聚合面板展开/收起
+  const collapseBtn = document.getElementById("tl-sel-collapse-btn");
+  if (collapseBtn && !collapseBtn._bound) {
+    collapseBtn._bound = true;
+    collapseBtn.addEventListener("click", () => {
+      const panel = document.getElementById("tl-selected-summary");
+      if (!panel) return;
+      const collapsed = panel.classList.toggle("tl-sel-collapsed");
+      collapseBtn.textContent = collapsed ? "展开全部 ▲" : "收起 ▼";
+    });
+  }
+
+  // 浮动操作菜单（FAB）
+  const fabBtn = document.getElementById("tl-fab-btn");
+  if (fabBtn && !fabBtn._bound) {
+    fabBtn._bound = true;
+    fabBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      _toggleTimelineFab();
+    });
+  }
+  // 点击空白处收起 FAB
+  document.addEventListener("click", (e) => {
+    const fab = document.getElementById("tl-fab");
+    if (fab && fab.classList.contains("open") && !fab.contains(e.target)) {
+      _toggleTimelineFab(false);
+    }
+  });
+  bind("tl-fab-all", () => { _tlSelectAll(); _toggleTimelineFab(false); });
+  bind("tl-fab-key", () => { _tlSelectKey(); _toggleTimelineFab(false); });
+  bind("tl-fab-invert", () => { _tlSelectInvert(); _toggleTimelineFab(false); });
+  bind("tl-fab-none", () => { _tlSelectNone(); _toggleTimelineFab(false); });
 
   // Timeline header action buttons
   const tlReviewBtn = document.getElementById("tl-select-review-btn");
