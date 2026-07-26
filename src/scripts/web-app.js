@@ -2924,6 +2924,9 @@ function _hideFindBarIfNeeded(tabName) {
 // Auto-trigger Google Translate for non-Chinese patents when entering description tab.
 // Equivalent to: click "网页翻译" → click language selector → select "中文简体".
 function autoTriggerGoogleTranslate(scope) {
+  // Reset translated-state for the (possibly new) patent. Re-marked true below
+  // if this patent already has a captured translation (cached branch).
+  _descTranslated = false;
   var patentData = (scope === 'popup') ? window._patentPopupData : window._currentPatentData;
   if (!patentData || !patentData.patent_number) return;
   // Reset fig-link scope to the current tab — ensures correct container
@@ -2947,17 +2950,23 @@ function autoTriggerGoogleTranslate(scope) {
   // (no need to re-trigger Google Translate — instant render + figure links)
   if (patentData._translatedDescription) {
     _applyTranslatedDescription(scope, patentData._translatedDescription);
+    var cachedContainer = _getDescriptionContainer(scope);
+    if (cachedContainer) {
+      cachedContainer.classList.add('notranslate');
+      cachedContainer.setAttribute('translate', 'no');
+      cachedContainer.dataset.gtTranslated = 'true';
+    }
+    _descTranslated = true;
+    _updateGtButtonState();
     setTimeout(function() { linkFigureReferences(scope); }, 200);
     return;
   }
   // Don't toggle off if translation is already active
   if (_googleTranslateActive) {
-    // GT is alive from a previous patent, but its combo was reset to "" after
-    // the last capture (keep-alive design) — meaning GT will NOT translate the
-    // newly rendered description on its own, and the polling below would find
-    // no <font> tags and silently give up (no translation, no figure links).
-    // Re-select zh-CN so GT actually translates this patent's content.
+    // GT is alive from a previous activation — re-select zh-CN so it actually
+    // translates this patent's content.
     _figLinkScope = scope;
+    _protectNonDescriptionAll();
     _setGoogTransCookie("/auto/zh-CN");
     var reCombo = document.querySelector(".goog-te-combo");
     if (reCombo) {
@@ -3629,6 +3638,12 @@ function copyPatentSectionText(sectionType) {
 // ── Google Translate Widget Injection ──
 let _googleTranslateInjected = false;
 let _googleTranslateActive = false;
+// Tracks whether the DESCRIPTION container is currently displaying GT-translated
+// text (clean DOM). This is independent of the GT widget's active state, because
+// after a translation we PURGE the widget but keep the translated description
+// rendered. The toolbar button ("恢复原文" vs "网页翻译") is driven by THIS flag,
+// not by _googleTranslateActive.
+let _descTranslated = false;
 // Separate flag: tracks whether _onGoogleTranslateActivated has been triggered
 // for the current GT session. _googleTranslateActive is set early (for button
 // state), so it can't be used as a guard inside _pollSelectGoogleTranslateLang.
@@ -3698,37 +3713,42 @@ if (!window._gtErrorSuppressor) {
 }
 
 function toggleGoogleTranslate() {
-  // If translation is already active, toggle off
-  if (_googleTranslateActive) {
-    const gtEls = document.querySelectorAll("#goog-gt-tt, .goog-te-spinner-pos");
-    gtEls.forEach(el => el.remove());
-    document.body.style.top = "";
-    // Reset the Google Translate combo to original language
-    const combo = document.querySelector(".goog-te-combo");
-    if (combo) {
-      combo.value = "";
-      _dispatchComboChange(combo);
+  // Translation in progress (widget active but description not yet captured) →
+  // ignore clicks to avoid double-triggering.
+  if (_googleTranslateActive && !_descTranslated) {
+    console.log('[FigLink] GT translation in progress, ignoring toggle');
+    return;
+  }
+
+  // If the DESCRIPTION is currently showing GT-translated text, restoring the
+  // original is what the user wants ("恢复原文"). We re-render the description
+  // container with the original text. The GT widget (if any lingering) is purged.
+  if (_descTranslated) {
+    console.log('[FigLink] description is translated, restoring original text');
+    restoreOriginalDescription('main');
+    if (window._patentPopupData) restoreOriginalDescription('popup');
+    _descTranslated = false;
+    if (_googleTranslateInjected) {
+      _purgeGoogleTranslateCompletely();
     }
-    _setGoogTransCookie("");
     _googleTranslateActive = false;
     _gtActivationTriggered = false;
-    // Stop any pending fig-link polling and clear scope so next GT activation
-    // re-detects the scope from scratch.
     if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
     _figLinkScope = null;
-    // Remove notranslate from description containers so GT can translate them next time
-    document.querySelectorAll('.pd-description-text.notranslate, .pd-desc-container.notranslate').forEach(function(el) {
-      el.classList.remove('notranslate');
-      el.removeAttribute('translate');
-    });
     _updateGtButtonState();
     return;
   }
+
+  // Not translated yet → start translation. Mark non-description parts as
+  // notranslate so ONLY the 说明书 (description) tab gets translated.
+  _protectNonDescriptionAll();
 
   // If the Google Translate widget is already injected, auto-select Chinese
   const combo = document.querySelector(".goog-te-combo");
   if (combo) {
     _selectGoogleTranslateLang("zh-CN");
+    _googleTranslateActive = true;
+    _gtActivationTriggered = true;
     _updateGtButtonState();
     return;
   }
@@ -3979,46 +3999,34 @@ function _captureAndApplyTranslation(scope) {
     console.log('[FigLink] cached translation on patentData');
   }
 
-  // 3. Reset GT to original language so the REST of the page reverts,
-  //    but DON'T purge GT — keep it alive so the user can toggle it on/off.
-  //    Mark the description container as notranslate so GT won't re-translate it.
-  _disableGoogleTranslateKeepAlive(function() {
-    // 4. GT has reverted the page — safe to re-render with translated text
+  // 3. Reset GT to original language so the rest of the page reverts, then
+  //    PURGE the widget completely. Keeping GT alive left its MutationObserver
+  //    and chrome running on the page, which (a) could hijack focus/clicks in
+  //    the figure annotation editor and (b) made "恢复原文" impossible to apply.
+  //    After purge the description is shown as clean translated DOM and only the
+  //    description tab was ever translated (other tabs were marked notranslate).
+  _disableGoogleTranslateQuiet(function() {
+    // 4. GT has reverted + purged — safe to re-render with translated text
     _applyTranslatedDescription(scope, translatedText);
-    // Mark the description container as notranslate to prevent GT re-translation
+    // Mark the description container so we know it's translated, and as a
+    // belt-and-suspenders guard against any future GT re-activation.
     var descContainer = _getDescriptionContainer(scope);
     if (descContainer) {
       descContainer.classList.add('notranslate');
       descContainer.setAttribute('translate', 'no');
+      descContainer.dataset.gtTranslated = 'true';
     }
-    // Hide GT's visible UI (banner, spinner) now that translation is captured
-    _hideGtChrome();
+    // Remove the notranslate guards from the other tabs (GT is gone now).
+    _unprotectNonDescriptionAll();
+    // Mark translated state — this drives the toolbar button ("恢复原文").
+    _descTranslated = true;
+    _googleTranslateActive = false;
+    _gtActivationTriggered = false;
+    _updateGtButtonState();
     console.log('[FigLink] re-rendered with translation, generating links...');
-    // Now generate figure links on the clean DOM
+    // Generate figure links on the clean DOM (GT is purged, so no late passes)
     setTimeout(function() {
-      var beforeCount = document.querySelectorAll('#patent-detail-content .pd-fig-link, #ppv-content .pd-fig-link').length;
       linkFigureReferences(scope);
-      var afterCount = document.querySelectorAll('#patent-detail-content .pd-fig-link, #ppv-content .pd-fig-link').length;
-      console.log('[FigLink] links created: before=' + beforeCount + ' after=' + afterCount);
-
-      // Safety net: verify links still exist several times over ~9 seconds.
-      // On slow/blocked networks GT's late translation passes can fire long
-      // after capture and destroy the links (re-wrapping the description in
-      // <font> tags). A single 2s check was not enough — keep re-checking and
-      // regenerate whenever the count dropped.
-      [2000, 5000, 9000].forEach(function(delay) {
-        setTimeout(function() {
-          var lateCount = document.querySelectorAll('#patent-detail-content .pd-fig-link, #ppv-content .pd-fig-link').length;
-          console.log('[FigLink] ' + (delay / 1000) + 's later, link count=' + lateCount + ' (was ' + afterCount + ')');
-          if (lateCount < afterCount) {
-            console.warn('[FigLink] links disappeared! regenerating...');
-            linkFigureReferences(scope);
-            var finalCount = document.querySelectorAll('#patent-detail-content .pd-fig-link, #ppv-content .pd-fig-link').length;
-            console.log('[FigLink] regenerated: ' + finalCount + ' links');
-            afterCount = finalCount;
-          }
-        }, delay);
-      });
     }, 200);
   });
 }
@@ -4102,8 +4110,13 @@ function _hideGtChrome() {
 function _updateGtButtonState() {
   var btns = document.querySelectorAll('.pd-header-link[onclick*="toggleGoogleTranslate"]');
   btns.forEach(function(btn) {
-    if (_googleTranslateActive) {
+    if (_descTranslated) {
+      // Description is currently showing GT-translated text → "恢复原文"
       btn.textContent = '恢复原文';
+      btn.classList.add('gt-active');
+    } else if (_googleTranslateActive) {
+      // GT widget active but capture not finished yet → "翻译中…"
+      btn.textContent = '翻译中…';
       btn.classList.add('gt-active');
     } else {
       btn.textContent = '网页翻译';
@@ -4390,6 +4403,48 @@ function _isUSPatentData(data) {
 }
 
 // Get the description container for a given scope
+// Re-render a description container with its ORIGINAL (untranslated) text.
+// This is what "恢复原文" does. It only touches the description tab — other
+// panels were never translated so they stay as-is.
+function restoreOriginalDescription(scope) {
+  var data = (scope === 'popup') ? window._patentPopupData : window._currentPatentData;
+  var descContainer = _getDescriptionContainer(scope);
+  if (!descContainer || !data) return;
+  var originalText = data.description;
+  if (typeof originalText === 'string' && originalText.trim() !== '') {
+    descContainer.innerHTML = renderDescriptionHtml(originalText);
+  }
+  descContainer.classList.remove('notranslate');
+  descContainer.removeAttribute('translate');
+  delete descContainer.dataset.gtTranslated;
+}
+
+// Before auto-translating, mark every panel EXCEPT the 说明书 (description) tab
+// as notranslate so Google Translate only ever touches the description. This
+// guarantees "其他部分都要保持原样" even during the brief translation pass.
+function _protectNonDescriptionAll() {
+  var roots = [document.getElementById('patent-detail-content'), document.getElementById('ppv-content')];
+  roots.forEach(function(root) {
+    if (!root) return;
+    root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
+      el.classList.add('notranslate');
+      el.setAttribute('translate', 'no');
+    });
+  });
+}
+
+// Remove the notranslate guards (called after GT has been purged).
+function _unprotectNonDescriptionAll() {
+  var roots = [document.getElementById('patent-detail-content'), document.getElementById('ppv-content')];
+  roots.forEach(function(root) {
+    if (!root) return;
+    root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
+      el.classList.remove('notranslate');
+      el.removeAttribute('translate');
+    });
+  });
+}
+
 function _getDescriptionContainer(scope) {
   var selector = scope === 'popup'
     ? '#ppv-content .pd-description-text'

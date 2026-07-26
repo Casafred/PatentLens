@@ -180,6 +180,15 @@ var ImageAnnotations = (function () {
 
   function toggleAnnotationMode() {
     annotationMode = !annotationMode;
+    if (annotationMode) {
+      // Purge any lingering GT widget (its MutationObserver + hover chrome stays
+      // alive on the page and hijacks focus/clicks in the marker editor for tens
+      // of seconds). Defined in web-app.js; the translated description text stays
+      // rendered, so this does NOT touch the description tab.
+      if (typeof _purgeGoogleTranslateCompletely === 'function') {
+        try { _purgeGoogleTranslateCompletely(); } catch (e) {}
+      }
+    }
     document.body.classList.toggle("anno-mode-active", annotationMode);
     var btns = document.querySelectorAll(".anno-toggle-btn");
     btns.forEach(function (b) { b.classList.toggle("active", annotationMode); });
