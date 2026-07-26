@@ -178,22 +178,39 @@ var ImageAnnotations = (function () {
   // ── Annotation mode ──
   function isAnnotationMode() { return annotationMode; }
 
+  // ── Suspend / resume Google Translate while annotating ──
+  // Entering annotation mode (or opening the marker editor) must stop GT from
+  // touching the editor DOM. Clearing the language combo ("idle") is NOT enough
+  // on its own: the GT widget caches the last target language and keeps re-wrapping
+  // any newly added subtree via its global MutationObserver. That previously
+  // triggered an infinite wrap/unwrap tug-of-war with our protective observer and
+  // left the input unfocusable for tens of seconds. The reliable, crash-free fix
+  // is to mark <body> as notranslate so GT's observer skips the ENTIRE subtree
+  // (including the editor) — without ever purging window.google (which crashes GT).
+  function _suspendGt() {
+    try {
+      if (typeof setComboToOriginal === 'function') setComboToOriginal();
+      if (typeof _hideGtChrome === 'function') _hideGtChrome();
+      document.body.classList.add('notranslate');
+      document.body.setAttribute('translate', 'no');
+    } catch (e) { /* ignore */ }
+  }
+  function _resumeGt() {
+    // Stay suspended while annotation mode or an open editor still needs it.
+    if (annotationMode || markerEditorEl) return;
+    try {
+      document.body.classList.remove('notranslate');
+      document.body.removeAttribute('translate');
+    } catch (e) { /* ignore */ }
+  }
+
+  // ── Annotation mode ──
   function toggleAnnotationMode() {
     annotationMode = !annotationMode;
     if (annotationMode) {
-      // Make GT idle (combo → original) so its MutationObserver won't wrap the
-      // marker-editor inputs. We deliberately do NOT purge window.google: that
-      // crashes GT's in-flight promises and its MutationObserver keeps churning
-      // the page, which previously made the editor completely unusable. The
-      // description (notranslate) stays frozen-translated; setting the combo to
-      // original leaves GT idle and it simply ignores the newly added editor.
-      if (typeof setComboToOriginal === 'function') {
-        try { setComboToOriginal(); } catch (e) {}
-      }
-      // Hide any lingering GT chrome overlay that could steal focus/clicks.
-      if (typeof _hideGtChrome === 'function') {
-        try { _hideGtChrome(); } catch (e) {}
-      }
+      _suspendGt();
+    } else {
+      _resumeGt();
     }
     document.body.classList.toggle("anno-mode-active", annotationMode);
     var btns = document.querySelectorAll(".anno-toggle-btn");
@@ -485,82 +502,24 @@ var ImageAnnotations = (function () {
     // Prevent mousedown from propagating to stage (which starts panning)
     markerEditorEl.addEventListener("mousedown", function (e) { e.stopPropagation(); });
 
-    // ── GT protection: MutationObserver to detect and revert GT interference ──
-    // GT's MutationObserver may wrap inputs in <font> tags, set readonly/disabled,
-    // or steal focus. This observer watches the editor and immediately reverts
-    // any such modifications, keeping the inputs editable.
-    var _editorObserver = new MutationObserver(function(mutations) {
-      if (!markerEditorEl) return;
-      mutations.forEach(function(mut) {
-        // Revert attribute changes on inputs (readonly, disabled, contenteditable)
-        if (mut.type === 'attributes' && mut.target && mut.target.tagName) {
-          var tag = mut.target.tagName.toLowerCase();
-          if (tag === 'input' || tag === 'textarea') {
-            if (mut.target.hasAttribute('readonly')) mut.target.removeAttribute('readonly');
-            if (mut.target.hasAttribute('disabled')) mut.target.removeAttribute('disabled');
-            mut.target.style.pointerEvents = '';
-          }
-        }
-        // Remove any <font> tags GT inserts inside the editor
-        if (mut.type === 'childList' && mut.addedNodes) {
-          mut.addedNodes.forEach(function(node) {
-            if (node.nodeType === 1) {
-              if (node.tagName === 'FONT' || (node.classList && node.classList.contains('skiptranslate'))) {
-                // Unwrap font tags: move children to parent, then remove font
-                while (node.firstChild) {
-                  node.parentNode.insertBefore(node.firstChild, node);
-                }
-                node.remove();
-              }
-            }
-          });
-        }
-      });
-    });
-    _editorObserver.observe(markerEditorEl, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['readonly', 'disabled', 'contenteditable', 'style', 'class']
-    });
-    // Stop observing when editor closes
-    var _origCloseEditor = closeMarkerEditor;
-    // Store observer for cleanup in closeMarkerEditor
-    markerEditorEl._gtObserver = _editorObserver;
+    // ── Keep Google Translate fully suspended while the editor is open ──
+    // Marking <body> as notranslate (in _suspendGt) makes GT's global
+    // MutationObserver skip the ENTIRE editor subtree, so GT can never wrap the
+    // inputs or steal focus. This replaces the previous wrap/unwrap MutationObserver
+    // tug-of-war with our protective observer, which left the input unfocusable
+    // for many seconds while GT kept re-wrapping newly added text. We never purge
+    // window.google (that crashes GT's in-flight promises).
+    _suspendGt();
 
-    // Also proactively remove any GT chrome overlays that might intercept clicks.
-    // GT re-creates these overlays while it is still working (slow/blocked
-    // networks can keep it busy for many seconds), so sweep continuously for
-    // as long as the editor is open instead of only once.
-    var gtChromeSelectors = '.goog-te-spinner-pos, .goog-te-spinner, #goog-gt-tt, ' +
-      '.goog-te-balloon, .goog-te-balloon-frame, .goog-te-pos, ' +
-      'iframe.goog-te-banner-frame, .goog-te-banner-frame, iframe[class^="VIpgJd"], ' +
-      '.skiptranslate[style*="fixed"], .skiptranslate[style*="absolute"]';
-    function sweepGtChrome() {
-      document.querySelectorAll(gtChromeSelectors).forEach(function(el) {
-        el.style.display = 'none';
-        el.style.pointerEvents = 'none';
-      });
-      if (document.body && document.body.style.top) document.body.style.top = '';
-    }
-    sweepGtChrome();
-    markerEditorEl._gtSweepInterval = setInterval(function() {
-      if (!markerEditorEl) return;
-      sweepGtChrome();
-    }, 400);
-
-    // Focus the number input. Retry for up to ~6s in case the browser's main
-    // thread is busy (e.g. GT MutationObserver churning through freshly added
-    // split-view DOM, hanging translate requests, image decoding) — the
-    // previous 1.2s window gave up too early on slow networks, leaving the
-    // input unfocused and unresponsive until GT settled. Also clear any
-    // readOnly/disabled attributes GT may have injected onto the inputs.
+    // Focus the number input. GT no longer competes for focus, so an immediate
+    // focus (plus a couple of short safety retries in case layout isn't ready)
+    // is sufficient — no multi-second retry loop.
     var focusAttempts = 0;
     function focusNumberInput() {
       if (!markerEditorEl) return;
       var inp = markerEditorEl.querySelector("#anno-edit-number");
       var ta = markerEditorEl.querySelector("#anno-edit-comment");
-      // Defensive: ensure inputs are editable (GT sometimes sets readOnly)
+      // Defensive: ensure inputs are editable (belt-and-suspenders; GT is suspended).
       [inp, ta].forEach(function(el) {
         if (!el) return;
         if (el.hasAttribute("readonly")) el.removeAttribute("readonly");
@@ -568,34 +527,30 @@ var ImageAnnotations = (function () {
         el.style.pointerEvents = "";
       });
       if (!inp) return;
-      // If the user already took control of any field inside the editor,
-      // stop re-asserting focus so we never yank it away mid-typing.
+      // If the user already focused another field inside the editor, don't yank it.
       var ae = document.activeElement;
       if (ae && ae !== document.body && markerEditorEl.contains(ae) && ae !== inp) return;
       inp.focus();
       inp.select();
-      // Verify focus actually took; if not, retry (up to ~6s total)
-      if (document.activeElement !== inp && focusAttempts < 40) {
+      // Verify focus took; if not (layout not ready yet), retry briefly.
+      if (document.activeElement !== inp && focusAttempts < 6) {
         focusAttempts++;
-        setTimeout(focusNumberInput, 150);
+        setTimeout(focusNumberInput, 80);
       }
     }
-    setTimeout(focusNumberInput, 50);
+    if (window.requestAnimationFrame) requestAnimationFrame(focusNumberInput);
+    setTimeout(focusNumberInput, 0);
+    setTimeout(focusNumberInput, 120);
   }
 
   function closeMarkerEditor() {
     if (markerEditorEl) {
-      // Disconnect GT protection observer
-      if (markerEditorEl._gtObserver) {
-        try { markerEditorEl._gtObserver.disconnect(); } catch(e) {}
-      }
-      // Stop the continuous GT chrome sweep
-      if (markerEditorEl._gtSweepInterval) {
-        try { clearInterval(markerEditorEl._gtSweepInterval); } catch(e) {}
-      }
       markerEditorEl.remove();
       markerEditorEl = null;
     }
+    // Restore Google Translate only if nothing else still needs it suspended
+    // (annotation mode still on, or another editor open).
+    _resumeGt();
   }
 
   // ── Marker context menu (right-click on marker) ──
