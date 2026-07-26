@@ -2886,6 +2886,19 @@ function renderPatentDetail(data) {
       if (!isNaN(idx)) translateClaimByIndex(idx, claimItem);
     });
   });
+
+  // ── Pre-translate the 说明书 text immediately (during initial render) instead of
+  // waiting until the user opens the 说明书 tab. The Google Translate DOM walk over
+  // the (often huge) description can block the main thread for many seconds; doing
+  // it now — while the user is still on the 概要 tab — means it is already cached by
+  // the time they switch to 说明书 and enter annotation mode, so the marker editor
+  // input is never frozen mid-translation. This is the "preload" that removes the
+  // long wait before annotation mode becomes usable.
+  if (window._currentPatentData && !isCNPatent(window._currentPatentData.patent_number)) {
+    setTimeout(function () {
+      try { autoTriggerGoogleTranslate('main'); } catch (e) {}
+    }, 250);
+  }
 }
 
 // Switch patent detail tab
@@ -16132,6 +16145,20 @@ async function exportToWord() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Preload the Google Translate widget script at startup. The script is served
+  // from translate.google.com and the network round-trip (often slow/unreliable in
+  // some regions) previously stalled the first 说明书 translation — and with it the
+  // annotation editor input. Prefetching caches the resource so translation can
+  // begin instantly once a patent is opened. Harmless no-op if prefetch is
+  // unsupported by the webview.
+  try {
+    var gtPre = document.createElement('link');
+    gtPre.rel = 'prefetch';
+    gtPre.as = 'script';
+    gtPre.href = 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit';
+    document.head.appendChild(gtPre);
+  } catch (e) {}
+
   // Theme toggle
   const themeToggleBtn = document.getElementById("theme-toggle-btn");
   const savedTheme = localStorage.getItem("patentlens-theme") || "dark";
