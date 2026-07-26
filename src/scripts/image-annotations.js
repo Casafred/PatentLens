@@ -181,12 +181,18 @@ var ImageAnnotations = (function () {
   function toggleAnnotationMode() {
     annotationMode = !annotationMode;
     if (annotationMode) {
-      // Purge any lingering GT widget (its MutationObserver + hover chrome stays
-      // alive on the page and hijacks focus/clicks in the marker editor for tens
-      // of seconds). Defined in web-app.js; the translated description text stays
-      // rendered, so this does NOT touch the description tab.
-      if (typeof _purgeGoogleTranslateCompletely === 'function') {
-        try { _purgeGoogleTranslateCompletely(); } catch (e) {}
+      // Make GT idle (combo → original) so its MutationObserver won't wrap the
+      // marker-editor inputs. We deliberately do NOT purge window.google: that
+      // crashes GT's in-flight promises and its MutationObserver keeps churning
+      // the page, which previously made the editor completely unusable. The
+      // description (notranslate) stays frozen-translated; setting the combo to
+      // original leaves GT idle and it simply ignores the newly added editor.
+      if (typeof setComboToOriginal === 'function') {
+        try { setComboToOriginal(); } catch (e) {}
+      }
+      // Hide any lingering GT chrome overlay that could steal focus/clicks.
+      if (typeof _hideGtChrome === 'function') {
+        try { _hideGtChrome(); } catch (e) {}
       }
     }
     document.body.classList.toggle("anno-mode-active", annotationMode);
@@ -401,7 +407,7 @@ var ImageAnnotations = (function () {
       '<div class="anno-editor-title">' + (isEdit ? "编辑标记" : "添加附图标记") + "</div>" +
       '<div class="anno-editor-field">' +
       '<label>附图标号 <span style="color:var(--danger)">*</span></label>' +
-      '<input type="text" class="notranslate" translate="no" id="anno-edit-number" value="' + escapeHtmlAnno(m.number) + '" placeholder="如 100、102、30A" autocomplete="off" autofocus>' +
+      '<input type="text" class="notranslate" translate="no" id="anno-edit-number" value="' + escapeHtmlAnno(m.number) + '" placeholder="如 100、102、30A" autocomplete="off">' +
       "</div>" +
       '<div class="anno-editor-field">' +
       "<label>注释文字（可选）</label>" +

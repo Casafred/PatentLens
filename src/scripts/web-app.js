@@ -2946,39 +2946,34 @@ function autoTriggerGoogleTranslate(scope) {
       return;
     }
   } catch(e) {}
-  // If we already captured a translation for this patent, re-apply it directly
-  // (no need to re-trigger Google Translate — instant render + figure links)
+  // If we already captured a translation for this patent, re-apply the chosen
+  // state directly (no need to re-trigger Google Translate — instant render +
+  // figure links). The user's choice (translated vs original) is sticky via
+  // _descRestored, so a restored original STAYS original across tab switches.
   if (patentData._translatedDescription) {
-    _applyTranslatedDescription(scope, patentData._translatedDescription);
-    var cachedContainer = _getDescriptionContainer(scope);
-    if (cachedContainer) {
-      cachedContainer.classList.add('notranslate');
-      cachedContainer.setAttribute('translate', 'no');
-      cachedContainer.dataset.gtTranslated = 'true';
+    if (_descRestored) {
+      // User explicitly restored original → keep/render ORIGINAL, frozen.
+      restoreOriginalDescription(scope);
+      _descTranslated = false;
+    } else {
+      _applyTranslatedDescription(scope, patentData._translatedDescription);
+      var cachedContainer = _getDescriptionContainer(scope);
+      if (cachedContainer) {
+        cachedContainer.classList.add('notranslate');
+        cachedContainer.setAttribute('translate', 'no');
+        cachedContainer.dataset.gtTranslated = 'true';
+      }
+      _descTranslated = true;
     }
-    _descTranslated = true;
+    // Make GT idle so its MutationObserver never re-touches the frozen container.
+    setComboToOriginal();
     _updateGtButtonState();
     setTimeout(function() { linkFigureReferences(scope); }, 200);
     return;
   }
-  // Don't toggle off if translation is already active
-  if (_googleTranslateActive) {
-    // GT is alive from a previous activation — re-select zh-CN so it actually
-    // translates this patent's content.
-    _figLinkScope = scope;
-    _protectNonDescriptionAll();
-    _setGoogTransCookie("/auto/zh-CN");
-    var reCombo = document.querySelector(".goog-te-combo");
-    if (reCombo) {
-      if (reCombo.value !== "zh-CN") {
-        reCombo.value = "zh-CN";
-        _dispatchComboChange(reCombo);
-      }
-    }
-    _onGoogleTranslateActivated();
-    return;
-  }
-  // Store scope so figure linking runs after translation completes
+  // No cache yet → start translation. Only the 说明书 tab is translated; other
+  // panels are guarded as notranslate by _protectNonDescriptionAll().
+  _protectNonDescriptionAll();
   _figLinkScope = scope;
   toggleGoogleTranslate();
 }
@@ -3644,6 +3639,10 @@ let _googleTranslateActive = false;
 // rendered. The toolbar button ("恢复原文" vs "网页翻译") is driven by THIS flag,
 // not by _googleTranslateActive.
 let _descTranslated = false;
+// Tracks whether the user explicitly chose to view the ORIGINAL (untranslated)
+// description via "恢复原文". While true, auto re-render shows original text and
+// GT is kept idle so the original STAYS restored (no re-translation loop).
+let _descRestored = false;
 // Separate flag: tracks whether _onGoogleTranslateActivated has been triggered
 // for the current GT session. _googleTranslateActive is set early (for button
 // state), so it can't be used as a guard inside _pollSelectGoogleTranslateLang.
@@ -3713,34 +3712,54 @@ if (!window._gtErrorSuppressor) {
 }
 
 function toggleGoogleTranslate() {
-  // Translation in progress (widget active but description not yet captured) →
-  // ignore clicks to avoid double-triggering.
+  // While GT is still actively translating live (not yet captured), ignore
+  // clicks so we don't fight the in-flight MutationObserver.
   if (_googleTranslateActive && !_descTranslated) {
     console.log('[FigLink] GT translation in progress, ignoring toggle');
     return;
   }
 
-  // If the DESCRIPTION is currently showing GT-translated text, restoring the
-  // original is what the user wants ("恢复原文"). We re-render the description
-  // container with the original text. The GT widget (if any lingering) is purged.
+  var currentData = window._currentPatentData;
+
+  // Currently showing translated text → restore ORIGINAL and KEEP it.
   if (_descTranslated) {
     console.log('[FigLink] description is translated, restoring original text');
-    restoreOriginalDescription('main');
-    if (window._patentPopupData) restoreOriginalDescription('popup');
+    _descRestored = true;
     _descTranslated = false;
-    if (_googleTranslateInjected) {
-      _purgeGoogleTranslateCompletely();
-    }
-    _googleTranslateActive = false;
-    _gtActivationTriggered = false;
+    restoreOriginalDescription('main');
+    // Make GT idle so its MutationObserver never re-translates the original.
+    setComboToOriginal();
     if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
+    _gtActivationTriggered = false;
     _figLinkScope = null;
     _updateGtButtonState();
+    showToast('已恢复原文');
     return;
   }
 
-  // Not translated yet → start translation. Mark non-description parts as
-  // notranslate so ONLY the 说明书 (description) tab gets translated.
+  // Currently showing ORIGINAL (user restored) → re-apply cached translation.
+  if (_descRestored) {
+    _descRestored = false;
+    _descTranslated = true;
+    if (currentData && currentData._translatedDescription) {
+      var dc = _getDescriptionContainer('main');
+      // Mark notranslate BEFORE re-rendering so GT's observer never wraps it.
+      if (dc) {
+        dc.classList.add('notranslate');
+        dc.setAttribute('translate', 'no');
+      }
+      _applyTranslatedDescription('main', currentData._translatedDescription);
+      if (dc) { dc.dataset.gtTranslated = 'true'; }
+    }
+    setComboToOriginal();
+    _updateGtButtonState();
+    setTimeout(function() { linkFigureReferences('main'); }, 200);
+    showToast('已显示译文');
+    return;
+  }
+
+  // Not translated yet → start translation. Only the 说明书 tab is translated;
+  // other panels are guarded as notranslate by _protectNonDescriptionAll().
   _protectNonDescriptionAll();
 
   // If the Google Translate widget is already injected, auto-select Chinese
@@ -3999,36 +4018,39 @@ function _captureAndApplyTranslation(scope) {
     console.log('[FigLink] cached translation on patentData');
   }
 
-  // 3. Reset GT to original language so the rest of the page reverts, then
-  //    PURGE the widget completely. Keeping GT alive left its MutationObserver
-  //    and chrome running on the page, which (a) could hijack focus/clicks in
-  //    the figure annotation editor and (b) made "恢复原文" impossible to apply.
-  //    After purge the description is shown as clean translated DOM and only the
-  //    description tab was ever translated (other tabs were marked notranslate).
-  _disableGoogleTranslateQuiet(function() {
-    // 4. GT has reverted + purged — safe to re-render with translated text
-    _applyTranslatedDescription(scope, translatedText);
-    // Mark the description container so we know it's translated, and as a
-    // belt-and-suspenders guard against any future GT re-activation.
-    var descContainer = _getDescriptionContainer(scope);
-    if (descContainer) {
-      descContainer.classList.add('notranslate');
-      descContainer.setAttribute('translate', 'no');
-      descContainer.dataset.gtTranslated = 'true';
-    }
-    // Remove the notranslate guards from the other tabs (GT is gone now).
-    _unprotectNonDescriptionAll();
-    // Mark translated state — this drives the toolbar button ("恢复原文").
-    _descTranslated = true;
-    _googleTranslateActive = false;
-    _gtActivationTriggered = false;
-    _updateGtButtonState();
-    console.log('[FigLink] re-rendered with translation, generating links...');
-    // Generate figure links on the clean DOM (GT is purged, so no late passes)
-    setTimeout(function() {
-      linkFigureReferences(scope);
-    }, 200);
-  });
+  // 3. Freeze the translated text. Re-render clean DOM and mark the container
+  //    notranslate FIRST (so GT's live MutationObserver never re-wraps it), then
+  //    make GT idle by setting the combo to "original". We deliberately do NOT
+  //    purge window.google — purging crashes GT's in-flight promises (throwing
+  //    "reading 'J'" errors) and leaves its MutationObserver churning the page,
+  //    which both re-translated the restored original and broke the annotation
+  //    editor. With the combo at "original" GT goes idle, yet the notranslate
+  //    description stays as our frozen translation. Other tabs were already
+  //    marked notranslate, so they remain in the original language too.
+  var descContainer = _getDescriptionContainer(scope);
+  if (descContainer) {
+    descContainer.classList.add('notranslate');
+    descContainer.setAttribute('translate', 'no');
+  }
+  _applyTranslatedDescription(scope, translatedText);
+  if (descContainer) {
+    descContainer.dataset.gtTranslated = 'true';
+  }
+  // Disable GT LIVE translation (combo → original) WITHOUT purging window.google.
+  setComboToOriginal();
+  // Hide any leftover GT chrome that could intercept clicks (keeps elements
+  // alive to avoid GT internal null errors).
+  _hideGtChrome();
+  // Mark translated state — this drives the toolbar button ("恢复原文").
+  _descTranslated = true;
+  _googleTranslateActive = false;
+  _gtActivationTriggered = false;
+  _updateGtButtonState();
+  console.log('[FigLink] re-rendered with translation (frozen), generating links...');
+  // Generate figure links on the clean DOM (GT is idle, so no late passes).
+  setTimeout(function() {
+    linkFigureReferences(scope);
+  }, 200);
 }
 
 // Permanently suppress GT's visible UI chrome via an injected <style> sheet.
@@ -4113,6 +4135,10 @@ function _updateGtButtonState() {
     if (_descTranslated) {
       // Description is currently showing GT-translated text → "恢复原文"
       btn.textContent = '恢复原文';
+      btn.classList.add('gt-active');
+    } else if (_descRestored && window._currentPatentData && window._currentPatentData._translatedDescription) {
+      // User restored original but a translation is cached → offer to re-show it
+      btn.textContent = '恢复译文';
       btn.classList.add('gt-active');
     } else if (_googleTranslateActive) {
       // GT widget active but capture not finished yet → "翻译中…"
@@ -4414,8 +4440,11 @@ function restoreOriginalDescription(scope) {
   if (typeof originalText === 'string' && originalText.trim() !== '') {
     descContainer.innerHTML = renderDescriptionHtml(originalText);
   }
-  descContainer.classList.remove('notranslate');
-  descContainer.removeAttribute('translate');
+  // KEEP notranslate so GT's MutationObserver never re-translates the restored
+  // original text. (Previously this removed notranslate, which let GT wrap the
+  // original again — making "恢复原文" appear to fail.)
+  descContainer.classList.add('notranslate');
+  descContainer.setAttribute('translate', 'no');
   delete descContainer.dataset.gtTranslated;
 }
 
