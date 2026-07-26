@@ -27,6 +27,8 @@
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  /* 别名：部分组件引用 --bg，映射到主背景色（随主题切换） */
+  --bg: var(--bg-primary);
 }
 
 [data-theme="light"] {
@@ -4901,7 +4903,8 @@ body {
   cursor: pointer;
 }
 .tl-s-popup-check svg { width: 11px; height: 11px; opacity: 0; }
-.tl-board.select-mode .tl-s-popup-item .tl-s-popup-check { display: flex; }
+.tl-board.select-mode .tl-s-popup-item .tl-s-popup-check,
+.tl-s-popup.select-mode .tl-s-popup-item .tl-s-popup-check { display: flex; }
 .tl-s-popup-check.checked { background: var(--accent); border-color: var(--accent); }
 .tl-s-popup-check.checked svg { opacity: 1; }
 .tl-s-popup-item.tl-s-popup-selected { background: var(--accent-dim); }
@@ -5442,64 +5445,46 @@ body {
   z-index: 6;
 }
 
-/* ── Hover Popup ── */
+/* ── Hover Popup（JS 接管：打开时移至 body 顶层，fixed 定位） ── */
 .tl-s-popup {
   position: absolute;
   left: 50%;
   top: calc(100% + 16px);
-  transform: translateX(-50%) translateY(6px);
+  transform: translateX(-50%);
   min-width: 250px;
   max-width: 310px;
-  background: var(--bg);
+  background: var(--bg-card, #fff);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.28), 0 4px 12px rgba(0,0,0,0.12);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.22s cubic-bezier(0.4,0,0.2,1), visibility 0.22s, transform 0.22s cubic-bezier(0.4,0,0.2,1);
-  transition-delay: 0.2s; /* 离开后延迟收起，避免误关 */
   z-index: 100;
 }
-/* 隐形桥接区：填补节点与弹层之间的空隙，鼠标移入条目不会断开 hover */
-.tl-s-popup::before {
-  content: '';
-  position: absolute;
-  left: -10px;
-  right: -10px;
-  height: 22px;
-}
-.tl-s-popup::before,
-.tl-s-above .tl-s-popup::before {
-  top: -20px;
-}
-.tl-s-below .tl-s-popup::before {
-  top: auto;
-  bottom: -20px;
-}
-.tl-s-node:hover .tl-s-popup,
-.tl-s-popup:hover {
+/* 打开态：脱离时间轴层叠上下文，永远置顶、完全不透明 */
+.tl-s-popup.tl-s-popup-open {
+  position: fixed;
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transform: translateX(-50%) translateY(0);
-  transition-delay: 0s;
+  transform: none;
+  margin: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+  z-index: 10000;
+  animation: tl-s-popup-in 0.16s ease-out;
 }
-/* 悬浮时该节点整体提升层级，避免弹层被相邻卡片遮挡 */
+@keyframes tl-s-popup-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.tl-s-popup::-webkit-scrollbar { width: 6px; }
+.tl-s-popup::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+/* 悬浮时该节点整体提升层级 */
 .tl-s-node:hover {
   z-index: 60;
-}
-.tl-s-above .tl-s-popup {
-  top: calc(100% + 12px);
-}
-.tl-s-below .tl-s-popup {
-  bottom: calc(100% + 12px);
-  top: auto;
-  transform: translateX(-50%) translateY(-6px);
-}
-.tl-s-below:hover .tl-s-popup {
-  transform: translateX(-50%) translateY(0);
 }
 
 .tl-s-popup-title {

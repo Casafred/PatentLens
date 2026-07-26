@@ -11561,6 +11561,10 @@ function _applyTimelineSelection() {
     const total = kanbanState.documents ? kanbanState.documents.length : 0;
     board.classList.toggle("tl-all-selected", total > 0 && _tlSelected.size >= total);
   }
+  // 已移到 body 的弹层不在 .tl-board 内，需单独同步选择模式类
+  if (typeof _tlOpenPopupInfo !== "undefined" && _tlOpenPopupInfo) {
+    _tlOpenPopupInfo.el.classList.toggle("select-mode", _tlSelectMode !== null);
+  }
 }
 
 function _updateTimelineSelectSummary() {
@@ -12058,12 +12062,104 @@ function renderTimeline(data) {
 
   board.innerHTML = legendHtml + '<div class="tl-s-scroll">' + html + '</div>';
 
+  _bindTimelineHoverPopups(board);
+
   if (statusEl) {
     const keyCount = sorted.filter(it => keyTypes.has(it.type)).length;
     const dateCount = groups.length;
     let s = `共 ${sorted.length} 个文档 / ${dateCount} 个日期节点（倒序）`;
     s += ` · 重点展示 ${keyCount} 个关键文档，其余已折叠`;
     statusEl.textContent = s;
+  }
+}
+
+// ── Timeline hover popup（JS 接管：解决 hover 断开即收起 & 层级被穿透问题） ──
+let _tlPopupCloseTimer = null;
+let _tlOpenPopupInfo = null; // { el, home }
+
+function _tlClosePopup() {
+  clearTimeout(_tlPopupCloseTimer);
+  _tlPopupCloseTimer = null;
+  if (!_tlOpenPopupInfo) return;
+  const { el, home } = _tlOpenPopupInfo;
+  el.classList.remove("tl-s-popup-open");
+  el.style.left = "";
+  el.style.top = "";
+  el.style.bottom = "";
+  // 归还到原节点（若节点已被重渲染移除，则直接丢弃弹层）
+  if (home && home.isConnected) {
+    home.appendChild(el);
+  } else if (el.parentNode) {
+    el.parentNode.removeChild(el);
+  }
+  _tlOpenPopupInfo = null;
+}
+
+function _tlScheduleClosePopup() {
+  clearTimeout(_tlPopupCloseTimer);
+  _tlPopupCloseTimer = setTimeout(_tlClosePopup, 350);
+}
+
+function _tlOpenPopupFor(node) {
+  clearTimeout(_tlPopupCloseTimer);
+  // 已经打开的是同一节点的弹层 → 保持
+  if (_tlOpenPopupInfo && _tlOpenPopupInfo.home === node) return;
+  _tlClosePopup();
+
+  const popup = node.querySelector(".tl-s-popup");
+  if (!popup) return;
+
+  const rect = node.getBoundingClientRect();
+  // 移到 body：脱离时间轴的层叠上下文与滚动裁剪，保证永远置顶
+  document.body.appendChild(popup);
+  popup.classList.add("tl-s-popup-open");
+  // 同步选择模式类（弹层已不在 .tl-board 内）
+  popup.classList.toggle("select-mode", typeof _tlSelectMode !== "undefined" && _tlSelectMode !== null);
+
+  const pw = popup.offsetWidth;
+  const ph = popup.offsetHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const centerX = rect.left + rect.width / 2;
+  const left = Math.max(8, Math.min(centerX - pw / 2, vw - pw - 8));
+  // 卡片在上方(tl-s-above)的节点，弹层放下方；反之放上方；空间不足时翻转
+  let top;
+  if (node.classList.contains("tl-s-above")) {
+    top = rect.bottom + 10;
+    if (top + ph > vh - 8) top = Math.max(8, rect.top - ph - 10);
+  } else {
+    top = rect.top - ph - 10;
+    if (top < 8) top = Math.min(vh - ph - 8, rect.bottom + 10);
+  }
+  popup.style.left = left + "px";
+  popup.style.top = Math.max(8, top) + "px";
+  popup.style.bottom = "auto";
+
+  if (!popup._tlHoverBound) {
+    popup.addEventListener("mouseenter", () => clearTimeout(_tlPopupCloseTimer));
+    popup.addEventListener("mouseleave", _tlScheduleClosePopup);
+    popup._tlHoverBound = true;
+  }
+  _tlOpenPopupInfo = { el: popup, home: node };
+}
+
+function _bindTimelineHoverPopups(board) {
+  _tlClosePopup();
+  board.querySelectorAll(".tl-s-node").forEach(node => {
+    node.addEventListener("mouseenter", () => _tlOpenPopupFor(node));
+    node.addEventListener("mouseleave", _tlScheduleClosePopup);
+  });
+  // 滚动时立即收起，避免 fixed 弹层与节点错位
+  const scroll = board.querySelector(".tl-s-scroll");
+  if (scroll) scroll.addEventListener("scroll", _tlClosePopup, { passive: true });
+  if (!window._tlPopupGlobalBound) {
+    window.addEventListener("scroll", (e) => {
+      // 弹层内部滚动不关闭
+      if (_tlOpenPopupInfo && e.target instanceof Node && _tlOpenPopupInfo.el.contains(e.target)) return;
+      _tlClosePopup();
+    }, { passive: true, capture: true });
+    window.addEventListener("resize", _tlClosePopup, { passive: true });
+    window._tlPopupGlobalBound = true;
   }
 }
 
