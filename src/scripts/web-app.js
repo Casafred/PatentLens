@@ -59,6 +59,7 @@ const SVG_ICONS = {
   external: '<svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
 };
 
+
 function icon(name, size, extraClass) {
   const base = SVG_ICONS[name] || SVG_ICONS.file;
   let cls = 'svg-icon';
@@ -3741,7 +3742,7 @@ function toggleGoogleTranslate() {
     _descTranslated = false;
     restoreOriginalDescription('main');
     // Make GT idle so its MutationObserver never re-translates the original.
-    setComboToOriginal();
+    try { setComboToOriginal(); } catch (e) {}
     if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
     _gtActivationTriggered = false;
     _figLinkScope = null;
@@ -3750,25 +3751,23 @@ function toggleGoogleTranslate() {
     return;
   }
 
-  // Currently showing ORIGINAL (user restored) → re-apply cached translation.
+  // Currently showing ORIGINAL (user restored) → re-trigger a FRESH live Google
+  // Translate instead of only replaying the cache, so the "网页翻译" button can
+  // genuinely re-translate again after being turned off.
   if (_descRestored) {
     _descRestored = false;
-    _descTranslated = true;
-    if (currentData && currentData._translatedDescription) {
-      var dc = _getDescriptionContainer('main');
-      // Mark notranslate BEFORE re-rendering so GT's observer never wraps it.
-      if (dc) {
-        dc.classList.add('notranslate');
-        dc.setAttribute('translate', 'no');
-      }
-      _applyTranslatedDescription('main', currentData._translatedDescription);
-      if (dc) { dc.dataset.gtTranslated = 'true'; }
+    _descTranslated = false;
+    _gtActivationTriggered = false;
+    _figLinkScope = null;
+    // Drop the frozen notranslate guard so GT can translate the original text again.
+    var _dc2 = _getDescriptionContainer('main') || _getDescriptionContainer('popup');
+    if (_dc2) {
+      _dc2.classList.remove('notranslate');
+      _dc2.removeAttribute('translate');
+      delete _dc2.dataset.gtTranslated;
     }
-    setComboToOriginal();
-    _updateGtButtonState();
-    setTimeout(function() { linkFigureReferences('main'); }, 200);
-    showToast('已显示译文');
-    return;
+    showToast('正在重新翻译…');
+    // Fall through to the "start translation" path below to re-inject GT.
   }
 
   // Not translated yet → start translation. Only the 说明书 tab is translated;
@@ -3792,10 +3791,15 @@ function toggleGoogleTranslate() {
 
   // Inject Google Translate widget
   _googleTranslateInjected = true;
-  _googleTranslateActive = true;
-  _installGtChromeShield();
-  _updateGtButtonState();
-  const container = document.createElement("div");
+      _googleTranslateActive = true;
+      _installGtChromeShield();
+      _updateGtButtonState();
+      // 清理上一次翻译被 purge 后残留（隐藏）的旧控件，避免重复 id 导致重新初始化失败
+      var _oldGt = document.getElementById("google_translate_element");
+      if (_oldGt) _oldGt.remove();
+      var _oldScript = document.getElementById("google-translate-script");
+      if (_oldScript) _oldScript.remove();
+      const container = document.createElement("div");
   container.id = "google_translate_element";
   container.style.cssText = "position:fixed;top:-100px;left:0;z-index:999999;visibility:hidden;";
   document.body.prepend(container);
@@ -4033,13 +4037,16 @@ function _captureAndApplyTranslation(scope) {
 
   // 3. Freeze the translated text. Re-render clean DOM and mark the container
   //    notranslate FIRST (so GT's live MutationObserver never re-wraps it), then
-  //    make GT idle by setting the combo to "original". We deliberately do NOT
-  //    purge window.google — purging crashes GT's in-flight promises (throwing
-  //    "reading 'J'" errors) and leaves its MutationObserver churning the page,
-  //    which both re-translated the restored original and broke the annotation
-  //    editor. With the combo at "original" GT goes idle, yet the notranslate
-  //    description stays as our frozen translation. Other tabs were already
-  //    marked notranslate, so they remain in the original language too.
+  //    FULLY disable Google Translate. We now PURGE GT (instead of only switching
+  //    the combo to "original") because leaving the widget alive made its
+  //    MutationObserver re-translate every newly-rendered patent — throwing the
+  //    "reading 'J'" / stack-overflow errors, keeping the floating spinner spinning
+  //    forever, and re-rendering the description so often that figure-link clicks
+  //    never landed. _disableGoogleTranslateQuiet() first switches the combo back
+  //    to the original language (GT unwraps/restores), waits for the fonts to clear,
+  //    THEN purges the script + global + observer — avoiding the mid-flight crash
+  //    the older "purge-on-the-spot" approach had. The frozen translation is already
+  //    cached on patentData, so the 原文/译文 toggle keeps working without GT.
   var descContainer = _getDescriptionContainer(scope);
   if (descContainer) {
     descContainer.classList.add('notranslate');
@@ -4049,8 +4056,8 @@ function _captureAndApplyTranslation(scope) {
   if (descContainer) {
     descContainer.dataset.gtTranslated = 'true';
   }
-  // Disable GT LIVE translation (combo → original) WITHOUT purging window.google.
-  setComboToOriginal();
+  // Fully disable GT: combo → original, wait for GT to unwrap, then purge it.
+  _disableGoogleTranslateQuiet();
   // Hide any leftover GT chrome that could intercept clicks (keeps elements
   // alive to avoid GT internal null errors).
   _hideGtChrome();
@@ -4284,6 +4291,14 @@ function _purgeGoogleTranslateCompletely() {
     gtEls.forEach(function(el) {
       el.style.cssText += ';' + _gtHideStyle;
     });
+
+    // 1b. Fully remove the GT widget host + combo so a future re-injection starts
+    //     clean (a stale hidden combo would make re-trigger skip injection and
+    //     re-use a dead widget).
+    var _gtHost = document.getElementById('google_translate_element');
+    if (_gtHost && _gtHost.parentNode) _gtHost.parentNode.removeChild(_gtHost);
+    var _gtCombo = document.querySelector('.goog-te-combo');
+    if (_gtCombo && _gtCombo.parentNode) _gtCombo.parentNode.removeChild(_gtCombo);
 
     // 2. Remove the GT script tag
     var gtScript = document.getElementById('google-translate-script');
@@ -4788,6 +4803,10 @@ function openPatentImageViewer(images, startIndex) {
 
   // Build content using the same split-view HTML (toolbar, zoom, nav, thumbnails)
   viewer.innerHTML = '<div class="piv-inner">' + getDrawingsHtml(images, vid) + '</div>';
+  (function () {
+    var __m = document.getElementById(vid + '_img');
+    if (__m && __m.decode) { try { __m.decode(); } catch (e) {} }
+  })();
   viewer.style.display = 'flex';
 
   // Append a close button to the toolbar

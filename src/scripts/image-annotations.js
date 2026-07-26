@@ -10,6 +10,7 @@ var ImageAnnotations = (function () {
   var annotationMode = false;
   var activeHighlight = null; // { number, vid, markerId, occurrences: [], currentIdx: 0 }
   var markerEditorEl = null;
+  var numberImeCleanup = null; // removes the IME-proof document keydown handler
   var navBarEl = null;
   var _originalParaHtml = new Map(); // p element -> original innerHTML (for highlight restore)
   var _wasDragging = false;
@@ -196,8 +197,9 @@ var ImageAnnotations = (function () {
     } catch (e) { /* ignore */ }
   }
   function _resumeGt() {
-    // Stay suspended while annotation mode or an open editor still needs it.
-    if (annotationMode || markerEditorEl) return;
+    // Stay suspended only while an editor modal is still open (the editor itself is
+    // already marked notranslate, so this is just a belt-and-suspenders pause).
+    if (markerEditorEl) return;
     try {
       document.body.classList.remove('notranslate');
       document.body.removeAttribute('translate');
@@ -207,11 +209,9 @@ var ImageAnnotations = (function () {
   // ── Annotation mode ──
   function toggleAnnotationMode() {
     annotationMode = !annotationMode;
-    if (annotationMode) {
-      _suspendGt();
-    } else {
-      _resumeGt();
-    }
+    // GT is no longer suspended merely for being in annotation mode — the editor
+    // modal (and all annotation UI) are individually marked notranslate, so the rest
+    // of the page keeps translating. GT is only paused while an editor modal is open.
     document.body.classList.toggle("anno-mode-active", annotationMode);
     var btns = document.querySelectorAll(".anno-toggle-btn");
     btns.forEach(function (b) { b.classList.toggle("active", annotationMode); });
@@ -290,7 +290,8 @@ var ImageAnnotations = (function () {
 
   function createMarkerElement(marker, vid) {
     var el = document.createElement("div");
-    el.className = "img-anno-marker";
+    el.className = "img-anno-marker notranslate";
+    el.setAttribute("translate", "no");
     el.dataset.markerId = marker.id;
     el.style.left = (marker.x * 100) + "%";
     el.style.top = (marker.y * 100) + "%";
@@ -424,7 +425,7 @@ var ImageAnnotations = (function () {
       '<div class="anno-editor-title">' + (isEdit ? "编辑标记" : "添加附图标记") + "</div>" +
       '<div class="anno-editor-field">' +
       '<label>附图标号 <span style="color:var(--danger)">*</span></label>' +
-      '<input type="text" class="notranslate" translate="no" id="anno-edit-number" value="' + escapeHtmlAnno(m.number) + '" placeholder="如 100、102、30A" autocomplete="off">' +
+      '<input type="text" class="notranslate" translate="no" id="anno-edit-number" value="' + escapeHtmlAnno(m.number) + '" placeholder="如 100、102、30A" autocomplete="off" inputmode="verbatim" readonly>' +
       "</div>" +
       '<div class="anno-editor-field">' +
       "<label>注释文字（可选）</label>" +
@@ -511,10 +512,92 @@ var ImageAnnotations = (function () {
     // window.google (that crashes GT's in-flight promises).
     _suspendGt();
 
-    // Focus the number input. GT no longer competes for focus, so an immediate
+    // Focus the number input. The editor subtree is notranslate and GT is paused
+    // while the modal is open, so an immediate focus (plus a short safety retry in
+    // case layout isn't ready) is sufficient.
     // focus (plus a couple of short safety retries in case layout isn't ready)
     // is sufficient — no multi-second retry loop.
     var focusAttempts = 0;
+    var composing = false;
+    var inp = markerEditorEl.querySelector('#anno-edit-number');
+    var ta = markerEditorEl.querySelector('#anno-edit-comment');
+    function _setComposing(v) { composing = v; }
+    inp.addEventListener('compositionstart', function () { _setComposing(true); });
+    inp.addEventListener('compositionend', function () { _setComposing(false); });
+    // The comment box stays editable so the Windows Chinese IME can compose into it;
+    // we still drive it through the same capture-phase handler for non-composition
+    // keys, so typing works even if some global listener would otherwise swallow it.
+    ta.addEventListener('compositionstart', function () { _setComposing(true); });
+    ta.addEventListener('compositionend', function () { _setComposing(false); });
+    // ── IME-proof manual key handling for BOTH editor fields ──
+    // Windows Chinese IME swallows keystrokes into composition (key="Process") and the
+    // digits never reach the value until the user commits — which reads as "can't type".
+    // The number box is readonly (so the IME won't compose into it) and the comment box
+    // is editable (so IME composes into it normally). For BOTH we intercept non-composition
+    // printable keys at the document capture phase (the only phase that reliably fires) and
+    // write the character in verbatim; when an IME composition IS active we step aside and
+    // let the browser commit the text natively, so Chinese input works in the comment box.
+    function insertTextAtCursor(el, text) {
+      var s = (el.selectionStart != null) ? el.selectionStart : el.value.length;
+      var e = (el.selectionEnd != null) ? el.selectionEnd : el.value.length;
+      el.value = el.value.slice(0, s) + text + el.value.slice(e);
+      var p = s + text.length;
+      try { el.setSelectionRange(p, p); } catch (_) {}
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    function deleteTextAtCursor(el, backward) {
+      var s = (el.selectionStart != null) ? el.selectionStart : el.value.length;
+      var e = (el.selectionEnd != null) ? el.selectionEnd : el.value.length;
+      if (s === e) { if (backward && s > 0) s--; else if (!backward && e < el.value.length) e++; }
+      if (s === e) return;
+      el.value = el.value.slice(0, s) + el.value.slice(e);
+      try { el.setSelectionRange(s, s); } catch (_) {}
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    function _writeInto(box, text) {
+      insertTextAtCursor(box, text);
+    }
+    function _deleteFrom(box, backward) {
+      deleteTextAtCursor(box, backward);
+    }
+    var numberImeHandler = function (e) {
+      if (!markerEditorEl) return;
+      // Act only for our two fields; everything else behaves normally.
+      var isNum = (document.activeElement === inp) || (e.target === inp);
+      var isCmt = (document.activeElement === ta) || (e.target === ta);
+      if (!isNum && !isCmt) return;
+      var box = isNum ? inp : ta;
+      // While an IME composition is in progress, let the browser handle it so that
+      // Chinese pinyin / committed text goes in natively (only the comment box composes).
+      // keyCode === 229 is the classic "IME is composing" signal for browsers that don't
+      // set isComposing on the initiating keydown.
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return; // allow copy/paste/select-all
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (isNum) {
+          var saveBtn = markerEditorEl.querySelector('#anno-edit-save');
+          if (saveBtn) saveBtn.click();
+        }
+        return;
+      }
+      if (e.key === 'Escape' || e.key === 'Tab') return; // let global handlers deal
+      if (e.key && e.key.length === 1) { // printable char -> write verbatim
+        e.preventDefault();
+        _writeInto(box, e.key);
+        return;
+      }
+      if (e.key === 'Backspace') { e.preventDefault(); _deleteFrom(box, true); return; }
+      if (e.key === 'Delete') { e.preventDefault(); _deleteFrom(box, false); return; }
+      // Arrow/Home/End: allow default caret movement (do not preventDefault)
+    };
+    // Capture phase on document is the most reliable phase: it fires for our fields before
+    // the IME/OS or any other listener can swallow the key, so digits/letters go in verbatim.
+    // (Do NOT also bind on the inputs themselves — that would fire a second time and double-write.)
+    document.addEventListener('keydown', numberImeHandler, true);
+    numberImeCleanup = function () {
+      document.removeEventListener('keydown', numberImeHandler, true);
+    };
     function focusNumberInput() {
       if (!markerEditorEl) return;
       var inp = markerEditorEl.querySelector("#anno-edit-number");
@@ -522,6 +605,9 @@ var ImageAnnotations = (function () {
       // Defensive: ensure inputs are editable (belt-and-suspenders; GT is suspended).
       [inp, ta].forEach(function(el) {
         if (!el) return;
+        // Keep the number box readonly on purpose: that is what makes it IME-proof.
+        // Removing readonly would let the Windows Chinese IME compose into it again.
+        if (el === inp) { el.style.pointerEvents = ""; return; }
         if (el.hasAttribute("readonly")) el.removeAttribute("readonly");
         if (el.hasAttribute("disabled")) el.removeAttribute("disabled");
         el.style.pointerEvents = "";
@@ -530,20 +616,29 @@ var ImageAnnotations = (function () {
       // If the user already focused another field inside the editor, don't yank it.
       var ae = document.activeElement;
       if (ae && ae !== document.body && markerEditorEl.contains(ae) && ae !== inp) return;
-      inp.focus();
-      inp.select();
+      // Never steal focus while the IME is mid-composition — re-focusing an input
+      // that the IME is composing into discards the in-progress composition, so the
+      // typed characters never reach the value (input events stop firing). This is
+      // the core reason the number box appeared "frozen" with a Chinese IME active.
+      if (composing) return;
+      inp.focus({ preventScroll: true });
+      // Only auto-select when the field is empty; selecting text mid-composition
+      // can also interrupt the IME.
+      try { if (!inp.value) inp.select(); } catch (e) {}
       // Verify focus took; if not (layout not ready yet), retry briefly.
-      if (document.activeElement !== inp && focusAttempts < 6) {
+      if (document.activeElement !== inp && focusAttempts < 4) {
         focusAttempts++;
         setTimeout(focusNumberInput, 80);
       }
     }
-    if (window.requestAnimationFrame) requestAnimationFrame(focusNumberInput);
-    setTimeout(focusNumberInput, 0);
-    setTimeout(focusNumberInput, 120);
+    // Single focus after layout is ready. Avoid hammering focus() (rAF+0+120ms)
+    // — repeated focus() on an input the IME is composing into breaks the
+    // composition and the characters disappear.
+    setTimeout(focusNumberInput, 60);
   }
 
   function closeMarkerEditor() {
+    if (numberImeCleanup) { numberImeCleanup(); numberImeCleanup = null; }
     if (markerEditorEl) {
       markerEditorEl.remove();
       markerEditorEl = null;
