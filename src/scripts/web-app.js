@@ -4151,6 +4151,26 @@ function _updateGtButtonState() {
   });
 }
 
+// Set GT's language combo back to "original" (empty value) so GT goes idle and
+// stops translating newly-added / re-rendered DOM. The (notranslate) description
+// we freeze stays as our clean translated HTML — this is what keeps "恢复原文"
+// sticky and keeps the figure-annotation editor usable. We deliberately do NOT
+// purge window.google (that crashes GT's in-flight promises and leaves its
+// MutationObserver churning the page).
+function setComboToOriginal() {
+  try {
+    var combo = document.querySelector('.goog-te-combo');
+    if (combo) {
+      combo.value = '';
+      _dispatchComboChange(combo);
+    }
+    _setGoogTransCookie('');
+  } catch (e) {
+    console.warn('[GT] setComboToOriginal failed:', e);
+  }
+  _googleTranslateActive = false;
+}
+
 // Keep GT alive but reset translation to original language.
 // This allows the user to toggle GT on/off after fig-link captures the description.
 // `onReady` is called after GT has reverted the page.
