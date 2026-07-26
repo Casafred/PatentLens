@@ -5303,24 +5303,27 @@ body {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary, var(--text-muted));
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--bg) 80%, transparent);
 }
+/* 关键节点圆点较大（28px+白圈≈17px 半径），日期需外移避开遮挡 */
 .tl-s-above .tl-s-date {
-  top: calc(100% + 10px);
+  top: calc(100% + 24px);
 }
 .tl-s-below .tl-s-date {
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + 24px);
 }
+/* 折叠节点（小圆点 8px 半径）日期离轴更近即可 */
 .tl-s-folded-node .tl-s-date {
-  top: calc(100% + 6px);
+  top: calc(100% + 14px);
   bottom: auto;
-  font-size: 9px;
-  opacity: 0.7;
+  font-size: 12px;
+  opacity: 0.9;
 }
 
 /* ── Year tick marker ── */
@@ -5352,7 +5355,7 @@ body {
 .tl-s-yr-label {
   position: absolute;
   left: 50%;
-  transform: translate(-50%, calc(100% + 22px));
+  transform: translate(-50%, calc(100% + 44px));
   font-size: 11px;
   font-weight: 700;
   color: var(--yc);
@@ -5363,10 +5366,10 @@ body {
   border: 1px solid color-mix(in srgb, var(--yc) 35%, transparent);
 }
 .tl-s-above .tl-s-yr-label {
-  transform: translate(-50%, calc(100% + 22px));
+  transform: translate(-50%, calc(100% + 44px));
 }
 .tl-s-below .tl-s-yr-label {
-  transform: translate(-50%, calc(-100% - 22px));
+  transform: translate(-50%, calc(-100% - 44px));
 }
 
 /* ── Card ── */
