@@ -2314,7 +2314,14 @@ function openInAppWebview(url, title, opts) {
 
   const gtBar = document.getElementById("google_translate_element");
   if (gtBar) gtBar.style.display = "none";
-  document.querySelectorAll(".skiptranslate").forEach(el => { el.dataset.wasVisible = el.style.display; el.style.display = "none"; });
+  // Only hide GT's own UI elements, NOT arbitrary .skiptranslate elements
+  // (which GT adds to normal page containers like AI panels to mark them non-translatable)
+  document.querySelectorAll(
+    "#goog-gt-tt, .goog-te-spinner-pos, .goog-te-banner-frame, .goog-te-banner, " +
+    ".goog-te-gadget-icon, .goog-te-balloon, .goog-te-pos, " +
+    "iframe.goog-te-banner-frame, iframe.goog-te-menu-frame, .goog-te-menu2, " +
+    ".goog-te-ftab-float, .goog-te-spinner"
+  ).forEach(el => { el.dataset.wasVisible = el.style.display; el.style.display = "none"; });
 
   function bindBtnHover(btn) {
     if (!btn) return;
@@ -2543,10 +2550,15 @@ function closeInAppWebview() {
   const overlay = document.getElementById("pd-inapp-webview-overlay");
   if (overlay) overlay.style.display = "none";
 
-  // 恢复主应用的 Google Translate 悬浮栏及相关元素
+  // Restore only GT's own UI elements
   const gtBar = document.getElementById("google_translate_element");
   if (gtBar) gtBar.style.display = "";
-  document.querySelectorAll(".skiptranslate").forEach(el => { el.style.display = el.dataset.wasVisible || ""; delete el.dataset.wasVisible; });
+  document.querySelectorAll(
+    "#goog-gt-tt, .goog-te-spinner-pos, .goog-te-banner-frame, .goog-te-banner, " +
+    ".goog-te-gadget-icon, .goog-te-balloon, .goog-te-pos, " +
+    "iframe.goog-te-banner-frame, iframe.goog-te-menu-frame, .goog-te-menu2, " +
+    ".goog-te-ftab-float, .goog-te-spinner"
+  ).forEach(el => { el.style.display = el.dataset.wasVisible || ""; delete el.dataset.wasVisible; });
 }
 
 // 显示数据来源徽章（在专利详情头部显示数据来源）
@@ -4319,14 +4331,15 @@ function _disableGoogleTranslateQuiet(onReady) {
 // Fully remove all GT traces from the page
 function _purgeGoogleTranslateCompletely() {
   try {
-    // 1. Hide all GT-injected DOM elements (hide instead of remove to avoid
-    //    null-reference errors in GT's internal event listeners on body)
+    // 1. Hide only GT-injected UI elements — NEVER hide arbitrary .skiptranslate
+    //    elements because GT adds that class to normal page containers (including
+    //    AI panels, input areas, etc.) to mark them as non-translatable.
     var gtEls = document.querySelectorAll(
       "#goog-gt-tt, .goog-te-spinner-pos, .goog-te-banner-frame, .goog-te-banner, " +
-      ".goog-te-gadget-icon, #goog-gt-tt, .goog-te-balloon, .goog-te-pos, " +
-      "#google_translate_element, .skiptranslate, iframe.goog-te-banner-frame, " +
+      ".goog-te-gadget-icon, .goog-te-balloon, .goog-te-pos, " +
+      "#google_translate_element, iframe.goog-te-banner-frame, " +
       "iframe.goog-te-menu-frame, .goog-te-menu2, .goog-te-ftab-float, " +
-      ".goog-te-spinner, .gt-spinner, .gt-loading"
+      ".goog-te-spinner, .gt-spinner, .gt-loading, .goog-te-combo"
     );
     var _gtHideStyle = 'display:none !important;visibility:hidden !important;' +
       'pointer-events:none !important;position:absolute !important;' +
@@ -4336,9 +4349,7 @@ function _purgeGoogleTranslateCompletely() {
       el.style.cssText += ';' + _gtHideStyle;
     });
 
-    // 1b. Fully remove the GT widget host + combo so a future re-injection starts
-    //     clean (a stale hidden combo would make re-trigger skip injection and
-    //     re-use a dead widget).
+    // 1b. Fully remove the GT widget host + combo so a future re-injection starts clean
     var _gtHost = document.getElementById('google_translate_element');
     if (_gtHost && _gtHost.parentNode) _gtHost.parentNode.removeChild(_gtHost);
     var _gtCombo = document.querySelector('.goog-te-combo');
@@ -4347,7 +4358,6 @@ function _purgeGoogleTranslateCompletely() {
     // 2. Remove the GT script tag
     var gtScript = document.getElementById('google-translate-script');
     if (gtScript) gtScript.remove();
-    // Also remove any other GT-related script tags that may have been injected
     var gtScripts = document.querySelectorAll('script[src*="translate.google"], script[src*="google.com/translate"]');
     gtScripts.forEach(function(s) { s.remove(); });
 
@@ -4368,16 +4378,12 @@ function _purgeGoogleTranslateCompletely() {
     // 6. Stop any pending fig-link poll timer
     if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
 
-    // 7. Error suppressor is now installed permanently at module init — no
-    //    need for a temporary one here.
-
-    // 8. Recurring cleanup: hide any GT elements that get re-created by
-    //    residual GT code. Run every 500ms for 5 seconds.
+    // 7. Recurring cleanup: hide only GT-specific UI elements that may reappear
     var cleanupCount = 0;
     var cleanupInterval = setInterval(function() {
       cleanupCount++;
       var reappeared = document.querySelectorAll(
-        '.skiptranslate, .goog-te-spinner-pos, .goog-te-banner-frame, ' +
+        '.goog-te-spinner-pos, .goog-te-banner-frame, ' +
         '#goog-gt-tt, .goog-te-balloon, .goog-te-pos'
       );
       reappeared.forEach(function(el) {
@@ -4385,6 +4391,11 @@ function _purgeGoogleTranslateCompletely() {
       });
       if (cleanupCount >= 10) clearInterval(cleanupInterval);
     }, 500);
+
+    // 8. Re-register fig links in case DOM was modified
+    if (typeof linkFigureReferences === 'function') {
+      try { linkFigureReferences(); } catch(e) {}
+    }
 
     console.log('[FigLink] Google Translate fully purged from page');
   } catch(e) {
@@ -4579,9 +4590,24 @@ var _GT_UI_SELECTORS = [
   '.ppv-header',
   '.ppv-toolbar',
   '.patent-image-viewer',
-  '#patent-ask-modal',
+  // AI Chat panels (all three interfaces: reader, patent-ask, analysis-chat)
+  '#patent-ask-modal', '.patent-ask-modal',
+  '#reader-chat-panel', '.reader-chat-panel',
+  '#analysis-chat-panel', '.analysis-chat-panel',
+  '#analysis-chat-float-ball',
+  '.chat-header', '.chat-messages', '.chat-input-area',
+  '.patent-ask-header', '.patent-ask-messages', '.patent-ask-input-area',
+  '.patent-ask-context', '.analysis-chat-header', '.analysis-chat-messages',
+  '.analysis-chat-input-area',
   '#pdf-ctx-menu',
   '.pd-ai-panel',
+  // All chat inputs and controls
+  '.chat-input', '.patent-ask-input', '.analysis-chat-input',
+  '.chat-provider-select', '.chat-model-select',
+  '#chat-input', '#patent-ask-input', '#analysis-chat-input',
+  '#chat-messages', '#patent-ask-messages', '#analysis-chat-messages',
+  // All form elements should NEVER be translated by GT — it can break input/textarea/select
+  'input', 'textarea', 'select', 'button',
   '#error-toast',
   '.toast-container',
   '.loading-indicator',
@@ -4679,19 +4705,14 @@ function _protectForTranslation(scope) {
   }
 }
 
-// After GT is purged (translation captured and frozen), remove the temporary
-// notranslate guards so UI behaves normally again (e.g., user can select text
-// in other tabs without it being marked notranslate). Note: the description
-// container itself KEEPS notranslate after translation (it's frozen), which is
-// applied in _captureAndApplyTranslation.
+// After GT is purged (translation captured and frozen), remove the TEMPORARY
+// notranslate guards from patent-detail containers so UI behaves normally.
+// PERMANENT UI (_GT_UI_SELECTORS) KEEPS their notranslate class forever —
+// they should never be translated, and keeping the class prevents any residual
+// GT MutationObserver from touching them if GT wasn't fully purged.
 function _gtRemoveGuards(scope) {
-  // Unprotect permanent page UI
-  _GT_UI_SELECTORS.forEach(function(sel) {
-    document.querySelectorAll(sel).forEach(function(el) {
-      el.classList.remove('notranslate');
-      el.removeAttribute('translate');
-    });
-  });
+  // Only remove guards from patent-detail roots, NOT from permanent UI selectors.
+  // Form elements, AI panels, headers, search, etc. stay notranslate permanently.
 
   var mainRoot = document.getElementById('patent-detail-content');
   var popupRoot = document.getElementById('ppv-content');
@@ -4699,7 +4720,7 @@ function _gtRemoveGuards(scope) {
   if (mainRoot) {
     mainRoot.classList.remove('notranslate');
     mainRoot.removeAttribute('translate');
-    mainRoot.querySelectorAll('.pd-header, .pd-tab-panel').forEach(function(el) {
+    mainRoot.querySelectorAll('.pd-header, .pd-tab-panel, .pd-panel-header, .pd-panel-actions, .pd-section-title, .pd-copy-btn, .pd-compare-btn, .pd-claim-translate-btn').forEach(function(el) {
       // Don't remove notranslate from description tab if it's frozen-translated
       if (el.classList.contains('pd-tab-panel') && el.dataset.panel === 'description') {
         var dt = el.querySelector('.pd-description-text');
@@ -4713,7 +4734,7 @@ function _gtRemoveGuards(scope) {
   if (popupRoot) {
     popupRoot.classList.remove('notranslate');
     popupRoot.removeAttribute('translate');
-    popupRoot.querySelectorAll('.pd-header, .pd-tab-panel').forEach(function(el) {
+    popupRoot.querySelectorAll('.pd-header, .pd-tab-panel, .pd-panel-header, .pd-panel-actions, .pd-section-title, .pd-copy-btn, .pd-compare-btn, .pd-claim-translate-btn').forEach(function(el) {
       if (el.classList.contains('pd-tab-panel') && el.dataset.panel === 'description') {
         var dt = el.querySelector('.pd-description-text');
         if (dt && dt.dataset.gtTranslated === 'true') return;
@@ -4762,17 +4783,34 @@ function linkFigureReferences(scope) {
   // Collect ALL leaf elements that directly contain text (deepest elements).
   // After Google Translate, text is wrapped in <font> tags at various nesting
   // levels, so we need to collect text nodes across the entire container.
+  // PERFORMANCE: Use a fast upward walk limited to the container instead of
+  // .closest() which traverses all the way up to document for every text node.
   var allTextNodes = [];
   var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
     acceptNode: function(node) {
       var p = node.parentNode;
       if (!p) return NodeFilter.FILTER_REJECT;
-      // Skip nodes already inside fig-links, scripts, styles, or highlights
-      if (p.closest && p.closest('a.pd-fig-link, script, style, .pd-find-highlight, .goog-te-spinner-pos, #goog-gt-tt')) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      // Skip truly empty nodes
+      // Skip truly empty nodes first (fastest check)
       if (!node.nodeValue || node.nodeValue.length === 0) return NodeFilter.FILTER_REJECT;
+      // Fast upward walk only within the container, not all the way to document
+      var el = p;
+      var depth = 0;
+      while (el && el !== container && depth < 10) {
+        if (el.nodeType === 1) { // Element node
+          var tag = el.tagName;
+          if (tag === 'A' && el.classList && el.classList.contains('pd-fig-link')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (tag === 'SCRIPT' || tag === 'STYLE') {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (el.classList && el.classList.contains('pd-find-highlight')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+        }
+        el = el.parentNode;
+        depth++;
+      }
       return NodeFilter.FILTER_ACCEPT;
     }
   });
@@ -16498,6 +16536,33 @@ async function exportToWord() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  // EARLY PROTECTION: Apply notranslate to critical UI and form elements
+  // BEFORE any Google Translate code has a chance to touch them. This prevents
+  // GT from wrapping input/textarea/select/button in <font> tags (which breaks
+  // typing, focus, and value binding) and protects AI chat panels, search, etc.
+  try {
+    var EARLY_PROTECT_SELECTORS = [
+      'input', 'textarea', 'select', 'button',
+      // All three AI chat panels
+      '#patent-ask-modal', '.patent-ask-modal',
+      '#reader-chat-panel', '.reader-chat-panel',
+      '#analysis-chat-panel', '.analysis-chat-panel',
+      '#analysis-chat-float-ball',
+      '.chat-header', '.chat-messages', '.chat-input-area', '.chat-input',
+      '.patent-ask-header', '.patent-ask-messages', '.patent-ask-input-area', '.patent-ask-input',
+      '.analysis-chat-header', '.analysis-chat-messages', '.analysis-chat-input-area', '.analysis-chat-input',
+      '.app-header', '#history-sidebar', '.search-section',
+      '.pd-ai-panel', '.chat-provider-select', '.chat-model-select',
+      '#chat-input', '#patent-ask-input', '#analysis-chat-input'
+    ];
+    EARLY_PROTECT_SELECTORS.forEach(function(sel) {
+      document.querySelectorAll(sel).forEach(function(el) {
+        el.classList.add('notranslate');
+        el.setAttribute('translate', 'no');
+      });
+    });
+  } catch(e) { console.warn('[GT] early protect failed:', e); }
+
   // Preload the Google Translate widget script at startup. The script is served
   // from translate.google.com and the network round-trip (often slow/unreliable in
   // some regions) previously stalled the first 说明书 translation — and with it the
