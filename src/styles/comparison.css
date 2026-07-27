@@ -247,7 +247,7 @@
 .cmp-history-dropdown {
   position: absolute;
   top: calc(100% + 8px);
-  right: 20px;
+  right: 0;
   width: 380px;
   max-height: 420px;
   background: var(--bg-card, #fff);

@@ -83,6 +83,7 @@ var ComparisonUI = (function () {
     html += '      历史';
     html += '    </button>';
     html += '    <button class="btn-secondary btn-small" onclick="ComparisonCore.clearItems();ComparisonUI.render();">清空全部</button>';
+    html += renderHistoryDropdown();
     html += '  </div>';
     html += '</div>';
 
@@ -113,8 +114,6 @@ var ComparisonUI = (function () {
     html += '</div>';
 
     html += renderActionBar(activeTab, isLoading, selected, anchor, result, canPreview, canGoAnchor);
-
-    html += renderHistoryDropdown();
 
     container.innerHTML = html;
     bindEvents(container);
