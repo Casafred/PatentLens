@@ -2572,6 +2572,26 @@ function showDataSourceBadge(source, tooltip) {
 function renderPatentDetail(data) {
   if (!patentDetailContent || !data) return;
 
+  // ── Reset Google Translate state BEFORE rendering new patent content ──
+  // This prevents GT's live MutationObserver (from a previous in-flight translation)
+  // from seeing and translating the new DOM — which previously caused the "spillover"
+  // bug where opening a new patent would translate ALL tabs of BOTH the new and old
+  // patents. We hard-stop GT, clear the polling timer, purge the widget, and let
+  // autoTriggerGoogleTranslate() re-initialize cleanly after the new HTML is in place.
+  if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
+  _figLinkPollCount = 0;
+  _figLinkStableCount = 0;
+  _figLinkLastTextSnapshot = '';
+  try { _purgeGoogleTranslateCompletely(); } catch(e) {}
+  _googleTranslateActive = false;
+  _gtActivationTriggered = false;
+  _descTranslated = false;
+  _descRestored = false;
+  _figLinkScope = null;
+  // Apply notranslate to ALL patent-detail containers BEFORE inserting new HTML,
+  // so even if some GT observer is still waking up, the new content is guarded.
+  try { _protectAllContainersFully(); } catch(e) {}
+
   let html = "";
 
   // Header (always visible)
@@ -2938,9 +2958,23 @@ function _hideFindBarIfNeeded(tabName) {
 // Auto-trigger Google Translate for non-Chinese patents when entering description tab.
 // Equivalent to: click "网页翻译" → click language selector → select "中文简体".
 function autoTriggerGoogleTranslate(scope) {
+  // ── HARD RESET any in-flight GT state from a previous patent ──
+  // This is the second line of defence (renderPatentDetail already resets on render).
+  // If a previous translation is still mid-flight (polling / MutationObserver active),
+  // kill it completely before we touch anything for the new patent. This prevents
+  // stale observers from translating the new DOM before our notranslate guards are up.
+  if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
+  _figLinkPollCount = 0;
+  _figLinkStableCount = 0;
+  _figLinkLastTextSnapshot = '';
+  try { _purgeGoogleTranslateCompletely(); } catch(e) {}
+  _googleTranslateActive = false;
+  _gtActivationTriggered = false;
+  _descRestored = false;
   // Reset translated-state for the (possibly new) patent. Re-marked true below
   // if this patent already has a captured translation (cached branch).
   _descTranslated = false;
+
   var patentData = (scope === 'popup') ? window._patentPopupData : window._currentPatentData;
   if (!patentData || !patentData.patent_number) return;
   // Reset fig-link scope to the current tab — ensures correct container
@@ -2986,10 +3020,11 @@ function autoTriggerGoogleTranslate(scope) {
     return;
   }
   // No cache yet → start translation. Only the 说明书 tab is translated; other
-  // panels are guarded as notranslate by _protectNonDescriptionAll().
-  _protectNonDescriptionAll();
+  // panels AND the other scope's entire container are guarded as notranslate by
+  // _protectNonDescriptionAll(scope).
+  _protectNonDescriptionAll(scope);
   _figLinkScope = scope;
-  toggleGoogleTranslate();
+  toggleGoogleTranslate(scope);
 }
 
 // ── 复制到剪贴板 ──
@@ -3725,22 +3760,29 @@ if (!window._gtErrorSuppressor) {
   });
 }
 
-function toggleGoogleTranslate() {
+function toggleGoogleTranslate(scope) {
+  // Auto-detect scope if not provided
+  if (!scope) {
+    scope = _detectFigLinkScope();
+  }
+
   // While GT is still actively translating live (not yet captured), ignore
-  // clicks so we don't fight the in-flight MutationObserver.
+  // manual clicks so we don't fight the in-flight MutationObserver. But if
+  // we're being called from autoTriggerGoogleTranslate, GT has already been
+  // purged in the hard-reset step so _googleTranslateActive will be false here.
   if (_googleTranslateActive && !_descTranslated) {
     console.log('[FigLink] GT translation in progress, ignoring toggle');
     return;
   }
 
-  var currentData = window._currentPatentData;
+  var currentData = (scope === 'popup') ? window._patentPopupData : window._currentPatentData;
 
   // Currently showing translated text → restore ORIGINAL and KEEP it.
   if (_descTranslated) {
-    console.log('[FigLink] description is translated, restoring original text');
+    console.log('[FigLink] description is translated, restoring original text for scope:', scope);
     _descRestored = true;
     _descTranslated = false;
-    restoreOriginalDescription('main');
+    restoreOriginalDescription(scope);
     // Make GT idle so its MutationObserver never re-translates the original.
     try { setComboToOriginal(); } catch (e) {}
     if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
@@ -3758,9 +3800,9 @@ function toggleGoogleTranslate() {
     _descRestored = false;
     _descTranslated = false;
     _gtActivationTriggered = false;
-    _figLinkScope = null;
+    _figLinkScope = scope;
     // Drop the frozen notranslate guard so GT can translate the original text again.
-    var _dc2 = _getDescriptionContainer('main') || _getDescriptionContainer('popup');
+    var _dc2 = _getDescriptionContainer(scope);
     if (_dc2) {
       _dc2.classList.remove('notranslate');
       _dc2.removeAttribute('translate');
@@ -3771,8 +3813,10 @@ function toggleGoogleTranslate() {
   }
 
   // Not translated yet → start translation. Only the 说明书 tab is translated;
-  // other panels are guarded as notranslate by _protectNonDescriptionAll().
-  _protectNonDescriptionAll();
+  // other panels AND the other scope's entire container are guarded as notranslate
+  // by _protectNonDescriptionAll(scope) — this prevents cross-patent spillover.
+  _protectNonDescriptionAll(scope);
+  _figLinkScope = scope;
 
   // If the Google Translate widget is already injected, auto-select Chinese
   const combo = document.querySelector(".goog-te-combo");
@@ -4499,26 +4543,115 @@ function restoreOriginalDescription(scope) {
 // Before auto-translating, mark every panel EXCEPT the 说明书 (description) tab
 // as notranslate so Google Translate only ever touches the description. This
 // guarantees "其他部分都要保持原样" even during the brief translation pass.
-function _protectNonDescriptionAll() {
+// When a scope is provided ('main' or 'popup'), the OTHER scope's ENTIRE container
+// is also marked notranslate — this prevents translation from spilling over into
+// a different open patent detail (popup vs main) that was the root cause of the
+// cross-patent translation bug.
+function _protectNonDescriptionAll(scope) {
   var roots = [document.getElementById('patent-detail-content'), document.getElementById('ppv-content')];
   roots.forEach(function(root) {
     if (!root) return;
-    root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
+    // Determine if this root is the "other" (non-target) scope
+    var isOtherScope = false;
+    var isTargetScope = false;
+    if (scope === 'main' && root.id === 'ppv-content') isOtherScope = true;
+    if (scope === 'popup' && root.id === 'patent-detail-content') isOtherScope = true;
+    if (scope === 'main' && root.id === 'patent-detail-content') isTargetScope = true;
+    if (scope === 'popup' && root.id === 'ppv-content') isTargetScope = true;
+
+    if (isOtherScope) {
+      // Fully protect the OTHER container — every single element inside it gets
+      // notranslate so a live GT MutationObserver cannot touch it at all.
+      root.classList.add('notranslate');
+      root.setAttribute('translate', 'no');
+      root.querySelectorAll('*').forEach(function(el) {
+        el.classList.add('notranslate');
+        el.setAttribute('translate', 'no');
+      });
+    } else if (isTargetScope) {
+      // For the TARGET scope:
+      // 1. FIRST unprotect the description container (it may have been fully
+      //    protected by _protectAllContainersFully before new content render,
+      //    or by a previous other-scope full-protection pass).
+      var descEl = root.querySelector('.pd-description-text');
+      if (descEl) {
+        descEl.classList.remove('notranslate');
+        descEl.removeAttribute('translate');
+        delete descEl.dataset.gtTranslated;
+        // Also unprotect children of description in case they were individually marked
+        descEl.querySelectorAll('*').forEach(function(child) {
+          child.classList.remove('notranslate');
+          child.removeAttribute('translate');
+        });
+      }
+      // 2. Protect header and non-description panels
+      root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
+        el.classList.add('notranslate');
+        el.setAttribute('translate', 'no');
+      });
+    } else {
+      // No scope specified (legacy/manual toggle) — protect both roots' non-desc panels
+      root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
+        el.classList.add('notranslate');
+        el.setAttribute('translate', 'no');
+      });
+    }
+  });
+}
+
+// FULLY protect ALL patent-detail containers (everything gets notranslate).
+// Used BEFORE new patent content is rendered — this guarantees that even if
+// a stale GT MutationObserver fires during DOM insertion, it cannot translate
+// anything in any patent detail view.
+function _protectAllContainersFully() {
+  var roots = [document.getElementById('patent-detail-content'), document.getElementById('ppv-content')];
+  roots.forEach(function(root) {
+    if (!root) return;
+    root.classList.add('notranslate');
+    root.setAttribute('translate', 'no');
+    root.querySelectorAll('*').forEach(function(el) {
       el.classList.add('notranslate');
       el.setAttribute('translate', 'no');
     });
   });
 }
 
-// Remove the notranslate guards (called after GT has been purged).
-function _unprotectNonDescriptionAll() {
+// Remove the notranslate guards (called after GT has been purged). When scope is
+// given, also unwrap the other-scope full protection.
+function _unprotectNonDescriptionAll(scope) {
   var roots = [document.getElementById('patent-detail-content'), document.getElementById('ppv-content')];
   roots.forEach(function(root) {
     if (!root) return;
-    root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
-      el.classList.remove('notranslate');
-      el.removeAttribute('translate');
-    });
+    var isOtherScope = false;
+    var isTargetScope = false;
+    if (scope === 'main' && root.id === 'ppv-content') isOtherScope = true;
+    if (scope === 'popup' && root.id === 'patent-detail-content') isOtherScope = true;
+    if (scope === 'main' && root.id === 'patent-detail-content') isTargetScope = true;
+    if (scope === 'popup' && root.id === 'ppv-content') isTargetScope = true;
+
+    if (isOtherScope) {
+      root.classList.remove('notranslate');
+      root.removeAttribute('translate');
+      root.querySelectorAll('*').forEach(function(el) {
+        el.classList.remove('notranslate');
+        el.removeAttribute('translate');
+      });
+    } else if (isTargetScope) {
+      // Unprotect non-description panels and header
+      root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
+        el.classList.remove('notranslate');
+        el.removeAttribute('translate');
+      });
+      // NOTE: We intentionally leave the description container's notranslate state
+      // alone here — it is managed separately (frozen after capture, un-frozen on
+      // manual re-translate).
+    } else {
+      // No scope — unprotect both roots' non-desc panels
+      root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
+        el.classList.remove('notranslate');
+        el.removeAttribute('translate');
+      });
+    }
   });
 }
 
@@ -5208,6 +5341,13 @@ function _bindPpvContentEvents(content, data) {
       if (!isNaN(idx)) translateClaimByIndex(idx, claimItem);
     });
   });
+
+  // ── Pre-translate the 说明书 text immediately (same as main panel) ──
+  if (window._patentPopupData && !isCNPatent(window._patentPopupData.patent_number)) {
+    setTimeout(function () {
+      try { autoTriggerGoogleTranslate('popup'); } catch (e) {}
+    }, 250);
+  }
 }
 
 function _renderPpvPatentTabs() {
@@ -5471,6 +5611,16 @@ async function openPatentPopup(patentNumber) {
 
   if (!viewer) return;
 
+  // ── Reset Google Translate state BEFORE rendering new popup content ──
+  // Same defence as renderPatentDetail: stop any in-flight translation/polling,
+  // purge the GT widget, and protect all containers so a stale MutationObserver
+  // cannot translate the new DOM as it's being inserted.
+  if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
+  _figLinkPollCount = 0;
+  _figLinkStableCount = 0;
+  _figLinkLastTextSnapshot = '';
+  try { _protectAllContainersFully(); } catch(e) {}
+
   const raw = patentNumber.trim().toUpperCase().replace(/[\s\/]/g, "");
 
   // JP专利在专利原文模式(patent mode)下和其他国家一样走GP弹窗
@@ -5604,6 +5754,14 @@ async function openPatentPopup(patentNumber) {
 function switchPpvPatent(patentNumber) {
   const entry = _ppvOpenPatents.find(e => e.patentNumber === patentNumber);
   if (!entry) return;
+
+  // ── Reset GT state before switching popup tab content ──
+  if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
+  _figLinkPollCount = 0;
+  _figLinkStableCount = 0;
+  _figLinkLastTextSnapshot = '';
+  try { _protectAllContainersFully(); } catch(e) {}
+
   _ppvActivePatent = patentNumber;
   _patentPopupData = entry.data;
   window._patentPopupData = entry.data;
