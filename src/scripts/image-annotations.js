@@ -713,9 +713,17 @@ var ImageAnnotations = (function () {
   function onMarkerClick(marker, vid) {
     // Always clear previous highlight first
     clearHighlight();
+    // Determine active scope (main panel or ppv)
+    var scopeEl = null;
+    var annoLayer = document.getElementById(vid + "_anno");
+    if (annoLayer) {
+      scopeEl = annoLayer.closest("#patent-popup-viewer") ||
+                annoLayer.closest("#patent-detail-section") ||
+                document.getElementById("patent-image-viewer");
+    }
     // Switch to description tab so the highlight is visible
     showDescriptionTab();
-    var occurrences = highlightNumberInDescription(marker.number);
+    var occurrences = highlightNumberInDescription(marker.number, scopeEl);
     activeHighlight = {
       number: marker.number,
       vid: vid,
@@ -733,20 +741,21 @@ var ImageAnnotations = (function () {
   }
 
   // ── Text highlighting in description (TreeWalker-based, robust) ──
-  function getDescriptionContainers() {
+  function getDescriptionContainers(scope) {
     var containers = [];
+    var root = scope || document;
     var selectors = [".pd-description-text", ".pd-claims-list", ".pd-claim-item"];
     selectors.forEach(function (sel) {
-      document.querySelectorAll(sel).forEach(function (el) {
+      root.querySelectorAll(sel).forEach(function (el) {
         containers.push(el);
       });
     });
     return containers;
   }
 
-  function highlightNumberInDescription(number) {
+  function highlightNumberInDescription(number, scope) {
     if (!number) return [];
-    var containers = getDescriptionContainers();
+    var containers = getDescriptionContainers(scope);
     var occurrences = [];
     // Build regex that matches both half-width and full-width characters
     // e.g., "24a" matches "24a", "２４ａ", "2４a", etc.
@@ -876,11 +885,29 @@ var ImageAnnotations = (function () {
   // ── Navigation bar ──
   function showNavBar(vid, number, total, current) {
     closeNavBar();
-    // Only show nav bar inside the patent-detail-section.
-    // When patent detail is hidden (dossier/extract mode), the nav bar
-    // will also be hidden because display:none cascades to children.
-    var pdSection = document.getElementById("patent-detail-section");
-    if (!pdSection || pdSection.classList.contains("hidden")) return;
+    // Determine which container to append the nav bar to:
+    // - If the viewer's anno layer is inside #patent-popup-viewer → append to ppv
+    // - If inside #patent-detail-section (and not hidden) → append to pdSection
+    // - Also support fullscreen image viewer (#patent-image-viewer)
+    var container = null;
+    var annoLayer = document.getElementById(vid + "_anno");
+    if (annoLayer) {
+      var ppv = annoLayer.closest("#patent-popup-viewer");
+      if (ppv && !ppv.classList.contains("hidden")) {
+        container = ppv;
+      } else {
+        var pdSection = document.getElementById("patent-detail-section");
+        if (pdSection && !pdSection.classList.contains("hidden")) {
+          container = pdSection;
+        } else {
+          var piv = document.getElementById("patent-image-viewer");
+          if (piv && piv.style.display !== "none") {
+            container = piv;
+          }
+        }
+      }
+    }
+    if (!container) return;
 
     navBarEl = document.createElement("div");
     navBarEl.className = "anno-nav-bar notranslate";
@@ -895,7 +922,7 @@ var ImageAnnotations = (function () {
       '<button class="anno-nav-btn" id="anno-nav-next" title="下一处">▼</button>' +
       '<button class="anno-nav-btn anno-nav-close" title="关闭">✕</button>' +
       "</div>";
-    pdSection.appendChild(navBarEl);
+    container.appendChild(navBarEl);
     navBarEl.addEventListener("mousedown", function (e) { e.stopPropagation(); });
     navBarEl.querySelector("#anno-nav-prev").addEventListener("click", function (e) { e.stopPropagation(); navigateHighlight(-1); });
     navBarEl.querySelector("#anno-nav-next").addEventListener("click", function (e) { e.stopPropagation(); navigateHighlight(1); });

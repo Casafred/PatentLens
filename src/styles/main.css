@@ -1825,7 +1825,7 @@ body {
   background: var(--bg-card);
   display: flex;
   flex-direction: column;
-  z-index: 9999;
+  z-index: 95000;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
@@ -2414,6 +2414,12 @@ body {
   transition: all 0.2s;
   background: var(--danger);
   color: #fff;
+}
+
+.btn-danger.btn-small {
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
 .btn-danger:hover {
@@ -7366,18 +7372,31 @@ body {
   align-items: center;
   flex-shrink: 0;
 }
+.ppv-actions .pd-gp-link {
+  height: 28px;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-weight: normal;
+}
 .ppv-close-btn {
   background: none;
   border: none;
-  font-size: 22px;
+  font-size: 20px;
   cursor: pointer;
   color: var(--text-muted);
-  padding: 0 4px;
+  padding: 0 6px;
   line-height: 1;
-  transition: color 0.2s;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s;
 }
 .ppv-close-btn:hover {
   color: var(--text-primary);
+  background: var(--bg-hover);
 }
 .ppv-content {
   flex: 1;
@@ -7905,7 +7924,7 @@ body {
   box-shadow: 0 8px 32px rgba(0,0,0,0.2);
   display: flex;
   flex-direction: column;
-  z-index: 10001;
+  z-index: 95000;
   overflow: hidden;
 }
 .patent-ask-modal.hidden { display: none; }

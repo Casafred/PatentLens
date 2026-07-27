@@ -19449,7 +19449,7 @@ function _injectFindButton() {
   const pdLinks = patentDetailContent.querySelector(".pd-links");
   if (pdLinks && !pdLinks.querySelector(".pd-find-toggle-btn")) {
     const findBtn = document.createElement("button");
-    findBtn.className = "pd-gp-link pd-find-toggle-btn";
+    findBtn.className = "pd-header-link pd-find-toggle-btn";
     findBtn.title = "在本页内查找 (Ctrl+F)";
     findBtn.textContent = "页内查找";
     findBtn.addEventListener("click", togglePdFindBar);
