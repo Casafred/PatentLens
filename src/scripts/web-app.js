@@ -4812,14 +4812,16 @@ function linkFigureReferences(scope) {
   figRegex.lastIndex = 0;
   var matches = [];
   var match;
-  var skippedOutOfRange = 0;
   var skippedInvalidNum = 0;
   while ((match = figRegex.exec(fullText)) !== null) {
     var numStr = match[1];
     var figureNum = _chineseNumToArabic(numStr);
     if (figureNum < 1) { skippedInvalidNum++; continue; }
-    var imgIdx = isUS ? figureNum : figureNum - 1;
-    if (imgIdx >= totalImgs) { skippedOutOfRange++; continue; }
+    // Always generate links for valid figure numbers — jumpToFigure will clamp
+    // imgIdx to the valid range. Previously we skipped imgIdx >= totalImgs,
+    // which caused figures mentioned in the description (e.g. 图10, 图11) to
+    // have no link at all when the drawings array only returned a subset
+    // (e.g. 9 images). Showing the last available figure is better than no link.
     matches.push({
       fullMatch: match[0],
       figureNum: figureNum,
@@ -4827,7 +4829,7 @@ function linkFigureReferences(scope) {
       end: match.index + match[0].length
     });
   }
-  console.log('[FigLink] linkFigureReferences: total matches=' + matches.length + ' skipped(outOfRange=' + skippedOutOfRange + ', invalidNum=' + skippedInvalidNum + ') isUS=' + isUS + ' totalImgs=' + totalImgs);
+  console.log('[FigLink] linkFigureReferences: total matches=' + matches.length + ' skipped(invalidNum=' + skippedInvalidNum + ') isUS=' + isUS + ' totalImgs=' + totalImgs);
   if (matches.length === 0) return;
 
   // Process matches in reverse order so DOM modifications don't affect earlier indices
@@ -4975,27 +4977,50 @@ function jumpToFigure(figureNum, scope) {
     : document.querySelector('#patent-detail-content .pd-tab-panel[data-panel="description"]');
   if (!panel) return;
 
-  // If split-view is not active, open it
+  // If split-view is not active, open it first
   var isSplit = panel.classList.contains('pd-split-view');
   if (!isSplit) {
     toggleSplitView('description', scope);
   }
 
   // Wait for split-view to initialize, then select the image. Retry a few
-  // times if the viewer state is not ready yet (previously a single 200ms
-  // wait would silently abort on slow machines, making the link look dead).
+  // times if the viewer state/DOM is not ready yet. Previously when split-view
+  // was already open we used setTimeout(0) which could fire before the DOM
+  // was fully ready or before thumbs were queryable (e.g. when Google Translate
+  // wrapped the main image container in <font> tags, breaking parentElement
+  // traversal). We now use a robust query from the panel root and retry on
+  // both missing state AND missing DOM elements.
   var viewerId = 'sv_' + scope + '_description';
   var trySelect = function(attempt) {
     var state = _splitViewerState[viewerId];
     if (!state) {
-      if (attempt < 6) setTimeout(function() { trySelect(attempt + 1); }, 150);
+      if (attempt < 10) setTimeout(function() { trySelect(attempt + 1); }, 100);
       return;
     }
+    // Find elements robustly — query from panel root instead of relying on
+    // parentElement traversal (which breaks if GT wraps elements in <font>).
     var main = document.getElementById(viewerId + '_main');
-    var thumbs = main ? main.parentElement.querySelectorAll('.pd-split-thumb') : [];
-    splitViewSelectImg(viewerId, imgIdx, thumbs[imgIdx] || null);
+    var img = document.getElementById(viewerId + '_img');
+    var thumbsContainer = panel.querySelector('.pd-split-thumbs');
+    var thumbs = thumbsContainer ? thumbsContainer.querySelectorAll('.pd-split-thumb') : [];
+    var thumbEl = thumbs[imgIdx] || null;
+    if (!main || !img) {
+      // DOM not fully ready yet, retry
+      if (attempt < 10) setTimeout(function() { trySelect(attempt + 1); }, 100);
+      return;
+    }
+    splitViewSelectImg(viewerId, imgIdx, thumbEl);
+    // Ensure the drawings panel is scrolled into view so the user sees the
+    // figure immediately (relevant when the link is far up/down in long text).
+    var drawingsPanel = panel.querySelector('.pd-split-drawings');
+    if (drawingsPanel) {
+      drawingsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   };
-  setTimeout(function() { trySelect(0); }, isSplit ? 0 : 200);
+  // When opening split-view fresh, give it more time (DOM creation + init).
+  // When already open, still use a small delay to let click event settle and
+  // to handle any pending DOM updates.
+  setTimeout(function() { trySelect(0); }, isSplit ? 50 : 250);
 }
 
 // Fullscreen image viewer for patent drawings — reuses split-view controls & state
