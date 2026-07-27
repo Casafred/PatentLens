@@ -84,7 +84,7 @@ const __PATENTLENS_COPYRIGHT__ = "PatentLens (c) 2026 Alfred Shi - All Rights Re
       '.goog-te-spinner-pos, .goog-te-spinner, .gt-spinner, .gt-loading, ' +
       '#goog-gt-tt, .goog-te-balloon, .goog-te-balloon-frame, .goog-te-pos, ' +
       '.goog-te-menu2, .goog-te-ftab-float, iframe.goog-te-menu-frame, ' +
-      '.goog-te-gadget-icon, .goog-te-combo ~ .goog-te-gadget {' +
+      '.goog-te-gadget-icon, .goog-te-gadget, #google_translate_element {' +
       '  display: none !important;' +
       '  visibility: hidden !important;' +
       '  opacity: 0 !important;' +
@@ -4241,21 +4241,65 @@ function _captureAndApplyTranslation(scope) {
   if (descContainer) {
     descContainer.dataset.gtTranslated = 'true';
   }
-  // Fully disable GT: combo → original, wait for GT to unwrap, then purge it.
-  _disableGoogleTranslateQuiet();
-  // Hide any leftover GT chrome that could intercept clicks (keeps elements
-  // alive to avoid GT internal null errors).
-  _hideGtChrome();
+  // Gently disable GT: set combo back to original (GT will unwrap font tags),
+  // then hide all GT UI chrome. Do NOT delete window.google or purge scripts —
+  // that causes GT's in-flight MutationObserver callbacks to crash with
+  // "Cannot read properties of undefined" and "Maximum call stack size exceeded".
+  _gentleDisableGt();
   // Mark translated state — this drives the toolbar button ("恢复原文").
   _descTranslated = true;
   _googleTranslateActive = false;
   _gtActivationTriggered = false;
   _updateGtButtonState();
   console.log('[FigLink] re-rendered with translation (frozen), generating links...');
-  // Generate figure links on the clean DOM (GT is idle, so no late passes).
+  // Generate figure links on the clean DOM
   setTimeout(function() {
     linkFigureReferences(scope);
   }, 200);
+}
+
+// Gently disable Google Translate without purging its global objects.
+// Deleting window.google causes GT's internal MutationObserver/event callbacks
+// (which are already in the event queue) to throw "reading 'J'" TypeError and
+// "Maximum call stack size exceeded" because they dereference deleted objects.
+// Instead we: set combo to original → wait for GT to unwrap → hide UI → protect DOM.
+function _gentleDisableGt() {
+  try {
+    // 1. Immediately set body top back to 0 and protect critical UI
+    document.body.style.top = '';
+    document.body.style.position = '';
+
+    // 2. Set combo to original to stop active translation
+    var combo = document.querySelector('.goog-te-combo');
+    if (combo) {
+      combo.value = '';
+      _dispatchComboChange(combo);
+    }
+    _setGoogTransCookie('');
+
+    // 3. Stop any polling timer
+    if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
+
+    // 4. Hide GT UI chrome (banner, spinner, balloons, etc.)
+    _hideGtChrome();
+
+    // 5. Wait briefly for GT to finish unwrapping font tags, then protect
+    //    the entire body except the translated description from further translation
+    setTimeout(function() {
+      try {
+        // Remove any remaining skiptranslate/font wraps that GT added
+        document.querySelectorAll('font.goog-text-highlight').forEach(function(f) {
+          var parent = f.parentNode;
+          while (f.firstChild) parent.insertBefore(f.firstChild, f);
+          parent.removeChild(f);
+        });
+        // Hide any newly-appeared GT chrome
+        _hideGtChrome();
+      } catch(_) {}
+    }, 500);
+  } catch(e) {
+    console.warn('[FigLink] error in _gentleDisableGt:', e);
+  }
 }
 
 // Permanently suppress GT's visible UI chrome via an injected <style> sheet.
@@ -4294,43 +4338,34 @@ function _installGtChromeShield() {
 }
 
 // Hide GT's visible UI chrome (top banner, spinner ball, tooltips) after
-// translation has been captured and applied. The widget container and combo
-// are kept alive (hidden) so the user can still toggle GT on/off via the
-// app's own "恢复原文" button.
+// translation has been captured and applied. Relies primarily on the injected
+// CSS stylesheet (!important cannot be overridden by GT's inline styles).
+// We do a ONE-TIME sweep to hide any existing elements and reset body offset,
+// but avoid periodic setInterval sweeps — repeated inline-style writes can
+// trigger GT's MutationObserver and cause recursive DOM churn.
 function _hideGtChrome() {
   _installGtChromeShield();
-  var chromeSelectors = '.goog-te-banner-frame, .goog-te-banner, .goog-te-spinner-pos, ' +
-    '.goog-te-spinner, #goog-gt-tt, .goog-te-balloon, .goog-te-pos, ' +
-    '.goog-te-menu2, .goog-te-ftab-float, .gt-spinner, .gt-loading, ' +
-    'iframe.goog-te-banner-frame, iframe.goog-te-menu-frame';
-  // HIDE elements instead of removing them. GT's internal JavaScript holds
-  // references to these elements and calls setAttribute on them via body event
-  // listeners. Removing them causes "Cannot read properties of null" errors.
-  // Hiding keeps the elements alive (so GT's code doesn't crash) while making
-  // them completely invisible and non-interactive.
-  var HIDE_STYLE = 'display:none !important;visibility:hidden !important;' +
-    'opacity:0 !important;pointer-events:none !important;' +
-    'height:0 !important;width:0 !important;overflow:hidden !important;' +
-    'position:absolute !important;top:-9999px !important;left:-9999px !important;';
-  function sweep() {
-    document.querySelectorAll(chromeSelectors).forEach(function(el) {
-      // Only apply if not already hidden (avoid redundant style writes)
-      if (el.style.display !== 'none' || !el.dataset.gtHidden) {
+  // One-time sweep: hide any existing GT chrome elements that may have appeared
+  // before the CSS shield was installed.
+  try {
+    document.body.style.top = '';
+    document.body.style.position = '';
+    var HIDE_STYLE = 'display:none !important;visibility:hidden !important;' +
+      'opacity:0 !important;pointer-events:none !important;' +
+      'height:0 !important;width:0 !important;overflow:hidden !important;';
+    var els = document.querySelectorAll(
+      '.goog-te-spinner-pos, .goog-te-spinner, .gt-spinner, .gt-loading, ' +
+      '.goog-te-banner-frame, .goog-te-banner, iframe.goog-te-banner-frame, ' +
+      '#goog-gt-tt, .goog-te-balloon, .goog-te-balloon-frame, .goog-te-pos, ' +
+      '.goog-te-menu2, .goog-te-ftab-float, iframe.goog-te-menu-frame'
+    );
+    els.forEach(function(el) {
+      if (!el.dataset.gtHidden) {
         el.style.cssText += ';' + HIDE_STYLE;
         el.dataset.gtHidden = '1';
       }
     });
-    // Also reset body offset GT adds to accommodate the banner
-    document.body.style.top = '';
-  }
-  sweep();
-  // GT may re-create elements via its internal timers — keep sweeping for 3s
-  var cleanupCount = 0;
-  var cleanupInterval = setInterval(function() {
-    cleanupCount++;
-    sweep();
-    if (cleanupCount >= 6) clearInterval(cleanupInterval);
-  }, 500);
+  } catch(_) {}
 }
 
 // Update the GT toggle button text/state in the patent detail header
@@ -4460,42 +4495,16 @@ function _disableGoogleTranslateQuiet(onReady) {
 // Fully remove all GT traces from the page
 function _purgeGoogleTranslateCompletely() {
   try {
-    // 1. Hide only GT-injected UI elements — NEVER hide arbitrary .skiptranslate
-    //    elements because GT adds that class to normal page containers (including
-    //    AI panels, input areas, etc.) to mark them as non-translatable.
-    var gtEls = document.querySelectorAll(
-      "#goog-gt-tt, .goog-te-spinner-pos, .goog-te-banner-frame, .goog-te-banner, " +
-      ".goog-te-gadget-icon, .goog-te-balloon, .goog-te-pos, " +
-      "#google_translate_element, iframe.goog-te-banner-frame, " +
-      "iframe.goog-te-menu-frame, .goog-te-menu2, .goog-te-ftab-float, " +
-      ".goog-te-spinner, .gt-spinner, .gt-loading, .goog-te-combo"
-    );
-    var _gtHideStyle = 'display:none !important;visibility:hidden !important;' +
-      'pointer-events:none !important;position:absolute !important;' +
-      'top:-9999px !important;left:-9999px !important;width:0 !important;' +
-      'height:0 !important;overflow:hidden !important;';
-    gtEls.forEach(function(el) {
-      el.style.cssText += ';' + _gtHideStyle;
-    });
+    // 1. Immediately stop any polling timer
+    if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
 
-    // 1b. Fully remove the GT widget host + combo so a future re-injection starts clean
-    var _gtHost = document.getElementById('google_translate_element');
-    if (_gtHost && _gtHost.parentNode) _gtHost.parentNode.removeChild(_gtHost);
-    var _gtCombo = document.querySelector('.goog-te-combo');
-    if (_gtCombo && _gtCombo.parentNode) _gtCombo.parentNode.removeChild(_gtCombo);
+    // 2. Set combo back to original to stop active translation
+    var combo = document.querySelector('.goog-te-combo');
+    if (combo) {
+      try { combo.value = ''; _dispatchComboChange(combo); } catch(_) {}
+    }
 
-    // 2. Remove the GT script tag
-    var gtScript = document.getElementById('google-translate-script');
-    if (gtScript) gtScript.remove();
-    var gtScripts = document.querySelectorAll('script[src*="translate.google"], script[src*="google.com/translate"]');
-    gtScripts.forEach(function(s) { s.remove(); });
-
-    // 3. Reset body styles that GT may have set
-    document.body.style.top = "";
-    document.body.style.position = "";
-    document.body.classList.remove('translated', 'goog-te-popup');
-
-    // 3b. Clear googtrans cookie to prevent GT from auto-translating next time it loads
+    // 3. Clear googtrans cookie to prevent auto-translate
     try {
       var _host = window.location.hostname || 'localhost';
       var _ds = [_host, '.' + _host, 'localhost', '.localhost'];
@@ -4509,38 +4518,53 @@ function _purgeGoogleTranslateCompletely() {
       document.cookie = 'googtrans=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     } catch(_) {}
 
-    // 4. Delete the global google object and init callback.
-    try { delete window.google; } catch(e) { window.google = undefined; }
-    try { delete window.googleTranslateElementInit; } catch(e) { window.googleTranslateElementInit = undefined; }
+    // 4. Reset body styles GT may have set
+    document.body.style.top = '';
+    document.body.style.position = '';
+    document.body.classList.remove('translated', 'goog-te-popup');
 
-    // 5. Reset internal state flags
-    _googleTranslateActive = false;
-    _googleTranslateInjected = false;
-    _gtActivationTriggered = false;
+    // 5. Hide GT UI chrome via CSS shield (uses !important, cannot be overridden)
+    _hideGtChrome();
 
-    // 6. Stop any pending fig-link poll timer
-    if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
+    // 6. One-time inline style sweep for any elements that appeared before CSS shield
+    var _gtHideStyle = 'display:none !important;visibility:hidden !important;' +
+      'pointer-events:none !important;';
+    var gtEls = document.querySelectorAll(
+      '#goog-gt-tt, .goog-te-spinner-pos, .goog-te-banner-frame, .goog-te-banner, ' +
+      '.goog-te-balloon, .goog-te-pos, iframe.goog-te-banner-frame, ' +
+      'iframe.goog-te-menu-frame, .goog-te-menu2, .goog-te-ftab-float, ' +
+      '.goog-te-spinner, .gt-spinner, .gt-loading'
+    );
+    gtEls.forEach(function(el) {
+      try {
+        if (!el.dataset.gtHidden) {
+          el.style.cssText += ';' + _gtHideStyle;
+          el.dataset.gtHidden = '1';
+        }
+      } catch(_) {}
+    });
 
-    // 7. Recurring cleanup: hide only GT-specific UI elements that may reappear
-    var cleanupCount = 0;
-    var cleanupInterval = setInterval(function() {
-      cleanupCount++;
-      var reappeared = document.querySelectorAll(
-        '.goog-te-spinner-pos, .goog-te-banner-frame, ' +
-        '#goog-gt-tt, .goog-te-balloon, .goog-te-pos'
-      );
-      reappeared.forEach(function(el) {
-        el.style.cssText += ';' + _gtHideStyle;
+    // 7. Unwrap any remaining font tags GT added (so they don't interfere with re-render)
+    try {
+      document.querySelectorAll('font.goog-text-highlight').forEach(function(f) {
+        var p = f.parentNode;
+        if (p) {
+          while (f.firstChild) p.insertBefore(f.firstChild, f);
+          p.removeChild(f);
+        }
       });
-      if (cleanupCount >= 10) clearInterval(cleanupInterval);
-    }, 500);
+    } catch(_) {}
 
-    // 8. Re-register fig links in case DOM was modified
-    if (typeof linkFigureReferences === 'function') {
-      try { linkFigureReferences(); } catch(e) {}
-    }
+    // 8. Reset internal state flags. Do NOT delete window.google or remove GT scripts —
+    //    that causes GT's in-flight MutationObserver/event callbacks to crash with
+    //    "Cannot read properties of undefined" and "Maximum call stack size exceeded".
+    _googleTranslateActive = false;
+    _gtActivationTriggered = false;
+    _figLinkPollCount = 0;
+    _figLinkStableCount = 0;
+    _figLinkLastTextSnapshot = '';
 
-    console.log('[FigLink] Google Translate fully purged from page');
+    console.log('[FigLink] GT reset complete (UI hidden, state cleared)');
   } catch(e) {
     console.warn('[FigLink] error in _purgeGoogleTranslateCompletely:', e);
   }
@@ -4624,6 +4648,8 @@ function _applyTranslatedDescription(scope, translatedText) {
   if (!container) return;
   var html = renderDescriptionHtml(translatedText);
   if (html) {
+    // Clear figures-linked marker so linkFigureReferences can re-process new DOM
+    container.removeAttribute('data-figures-linked');
     container.innerHTML = html;
     console.log('[FigLink] description re-rendered with clean HTML');
   }
@@ -4908,119 +4934,124 @@ function _getDescriptionContainer(scope) {
 }
 
 // Main function: scan description text and wrap "图X" references in clickable links
+var _linkingFigures = false;
+var _linkedFigScopes = {};
 function linkFigureReferences(scope) {
-  var container = _getDescriptionContainer(scope);
+  // Re-entrancy guard: prevent concurrent/recursive calls (GT's MutationObserver
+  // can detect DOM wraps and trigger re-entry, causing "Maximum call stack size exceeded")
+  if (_linkingFigures) return;
+  var targetScope = scope || _detectFigLinkScope();
+  // Skip if this scope already has figure links linked in the current render cycle
+  var container = _getDescriptionContainer(targetScope);
   if (!container) return;
-  var data = (scope === 'popup') ? window._patentPopupData : window._currentPatentData;
+  // If links already exist in this container, skip re-linking
+  if (container.dataset.figuresLinked === '1') return;
+  var data = (targetScope === 'popup') ? window._patentPopupData : window._currentPatentData;
   if (!data || !data.drawings || data.drawings.length === 0) return;
 
-  var isUS = _isUSPatentData(data);
-  var totalImgs = data.drawings.length;
+  _linkingFigures = true;
+  try {
+    var isUS = _isUSPatentData(data);
+    var totalImgs = data.drawings.length;
 
-  // Regex: 图 followed by optional space/punctuation, then Arabic/full-width digits or Chinese numerals
-  // Matches: 图1, 图 1, 图.1, 图．1, 图１, 图一, 图十二, etc.
-  // Also matches letter-suffixed forms common in US patents: 图1A, 图1B, 图12A
-  // (the letter suffix is captured but only the numeric part is used for image lookup)
-  var figRegex = /图[\s.．。、·・]*([0-9０-９]+|[一二两三四五六七八九十百零]+)\s*[A-Za-z]?/g;
+    // Regex: 图 followed by optional space/punctuation, then Arabic/full-width digits or Chinese numerals
+    // Matches: 图1, 图 1, 图.1, 图．1, 图１, 图一, 图十二, etc.
+    // Also matches letter-suffixed forms common in US patents: 图1A, 图1B, 图12A
+    // (the letter suffix is captured but only the numeric part is used for image lookup)
+    var figRegex = /图[\s.．。、·・]*([0-9０-９]+|[一二两三四五六七八九十百零]+)\s*[A-Za-z]?/g;
 
-  // Collect ALL leaf elements that directly contain text (deepest elements).
-  // After Google Translate, text is wrapped in <font> tags at various nesting
-  // levels, so we need to collect text nodes across the entire container.
-  // PERFORMANCE: Use a fast upward walk limited to the container instead of
-  // .closest() which traverses all the way up to document for every text node.
-  var allTextNodes = [];
-  var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
-    acceptNode: function(node) {
-      var p = node.parentNode;
-      if (!p) return NodeFilter.FILTER_REJECT;
-      // Skip truly empty nodes first (fastest check)
-      if (!node.nodeValue || node.nodeValue.length === 0) return NodeFilter.FILTER_REJECT;
-      // Fast upward walk only within the container, not all the way to document
-      var el = p;
-      var depth = 0;
-      while (el && el !== container && depth < 10) {
-        if (el.nodeType === 1) { // Element node
-          var tag = el.tagName;
-          if (tag === 'A' && el.classList && el.classList.contains('pd-fig-link')) {
-            return NodeFilter.FILTER_REJECT;
+    // Collect ALL leaf elements that directly contain text (deepest elements).
+    // After Google Translate, text is wrapped in <font> tags at various nesting
+    // levels, so we need to collect text nodes across the entire container.
+    var allTextNodes = [];
+    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+      acceptNode: function(node) {
+        var p = node.parentNode;
+        if (!p) return NodeFilter.FILTER_REJECT;
+        if (!node.nodeValue || node.nodeValue.length === 0) return NodeFilter.FILTER_REJECT;
+        var el = p;
+        var depth = 0;
+        while (el && el !== container && depth < 10) {
+          if (el.nodeType === 1) {
+            var tag = el.tagName;
+            if (tag === 'A' && el.classList && el.classList.contains('pd-fig-link')) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            if (tag === 'SCRIPT' || tag === 'STYLE') {
+              return NodeFilter.FILTER_REJECT;
+            }
+            if (el.classList && el.classList.contains('pd-find-highlight')) {
+              return NodeFilter.FILTER_REJECT;
+            }
           }
-          if (tag === 'SCRIPT' || tag === 'STYLE') {
-            return NodeFilter.FILTER_REJECT;
-          }
-          if (el.classList && el.classList.contains('pd-find-highlight')) {
-            return NodeFilter.FILTER_REJECT;
-          }
+          el = el.parentNode;
+          depth++;
         }
-        el = el.parentNode;
-        depth++;
+        return NodeFilter.FILTER_ACCEPT;
       }
-      return NodeFilter.FILTER_ACCEPT;
+    });
+    var tn;
+    while (tn = walker.nextNode()) {
+      allTextNodes.push({ node: tn, text: tn.nodeValue });
     }
-  });
-  var tn;
-  while (tn = walker.nextNode()) {
-    allTextNodes.push({ node: tn, text: tn.nodeValue });
-  }
-  if (allTextNodes.length === 0) {
-    console.log('[FigLink] linkFigureReferences: no text nodes found');
-    return;
-  }
+    if (allTextNodes.length === 0) {
+      return;
+    }
 
-  // Concatenate all text nodes to search across <font>/<span> tag boundaries
-  var fullText = allTextNodes.map(function(t) { return t.text; }).join('');
+    // Concatenate all text nodes to search across <font>/<span> tag boundaries
+    var fullText = allTextNodes.map(function(t) { return t.text; }).join('');
 
-  // Quick pre-scan: are there any matches?
-  figRegex.lastIndex = 0;
-  var preMatch = figRegex.exec(fullText);
-  if (!preMatch) {
-    console.log('[FigLink] linkFigureReferences: no 图X matches in text (len=' + fullText.length + ')');
-    return;
+    // Quick pre-scan: are there any matches?
+    figRegex.lastIndex = 0;
+    var preMatch = figRegex.exec(fullText);
+    if (!preMatch) {
+      return;
+    }
+
+    // Build offset map: for each text node, record its start offset in fullText
+    var offset = 0;
+    var offsetMap = [];
+    for (var i = 0; i < allTextNodes.length; i++) {
+      offsetMap.push({
+        node: allTextNodes[i].node,
+        start: offset,
+        end: offset + allTextNodes[i].text.length
+      });
+      offset += allTextNodes[i].text.length;
+    }
+
+    // Find ALL valid matches in fullText
+    figRegex.lastIndex = 0;
+    var matches = [];
+    var match;
+    var skippedInvalidNum = 0;
+    while ((match = figRegex.exec(fullText)) !== null) {
+      var numStr = match[1];
+      var figureNum = _chineseNumToArabic(numStr);
+      if (figureNum < 1) { skippedInvalidNum++; continue; }
+      matches.push({
+        fullMatch: match[0],
+        figureNum: figureNum,
+        start: match.index,
+        end: match.index + match[0].length
+      });
+    }
+    if (matches.length === 0) return;
+
+    // Process matches in reverse order so DOM modifications don't affect earlier indices
+    for (var mi = matches.length - 1; mi >= 0; mi--) {
+      var m = matches[mi];
+      _wrapFigMatch(m, offsetMap, targetScope);
+    }
+
+    // Mark container as linked so we don't re-process on GT DOM mutations
+    container.dataset.figuresLinked = '1';
+
+    // Ensure delegated click handler is installed
+    _ensureFigLinkDelegation(targetScope);
+  } finally {
+    _linkingFigures = false;
   }
-
-  // Build offset map: for each text node, record its start offset in fullText
-  var offset = 0;
-  var offsetMap = [];
-  for (var i = 0; i < allTextNodes.length; i++) {
-    offsetMap.push({
-      node: allTextNodes[i].node,
-      start: offset,
-      end: offset + allTextNodes[i].text.length
-    });
-    offset += allTextNodes[i].text.length;
-  }
-
-  // Find ALL valid matches in fullText
-  figRegex.lastIndex = 0;
-  var matches = [];
-  var match;
-  var skippedInvalidNum = 0;
-  while ((match = figRegex.exec(fullText)) !== null) {
-    var numStr = match[1];
-    var figureNum = _chineseNumToArabic(numStr);
-    if (figureNum < 1) { skippedInvalidNum++; continue; }
-    // Always generate links for valid figure numbers — jumpToFigure will clamp
-    // imgIdx to the valid range. Previously we skipped imgIdx >= totalImgs,
-    // which caused figures mentioned in the description (e.g. 图10, 图11) to
-    // have no link at all when the drawings array only returned a subset
-    // (e.g. 9 images). Showing the last available figure is better than no link.
-    matches.push({
-      fullMatch: match[0],
-      figureNum: figureNum,
-      start: match.index,
-      end: match.index + match[0].length
-    });
-  }
-  console.log('[FigLink] linkFigureReferences: total matches=' + matches.length + ' skipped(invalidNum=' + skippedInvalidNum + ') isUS=' + isUS + ' totalImgs=' + totalImgs);
-  if (matches.length === 0) return;
-
-  // Process matches in reverse order so DOM modifications don't affect earlier indices
-  for (var mi = matches.length - 1; mi >= 0; mi--) {
-    var m = matches[mi];
-    _wrapFigMatch(m, offsetMap, scope);
-  }
-
-  // Ensure delegated click handler is installed (survives GT <font> wrapping)
-  _ensureFigLinkDelegation(scope);
 }
 
 // Delegated click handler for figure links. Uses a SINGLE document-level
@@ -11668,19 +11699,19 @@ function renderMarkdown(text) {
 function renderMarkdownWithTrace(text, customTraceIndex) {
   if (!text) return "";
   const traceIdx = customTraceIndex || kanbanState.traceIndex;
-  const processed = text.replace(/【来源:\s*([^\】]+)】/g, (match, refsStr) => {
+
+  // Build trace link HTML for a matched refs string
+  function buildTraceHtml(refsStr) {
     const refs = refsStr.split(",").map(r => r.trim()).filter(r => /^(D\d+_B_|PAT_)/.test(r));
     if (refs.length === 0) return "";
     const validRefs = refs.filter(r => traceIdx[r]);
     if (validRefs.length === 0) {
       return '<span class="trace-links"><span class="trace-label">溯源:</span> <span class="trace-unavailable">引用块未找到</span></span>';
     }
-    // Group valid refs by source type (doc vs patent)
     const refLinks = [];
     const docRefs = validRefs.filter(r => r.startsWith("D"));
     const patRefs = validRefs.filter(r => r.startsWith("PAT_"));
 
-    // Handle doc refs (existing logic)
     if (docRefs.length > 0) {
       const grouped = {};
       docRefs.forEach(ref => {
@@ -11704,7 +11735,6 @@ function renderMarkdownWithTrace(text, customTraceIndex) {
         const docIdx = parseInt(docIdxStr);
         const entries = grouped[key].sort((a, b) => a.blockIdx - b.blockIdx);
 
-        // Merge consecutive block indices into ranges
         const ranges = [];
         let rangeStart = entries[0];
         let rangeEnd = entries[0];
@@ -11739,7 +11769,6 @@ function renderMarkdownWithTrace(text, customTraceIndex) {
       });
     }
 
-    // Handle patent refs
     if (patRefs.length > 0) {
       patRefs.forEach(ref => {
         const info = traceIdx[ref];
@@ -11750,16 +11779,39 @@ function renderMarkdownWithTrace(text, customTraceIndex) {
       });
     }
 
-    return `<span class="trace-links"><span class="trace-label">溯源:</span> ${refLinks.join(" ")}</span>`;
+    return '<span class="trace-links"><span class="trace-label">溯源:</span> ' + refLinks.join(" ") + '</span>';
+  }
+
+  // Step 1: Extract trace markers and replace with placeholders BEFORE markdown rendering.
+  // This prevents marked from splitting markers across <p>/<br> tags when there are newlines.
+  const traceReplacements = [];
+  let textWithPlaceholders = text.replace(/【来源:\s*([^\】]+)】/g, (match, refsStr) => {
+    const idx = traceReplacements.length;
+    const html = buildTraceHtml(refsStr);
+    traceReplacements.push(html);
+    return `__TRACE_LINK_${idx}__`;
   });
+
+  // Step 2: Render markdown (marked will treat placeholders as plain words)
+  let html;
   if (typeof marked !== "undefined" && marked.parse) {
     try {
-      return linkifyPatentNumbers(marked.parse(processed));
+      html = marked.parse(textWithPlaceholders);
     } catch (e) {
-      return linkifyPatentNumbers(escapeHtml(processed).replace(/\n/g, "<br>"));
+      html = escapeHtml(textWithPlaceholders).replace(/\n/g, "<br>");
     }
+  } else {
+    html = escapeHtml(textWithPlaceholders).replace(/\n/g, "<br>");
   }
-  return linkifyPatentNumbers(escapeHtml(processed).replace(/\n/g, "<br>"));
+
+  // Step 3: Replace placeholders with actual trace link HTML (after marked is done,
+  // so our HTML is inserted as-is and not escaped)
+  html = html.replace(/__TRACE_LINK_(\d+)__/g, (match, idxStr) => {
+    const idx = parseInt(idxStr, 10);
+    return traceReplacements[idx] !== undefined ? traceReplacements[idx] : "";
+  });
+
+  return linkifyPatentNumbers(html);
 }
 
 // ===== Analysis Module Parsing & Rendering =====

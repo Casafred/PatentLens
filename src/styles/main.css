@@ -2181,6 +2181,11 @@ body {
   align-items: flex-end;
 }
 
+.chat-input-area button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .chat-input {
   flex: 1;
   padding: 8px 10px;
@@ -2289,6 +2294,11 @@ body {
   background: var(--bg-secondary);
   border-radius: 0 0 8px 8px;
   align-items: flex-end;
+}
+
+.analysis-chat-input-area button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .analysis-chat-input {
@@ -8038,6 +8048,11 @@ body {
   padding: 10px 12px;
   border-top: 1px solid var(--border, #eee);
   background: var(--bg-secondary, #f7f7f9);
+}
+
+.patent-ask-input-area button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .patent-ask-input {
   flex: 1;
