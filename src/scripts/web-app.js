@@ -4540,119 +4540,200 @@ function restoreOriginalDescription(scope) {
   delete descContainer.dataset.gtTranslated;
 }
 
-// Before auto-translating, mark every panel EXCEPT the 说明书 (description) tab
-// as notranslate so Google Translate only ever touches the description. This
-// guarantees "其他部分都要保持原样" even during the brief translation pass.
-// When a scope is provided ('main' or 'popup'), the OTHER scope's ENTIRE container
-// is also marked notranslate — this prevents translation from spilling over into
-// a different open patent detail (popup vs main) that was the root cause of the
-// cross-patent translation bug.
-function _protectNonDescriptionAll(scope) {
-  var roots = [document.getElementById('patent-detail-content'), document.getElementById('ppv-content')];
-  roots.forEach(function(root) {
-    if (!root) return;
-    // Determine if this root is the "other" (non-target) scope
-    var isOtherScope = false;
-    var isTargetScope = false;
-    if (scope === 'main' && root.id === 'ppv-content') isOtherScope = true;
-    if (scope === 'popup' && root.id === 'patent-detail-content') isOtherScope = true;
-    if (scope === 'main' && root.id === 'patent-detail-content') isTargetScope = true;
-    if (scope === 'popup' && root.id === 'ppv-content') isTargetScope = true;
+// ── Google Translate DOM-protection helpers ──────────────────────────────────
+// Strategy: Google Translate respects class="notranslate" on an element AND all
+// its descendants (inherited). We do NOT walk every child with querySelectorAll('*')
+// — that was the previous bug: it stamped notranslate onto every description
+// paragraph/span, and after unprotecting the parent those children still had
+// notranslate, so the description was never translated. Instead we rely on
+// inheritance: we only mark PARENT containers, and "punch a hole" for the
+// target description tab by ensuring it and all its ancestors up to the root
+// are free of notranslate.
+//
+// Two functions:
+//   _gtTemporaryShield()  — called BEFORE new patent HTML is inserted. Puts
+//                           notranslate on the patent-detail roots so any stale
+//                           MutationObserver cannot touch newly-inserted DOM.
+//                           Only touches the roots (no child walk).
+//   _protectForTranslation(scope) — called right before starting GT. Protects
+//                           ALL page UI (header, search, history, results,
+//                           other scope's patent detail, and the non-description
+//                           tabs of the target scope), leaving ONLY the target
+//                           scope's .pd-description-text subtree translatable.
 
-    if (isOtherScope) {
-      // Fully protect the OTHER container — every single element inside it gets
-      // notranslate so a live GT MutationObserver cannot touch it at all.
-      root.classList.add('notranslate');
-      root.setAttribute('translate', 'no');
-      root.querySelectorAll('*').forEach(function(el) {
-        el.classList.add('notranslate');
-        el.setAttribute('translate', 'no');
-      });
-    } else if (isTargetScope) {
-      // For the TARGET scope:
-      // 1. FIRST unprotect the description container (it may have been fully
-      //    protected by _protectAllContainersFully before new content render,
-      //    or by a previous other-scope full-protection pass).
-      var descEl = root.querySelector('.pd-description-text');
-      if (descEl) {
-        descEl.classList.remove('notranslate');
-        descEl.removeAttribute('translate');
-        delete descEl.dataset.gtTranslated;
-        // Also unprotect children of description in case they were individually marked
-        descEl.querySelectorAll('*').forEach(function(child) {
-          child.classList.remove('notranslate');
-          child.removeAttribute('translate');
-        });
-      }
-      // 2. Protect header and non-description panels
-      root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
-        el.classList.add('notranslate');
-        el.setAttribute('translate', 'no');
-      });
-    } else {
-      // No scope specified (legacy/manual toggle) — protect both roots' non-desc panels
-      root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
-        el.classList.add('notranslate');
-        el.setAttribute('translate', 'no');
-      });
-    }
-  });
-}
+// List of selectors for permanent page UI that must NEVER be translated
+// (app chrome, search, history, results, comparison, modals, etc.).
+// These are OUTSIDE the patent-detail roots and must always be guarded.
+var _GT_UI_SELECTORS = [
+  '.app-header',
+  '#history-sidebar',
+  '.search-section',
+  '#batch-search-panel',
+  '#office-badge',
+  '#result-section',
+  '#batch-results-section',
+  '#comparison-section',
+  '#patent-detail-tabs-bar',
+  '#patent-detail-find-bar',
+  '#ppv-patent-tabs',
+  '.ppv-header',
+  '.ppv-toolbar',
+  '.patent-image-viewer',
+  '#patent-ask-modal',
+  '#pdf-ctx-menu',
+  '.pd-ai-panel',
+  '#error-toast',
+  '.toast-container',
+  '.loading-indicator',
+  '#splash-screen',
+  '#inapp-webview-overlay',
+  '.context-menu',
+  '.modal-overlay'
+];
 
-// FULLY protect ALL patent-detail containers (everything gets notranslate).
-// Used BEFORE new patent content is rendered — this guarantees that even if
-// a stale GT MutationObserver fires during DOM insertion, it cannot translate
-// anything in any patent detail view.
-function _protectAllContainersFully() {
+// Called BEFORE new patent HTML is written into a container. Adds a temporary
+// notranslate shield on the roots so any lingering GT observer cannot translate
+// mid-render. The shield is lifted in _protectForTranslation before GT starts.
+function _gtTemporaryShield() {
   var roots = [document.getElementById('patent-detail-content'), document.getElementById('ppv-content')];
   roots.forEach(function(root) {
     if (!root) return;
     root.classList.add('notranslate');
     root.setAttribute('translate', 'no');
-    root.querySelectorAll('*').forEach(function(el) {
+  });
+}
+
+// Main protection: ensure EVERYTHING on the page is notranslate except for the
+// target scope's description text container. This prevents spillover into other
+// patents' details, other tabs of the current patent, panel headers/buttons,
+// and page UI chrome.
+function _protectForTranslation(scope) {
+  // 1. Protect all permanent page UI
+  _GT_UI_SELECTORS.forEach(function(sel) {
+    document.querySelectorAll(sel).forEach(function(el) {
       el.classList.add('notranslate');
       el.setAttribute('translate', 'no');
     });
   });
+
+  var mainRoot = document.getElementById('patent-detail-content');
+  var popupRoot = document.getElementById('ppv-content');
+
+  // Helper: protect a patent-detail root so only its .pd-description-text is translatable
+  function protectRoot(root, isTarget) {
+    if (!root) return;
+    if (!isTarget) {
+      // Fully protect this root (it belongs to the other scope)
+      root.classList.add('notranslate');
+      root.setAttribute('translate', 'no');
+      return;
+    }
+    // Target root: lift the temporary shield
+    root.classList.remove('notranslate');
+    root.removeAttribute('translate');
+    // Protect everything inside EXCEPT the description text:
+    //   - patent header
+    //   - non-description tab panels
+    //   - panel headers (titles + buttons) inside ALL tabs (including description tab!)
+    //   - tab body wrappers except the actual .pd-description-text
+    root.querySelectorAll('.pd-header, .pd-tab-panel:not([data-panel="description"]), .pd-panel-header, .pd-panel-actions, .pd-section-title, .pd-copy-btn, .pd-compare-btn, .pd-claim-translate-btn').forEach(function(el) {
+      el.classList.add('notranslate');
+      el.setAttribute('translate', 'no');
+    });
+    // Explicitly clear notranslate from the description tab panel AND its text container
+    var descPanel = root.querySelector('.pd-tab-panel[data-panel="description"]');
+    if (descPanel) {
+      descPanel.classList.remove('notranslate');
+      descPanel.removeAttribute('translate');
+      // But still protect panel header inside the description tab
+      var descHeader = descPanel.querySelector('.pd-panel-header');
+      if (descHeader) {
+        descHeader.classList.add('notranslate');
+        descHeader.setAttribute('translate', 'no');
+      }
+      var descBody = descPanel.querySelector('.pd-tab-panel-body');
+      if (descBody) {
+        descBody.classList.remove('notranslate');
+        descBody.removeAttribute('translate');
+      }
+      var descText = descPanel.querySelector('.pd-description-text');
+      if (descText) {
+        descText.classList.remove('notranslate');
+        descText.removeAttribute('translate');
+        delete descText.dataset.gtTranslated;
+      }
+    }
+  }
+
+  // 2. Protect main root
+  protectRoot(mainRoot, scope === 'main');
+
+  // 3. Protect popup root
+  protectRoot(popupRoot, scope === 'popup');
+
+  // 4. Also hide the global GT toolbar/combo container (it sits at body level)
+  var gtBar = document.getElementById('google_translate_element');
+  if (gtBar) {
+    gtBar.classList.add('notranslate');
+    gtBar.style.display = 'none';
+  }
 }
 
-// Remove the notranslate guards (called after GT has been purged). When scope is
-// given, also unwrap the other-scope full protection.
-function _unprotectNonDescriptionAll(scope) {
-  var roots = [document.getElementById('patent-detail-content'), document.getElementById('ppv-content')];
-  roots.forEach(function(root) {
-    if (!root) return;
-    var isOtherScope = false;
-    var isTargetScope = false;
-    if (scope === 'main' && root.id === 'ppv-content') isOtherScope = true;
-    if (scope === 'popup' && root.id === 'patent-detail-content') isOtherScope = true;
-    if (scope === 'main' && root.id === 'patent-detail-content') isTargetScope = true;
-    if (scope === 'popup' && root.id === 'ppv-content') isTargetScope = true;
-
-    if (isOtherScope) {
-      root.classList.remove('notranslate');
-      root.removeAttribute('translate');
-      root.querySelectorAll('*').forEach(function(el) {
-        el.classList.remove('notranslate');
-        el.removeAttribute('translate');
-      });
-    } else if (isTargetScope) {
-      // Unprotect non-description panels and header
-      root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
-        el.classList.remove('notranslate');
-        el.removeAttribute('translate');
-      });
-      // NOTE: We intentionally leave the description container's notranslate state
-      // alone here — it is managed separately (frozen after capture, un-frozen on
-      // manual re-translate).
-    } else {
-      // No scope — unprotect both roots' non-desc panels
-      root.querySelectorAll('.pd-tab-panel:not([data-panel="description"]), .pd-header').forEach(function(el) {
-        el.classList.remove('notranslate');
-        el.removeAttribute('translate');
-      });
-    }
+// After GT is purged (translation captured and frozen), remove the temporary
+// notranslate guards so UI behaves normally again (e.g., user can select text
+// in other tabs without it being marked notranslate). Note: the description
+// container itself KEEPS notranslate after translation (it's frozen), which is
+// applied in _captureAndApplyTranslation.
+function _gtRemoveGuards(scope) {
+  // Unprotect permanent page UI
+  _GT_UI_SELECTORS.forEach(function(sel) {
+    document.querySelectorAll(sel).forEach(function(el) {
+      el.classList.remove('notranslate');
+      el.removeAttribute('translate');
+    });
   });
+
+  var mainRoot = document.getElementById('patent-detail-content');
+  var popupRoot = document.getElementById('ppv-content');
+
+  if (mainRoot) {
+    mainRoot.classList.remove('notranslate');
+    mainRoot.removeAttribute('translate');
+    mainRoot.querySelectorAll('.pd-header, .pd-tab-panel').forEach(function(el) {
+      // Don't remove notranslate from description tab if it's frozen-translated
+      if (el.classList.contains('pd-tab-panel') && el.dataset.panel === 'description') {
+        var dt = el.querySelector('.pd-description-text');
+        if (dt && dt.dataset.gtTranslated === 'true') return; // keep frozen
+      }
+      el.classList.remove('notranslate');
+      el.removeAttribute('translate');
+    });
+  }
+
+  if (popupRoot) {
+    popupRoot.classList.remove('notranslate');
+    popupRoot.removeAttribute('translate');
+    popupRoot.querySelectorAll('.pd-header, .pd-tab-panel').forEach(function(el) {
+      if (el.classList.contains('pd-tab-panel') && el.dataset.panel === 'description') {
+        var dt = el.querySelector('.pd-description-text');
+        if (dt && dt.dataset.gtTranslated === 'true') return;
+      }
+      el.classList.remove('notranslate');
+      el.removeAttribute('translate');
+    });
+  }
+}
+
+// Legacy aliases — keep old function names working so any remaining callers
+// don't crash. They forward to the new implementations.
+function _protectNonDescriptionAll(scope) {
+  _protectForTranslation(scope);
+}
+function _protectAllContainersFully() {
+  _gtTemporaryShield();
+}
+function _unprotectNonDescriptionAll(scope) {
+  _gtRemoveGuards(scope);
 }
 
 function _getDescriptionContainer(scope) {
