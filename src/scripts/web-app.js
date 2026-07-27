@@ -11782,17 +11782,18 @@ function renderMarkdownWithTrace(text, customTraceIndex) {
     return '<span class="trace-links"><span class="trace-label">溯源:</span> ' + refLinks.join(" ") + '</span>';
   }
 
-  // Step 1: Extract trace markers and replace with placeholders BEFORE markdown rendering.
-  // This prevents marked from splitting markers across <p>/<br> tags when there are newlines.
+  // Step 1: Extract trace markers and replace with HTML placeholder tags BEFORE markdown rendering.
+  // We use <span data-trace-placeholder=N></span> because marked preserves inline HTML as-is,
+  // whereas text-based placeholders like __TEXT__ would be interpreted as Markdown bold/italic.
   const traceReplacements = [];
   let textWithPlaceholders = text.replace(/【来源:\s*([^\】]+)】/g, (match, refsStr) => {
     const idx = traceReplacements.length;
     const html = buildTraceHtml(refsStr);
     traceReplacements.push(html);
-    return `__TRACE_LINK_${idx}__`;
+    return `<span data-trace-placeholder="${idx}"></span>`;
   });
 
-  // Step 2: Render markdown (marked will treat placeholders as plain words)
+  // Step 2: Render markdown (marked will leave our HTML placeholder spans untouched)
   let html;
   if (typeof marked !== "undefined" && marked.parse) {
     try {
@@ -11804,9 +11805,8 @@ function renderMarkdownWithTrace(text, customTraceIndex) {
     html = escapeHtml(textWithPlaceholders).replace(/\n/g, "<br>");
   }
 
-  // Step 3: Replace placeholders with actual trace link HTML (after marked is done,
-  // so our HTML is inserted as-is and not escaped)
-  html = html.replace(/__TRACE_LINK_(\d+)__/g, (match, idxStr) => {
+  // Step 3: Replace placeholder spans with actual trace link HTML
+  html = html.replace(/<span data-trace-placeholder="(\d+)"><\/span>/g, (match, idxStr) => {
     const idx = parseInt(idxStr, 10);
     return traceReplacements[idx] !== undefined ? traceReplacements[idx] : "";
   });
