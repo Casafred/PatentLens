@@ -4983,44 +4983,114 @@ function jumpToFigure(figureNum, scope) {
     toggleSplitView('description', scope);
   }
 
-  // Wait for split-view to initialize, then select the image. Retry a few
-  // times if the viewer state/DOM is not ready yet. Previously when split-view
-  // was already open we used setTimeout(0) which could fire before the DOM
-  // was fully ready or before thumbs were queryable (e.g. when Google Translate
-  // wrapped the main image container in <font> tags, breaking parentElement
-  // traversal). We now use a robust query from the panel root and retry on
-  // both missing state AND missing DOM elements.
   var viewerId = 'sv_' + scope + '_description';
-  var trySelect = function(attempt) {
-    var state = _splitViewerState[viewerId];
-    if (!state) {
-      if (attempt < 10) setTimeout(function() { trySelect(attempt + 1); }, 100);
-      return;
-    }
-    // Find elements robustly — query from panel root instead of relying on
-    // parentElement traversal (which breaks if GT wraps elements in <font>).
-    var main = document.getElementById(viewerId + '_main');
-    var img = document.getElementById(viewerId + '_img');
-    var thumbsContainer = panel.querySelector('.pd-split-thumbs');
-    var thumbs = thumbsContainer ? thumbsContainer.querySelectorAll('.pd-split-thumb') : [];
-    var thumbEl = thumbs[imgIdx] || null;
-    if (!main || !img) {
-      // DOM not fully ready yet, retry
-      if (attempt < 10) setTimeout(function() { trySelect(attempt + 1); }, 100);
-      return;
-    }
-    splitViewSelectImg(viewerId, imgIdx, thumbEl);
-    // Ensure the drawings panel is scrolled into view so the user sees the
-    // figure immediately (relevant when the link is far up/down in long text).
+
+  // Directly perform the image switch without relying solely on _splitViewerState.
+  // We do DOM manipulation ourselves to ensure the image changes reliably even
+  // when split-view was already open before translation/link-regeneration.
+  function doSwitch() {
+    // 1. Find the drawings area and main image robustly within the panel
     var drawingsPanel = panel.querySelector('.pd-split-drawings');
+    if (!drawingsPanel) return false;
+
+    // Find the main <img> — search by id first, fall back to DOM traversal
+    var img = document.getElementById(viewerId + '_img');
+    if (!img) {
+      var mainEl = panel.querySelector('.pd-split-main-image img');
+      if (mainEl) img = mainEl;
+    }
+    if (!img) return false;
+
+    // 2. Set the new image source
+    var targetUrl = data.drawings[imgIdx];
+    if (targetUrl) {
+      img.src = targetUrl;
+    }
+
+    // 3. Update counter if present
+    var counter = document.getElementById(viewerId + '_counter');
+    if (counter) {
+      counter.textContent = (imgIdx + 1) + ' / ' + data.drawings.length;
+    }
+
+    // 4. Update nav buttons
+    var prevBtn = document.getElementById(viewerId + '_prev');
+    var nextBtn = document.getElementById(viewerId + '_next');
+    if (prevBtn) prevBtn.disabled = imgIdx === 0;
+    if (nextBtn) nextBtn.disabled = imgIdx === data.drawings.length - 1;
+
+    // 5. Update thumbnails: find all .pd-split-thumb in the panel
+    var allThumbs = drawingsPanel.querySelectorAll('.pd-split-thumb');
+    var targetThumb = null;
+    allThumbs.forEach(function(t) {
+      var tIdx = parseInt(t.getAttribute('data-drawing-idx'), 10);
+      if (!isNaN(tIdx) && tIdx === imgIdx) {
+        t.classList.add('active');
+        targetThumb = t;
+      } else {
+        t.classList.remove('active');
+      }
+    });
+    // Fallback: use array index if data-drawing-idx doesn't match
+    if (!targetThumb && allThumbs[imgIdx]) {
+      allThumbs.forEach(function(t) { t.classList.remove('active'); });
+      allThumbs[imgIdx].classList.add('active');
+      targetThumb = allThumbs[imgIdx];
+    }
+
+    // 6. Reset transform state if we have state
+    var state = _splitViewerState[viewerId];
+    if (state) {
+      state.currentIdx = imgIdx;
+      state.scale = 1;
+      state.rotation = 0;
+      state.tx = 0;
+      state.ty = 0;
+      applyImgTransform(viewerId);
+    } else {
+      // Reset transform directly on the image
+      img.style.transform = 'translate(0px, 0px) scale(1) rotate(0deg)';
+    }
+
+    // 7. Sync annotations if available
+    if (typeof ImageAnnotations !== 'undefined') {
+      try {
+        var listPanel = drawingsPanel.querySelector('.img-anno-list-panel');
+        if (listPanel) listPanel.remove();
+        ImageAnnotations.clearHighlight();
+        ImageAnnotations.syncAnnoLayer(viewerId);
+        ImageAnnotations.renderMarkers(viewerId);
+      } catch(e) { /* ignore annotation errors */ }
+    }
+
+    // 8. Scroll the drawings panel into view and scroll thumb into view
     if (drawingsPanel) {
       drawingsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
-  };
-  // When opening split-view fresh, give it more time (DOM creation + init).
-  // When already open, still use a small delay to let click event settle and
-  // to handle any pending DOM updates.
-  setTimeout(function() { trySelect(0); }, isSplit ? 50 : 250);
+    if (targetThumb) {
+      try {
+        targetThumb.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      } catch(e) {}
+    }
+
+    return true;
+  }
+
+  // Try to switch immediately (for already-open split-view), with retries.
+  // When freshly opening, give more time for DOM creation.
+  var attempts = 0;
+  var maxAttempts = isSplit ? 20 : 30;
+  var delay = isSplit ? 50 : 100;
+  function trySwitch() {
+    if (doSwitch()) return;
+    attempts++;
+    if (attempts < maxAttempts) {
+      setTimeout(trySwitch, delay);
+    }
+  }
+  // For already-open split-view, start trying immediately (next tick).
+  // For fresh open, wait for toggleSplitView to build the DOM.
+  setTimeout(trySwitch, isSplit ? 0 : 200);
 }
 
 // Fullscreen image viewer for patent drawings — reuses split-view controls & state
