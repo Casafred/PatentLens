@@ -17661,9 +17661,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const splash = document.getElementById("splash-screen");
     if (splash) {
       splash.style.opacity = "0";
+      splash.style.pointerEvents = "none";
       setTimeout(() => splash.remove(), 500);
     }
-  }, 4500);
+  }, 1500);
 });
 
 async function sendChatMessage() {
@@ -19675,8 +19676,8 @@ updateFloatingBallsVisibility();
 // ── Fallback splash-screen removal (in case DOMContentLoaded handler fails) ──
 setTimeout(() => {
   const splash = document.getElementById("splash-screen");
-  if (splash) { splash.style.opacity = "0"; setTimeout(() => splash.remove(), 500); }
-}, 8000);
+  if (splash) { splash.style.opacity = "0"; splash.style.pointerEvents = "none"; setTimeout(() => splash.remove(), 500); }
+}, 3000);
 
 // ================================================================
 //  Intelligent Field Extraction Mode (智能抽取)
