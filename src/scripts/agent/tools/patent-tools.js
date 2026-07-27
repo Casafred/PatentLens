@@ -52,7 +52,7 @@ var AgentPatentTools = (function () {
   }
 
   function detectClaimType(text, idx) {
-    if (!text) return idx === 0 ? "independent" : "dependent";
+    if (!text) return "independent";
     var t = String(text).trim();
     var head = t.substring(0, 300);
     if (/^(根据|如|按照|依据).*(权利要求|权项|claim|claims)/i.test(head)) return "dependent";
@@ -61,8 +61,9 @@ var AgentPatentTools = (function () {
     if (/に記載/.test(head)) return "dependent";
     if (/のいずれか/.test(head)) return "dependent";
     if (/前記|所述的/.test(t.substring(0, 80))) return "dependent";
-    if (/\bclaim\s+\d+/i.test(head)) return "dependent";
-    return idx === 0 ? "independent" : "dependent";
+    if (/\bclaims?\s+\d+/i.test(head)) return "dependent";
+    if (t.includes('根据权利要求') || t.includes('根據權利要求')) return "dependent";
+    return "independent";
   }
 
   function getCurrentPatentData() {

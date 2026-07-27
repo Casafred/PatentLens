@@ -54,16 +54,15 @@ var ComparisonUI = (function () {
 
     var canGoAnchor = items.length >= 1;
     var canPreview = selected.length >= 2 && anchor && !isLoading;
-    if (result && activeTab !== 'result') {
-      activeTab = 'result';
-    }
+    var hasResult = !!result;
+
     if (!isLoading && !result && activeTab === 'result') {
       activeTab = canPreview ? 'preview' : (canGoAnchor ? 'anchor' : 'prepare');
     }
-    if (!isLoading && !result && activeTab === 'preview' && !canPreview) {
+    if (!isLoading && !result && activeTab === 'preview' && !canPreview && !hasResult) {
       activeTab = canGoAnchor ? 'anchor' : 'prepare';
     }
-    if (!isLoading && !result && activeTab === 'anchor' && !canGoAnchor) {
+    if (!isLoading && activeTab === 'anchor' && !canGoAnchor && !hasResult && !canPreview) {
       activeTab = 'prepare';
     }
 
@@ -90,11 +89,13 @@ var ComparisonUI = (function () {
     html += '<div class="cmp-step-tabs">';
     html += renderStepTab('prepare', '①', '准备数据', '添加文本或查询专利权利要求', activeTab === 'prepare', true);
     html += '<div class="cmp-step-connector' + (canGoAnchor || activeTab !== 'prepare' ? ' done' : '') + '"></div>';
-    html += renderStepTab('anchor', '②', '选择锚点', '设置锚点与勾选比对项', activeTab === 'anchor', canGoAnchor || activeTab === 'anchor' || activeTab === 'preview' || activeTab === 'result');
-    html += '<div class="cmp-step-connector' + (canPreview || activeTab === 'preview' || activeTab === 'result' ? ' done' : '') + '"></div>';
-    html += renderStepTab('preview', '③', '预览确认', '确认锚点与并排对照', activeTab === 'preview', canPreview || activeTab === 'preview' || activeTab === 'result');
-    html += '<div class="cmp-step-connector' + (result ? ' done' : '') + '"></div>';
-    html += renderStepTab('result', '④', '分析结果', 'AI比对分析报告', activeTab === 'result', !!result);
+    var anchorEnabled = canGoAnchor || activeTab === 'anchor' || activeTab === 'preview' || activeTab === 'result' || hasResult;
+    html += renderStepTab('anchor', '②', '选择锚点', '设置锚点与勾选比对项', activeTab === 'anchor', anchorEnabled);
+    html += '<div class="cmp-step-connector' + (canPreview || hasResult || activeTab === 'preview' || activeTab === 'result' ? ' done' : '') + '"></div>';
+    var previewEnabled = canPreview || activeTab === 'preview' || activeTab === 'result' || hasResult;
+    html += renderStepTab('preview', '③', '预览确认', '确认锚点与并排对照', activeTab === 'preview', previewEnabled);
+    html += '<div class="cmp-step-connector' + (hasResult ? ' done' : '') + '"></div>';
+    html += renderStepTab('result', '④', '分析结果', 'AI比对分析报告', activeTab === 'result', hasResult);
     html += '</div>';
 
     html += '<div class="cmp-tab-content">';
@@ -261,10 +262,11 @@ var ComparisonUI = (function () {
       html += '  <span class="comparison-hint">确认锚点和比对项无误后，开始AI分析</span>';
       html += '  <button class="btn-primary comparison-run-btn" onclick="ComparisonUI.runComparison();">开始锚定比对</button>';
     } else if (activeTab === 'result') {
-      html += '  <button class="btn-secondary" onclick="ComparisonCore.setActiveTab(\'anchor\');ComparisonUI.render();">← 返回选择</button>';
+      html += '  <button class="btn-secondary" onclick="ComparisonCore.setActiveTab(\'preview\');ComparisonUI.render();">← 返回预览</button>';
+      html += '  <button class="btn-secondary" onclick="ComparisonCore.setActiveTab(\'anchor\');ComparisonUI.render();">← 调整选择</button>';
       html += '  <span style="flex:1;"></span>';
       if (result && result.markdownContent) {
-        html += '  <button class="btn-secondary" onclick="if(confirm(\'确定清空当前结果重新比对吗？\')){ComparisonCore.clearItems();ComparisonUI.render();}">重新比对</button>';
+        html += '  <button class="btn-secondary" onclick="if(confirm(\'确定清空当前结果重新比对吗？\')){ComparisonCore.setResult(null);ComparisonCore.setActiveTab(\'anchor\');ComparisonUI.render();}">重新比对</button>';
         html += '  <button class="btn-primary" onclick="ComparisonReport.exportHtml();">';
         html += '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:4px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
         html += '    导出HTML报告';
@@ -696,33 +698,6 @@ var ComparisonUI = (function () {
 
       html += '  <div class="comparison-result-content markdown-body">';
       html += result.htmlContent;
-      html += '  </div>';
-
-      html += '  <div class="comparison-result-originals">';
-      html += '    <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--text-secondary);">附录：原文完整对照</h3>';
-
-      html += '    <div class="comparison-result-anchor">';
-      html += '      <div class="comparison-sxs-col-header" style="margin-bottom:8px;"><svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px;margin-right:4px;vertical-align:-1px;color:#f59e0b;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>锚点：' + ComparisonUtils.escapeHtml(anchor.label) + '</div>';
-      html += '      <div class="comparison-original-block">' + formatTextForDisplay(anchor.originalText) + '</div>';
-      html += '    </div>';
-
-      var aiScores = result.aiSimilarityScores || {};
-      others.forEach(function(other) {
-        var sim = aiScores[other.label];
-        var simBadge;
-        if (sim !== null && sim !== undefined) {
-          var simColor = getSimilarityColor(sim);
-          var simLabel = getSimilarityLabel(sim);
-          simBadge = '<span class="comparison-sxs-sim" style="background:' + simColor.bg + ';color:' + simColor.fg + ';margin-left:8px;font-size:11px;padding:1px 8px;border-radius:10px;" title="AI语义相似度">' + Math.round(sim * 100) + '% ' + simLabel + '</span>';
-        } else {
-          simBadge = '<span class="comparison-sxs-sim" style="background:#f3f4f6;color:#6b7280;margin-left:8px;font-size:11px;padding:1px 8px;border-radius:10px;">—</span>';
-        }
-        html += '    <div class="comparison-result-other">';
-        html += '      <div class="comparison-sxs-col-header" style="margin-bottom:8px;">比对：' + ComparisonUtils.escapeHtml(other.label) + simBadge + '</div>';
-        html += '      <div class="comparison-original-block">' + formatTextForDisplay(other.originalText) + '</div>';
-        html += '    </div>';
-      });
-
       html += '  </div>';
       html += '</div>';
     }

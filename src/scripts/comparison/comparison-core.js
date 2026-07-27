@@ -445,7 +445,12 @@ var ComparisonCore = (function () {
       if (!_state.isAborted) {
         _state.aiSimilarityScores = parseAiSimilarityScores(resultContent);
         var aiSimMatrix = buildAiSimilarityMatrix(selected, anchor, _state.aiSimilarityScores);
-        var cleanMarkdown = resultContent.replace(/```json\s*\n?\{"similarityScores":[\s\S]*?\}\s*\n?```/g, '').trim();
+        var cleanMarkdown = resultContent
+          .replace(/##+\s*五[、.．]\s*相似度评分[^\n]*\n*/g, '')
+          .replace(/```json\s*\n?\{"similarityScores":[\s\S]*?\}\s*\n?```/g, '')
+          .replace(/注意：label必须[\s\S]*?(?=\n##|\n*$)/g, '')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
         _state.result = {
           sessionId: 'sess_' + Date.now(),
           timestamp: Date.now(),
@@ -540,8 +545,9 @@ var ComparisonCore = (function () {
     if (/に記載/.test(head)) return false;
     if (/のいずれか/.test(head)) return false;
     if (/前記|所述的/.test(text.substring(0, 80))) return false;
-    if (/\bclaim\s+\d+/i.test(head)) return false;
-    return idx === 0 ? true : false;
+    if (/\bclaims?\s+\d+/i.test(head)) return false;
+    if (text.includes('根据权利要求') || text.includes('根據權利要求')) return false;
+    return true;
   }
 
   function getLoadedPatents() {

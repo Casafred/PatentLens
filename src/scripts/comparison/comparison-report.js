@@ -22,7 +22,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC
 .item-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; background: #f8fafc; }
 .item-card h4 { font-size: 14px; font-weight: 600; color: #10b981; margin-bottom: 8px; }
 .item-card .patent-num { font-size: 12px; color: #64748b; margin-bottom: 8px; }
-.item-card .preview { font-size: 12px; color: #475569; line-height: 1.6; max-height: 80px; overflow: hidden; }
+.item-card .preview { font-size: 12px; color: #475569; line-height: 1.6; max-height: 80px; overflow: hidden; position: relative; }
+.item-card.expanded .preview { max-height: none; }
+.item-card .toggle-btn { font-size:11px; color:#10b981; cursor:pointer; margin-top:6px; display:inline-block; user-select:none; }
+.item-card .toggle-btn:hover { text-decoration:underline; }
+.item-card .full-text { display:none; font-size:12px; color:#334155; line-height:1.7; margin-top:8px; padding:10px; background:#fff; border-radius:6px; border:1px solid #e2e8f0; white-space:pre-wrap; word-break:break-word; }
+.item-card.expanded .full-text { display:block; }
+.item-card .zh-translation { display:none; font-size:12px; color:#1e40af; line-height:1.7; margin-top:8px; padding:10px; background:#eff6ff; border-radius:6px; border:1px solid #bfdbfe; white-space:pre-wrap; word-break:break-word; }
+.item-card.expanded .zh-translation { display:block; }
 .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; margin-left: 8px; }
 .badge.ind { background: #dcfce7; color: #16a34a; }
 .badge.dep { background: #f1f5f9; color: #64748b; }
@@ -62,6 +69,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC
 .original-item { margin-bottom: 24px; padding: 16px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #94a3b8; }
 .original-item h4 { font-size: 14px; margin-bottom: 10px; color: #475569; }
 .original-item pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.8; color: #334155; }
+.original-item .orig-label { font-size:12px;color:#64748b;margin:12px 0 6px;font-weight:600; }
+.original-item .orig-text { background:#fff;padding:12px;border-radius:6px;border:1px solid #e2e8f0; }
+.original-item .trans-text { background:#eff6ff;padding:12px;border-radius:6px;border:1px solid #bfdbfe;color:#1e40af;margin-top:8px; }
+.original-item .no-trans { color:#94a3b8;font-size:12px;font-style:italic;margin-top:8px; }
 .footer { padding: 20px 40px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; }
 @media print { body { background: white; padding: 0; } .container { box-shadow: none; } .toolbar { display: none; } }
 @media (max-width: 768px) { body { padding: 10px; } .header { padding: 20px; } .content { padding: 20px; } .items-summary { grid-template-columns: 1fr; } }
@@ -106,7 +117,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC
 
     html += '  <div class="toolbar">\n';
     html += '    <button onclick="window.print()">🖨️ 打印/导出PDF</button>\n';
-    html += '    <button onclick="toggleOriginals()" id="toggle-org-btn">📄 显示/隐藏原文</button>\n';
+    html += '    <button onclick="toggleOriginals()" id="toggle-org-btn" class="active">📄 隐藏附录原文</button>\n';
     html += '  </div>\n';
 
     html += '  <div class="content">\n';
@@ -125,6 +136,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC
 
     items.forEach(function(item, idx) {
       var isAnchor = item.id === anchorId;
+      var cardId = 'card-' + idx;
       var badge = isAnchor
         ? '<span class="badge anchor">⭐ 锚点</span>'
         : (item.source === 'patent'
@@ -132,12 +144,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC
             ? '<span class="badge ind">独权</span>'
             : '<span class="badge dep">从权</span>')
           : '<span class="badge manual">手动输入</span>');
-      html += '      <div class="item-card' + (isAnchor ? ' style="border-color:#f59e0b;box-shadow:0 0 0 1px #f59e0b;"' : '') + '">\n';
+      html += '      <div class="item-card' + (isAnchor ? '" style="border-color:#f59e0b;box-shadow:0 0 0 1px #f59e0b;"' : '"') + ' id="' + cardId + '">\n';
       html += '        <h4>' + (isAnchor ? '⭐ ' : '') + ComparisonUtils.escapeHtml(item.label) + badge + simBadgeHtml(item.label, isAnchor) + '</h4>\n';
       if (item.patentNumber) {
         html += '        <div class="patent-num">专利号: ' + ComparisonUtils.escapeHtml(item.patentNumber) + '</div>\n';
       }
       html += '        <div class="preview">' + ComparisonUtils.escapeHtml(ComparisonUtils.truncateText(item.originalText, 200)) + '</div>\n';
+      html += '        <span class="toggle-btn" onclick="toggleCard(\'' + cardId + '\')">▼ 展开查看完整原文</span>\n';
+      html += '        <div class="full-text">' + ComparisonUtils.escapeHtml(item.originalText) + '</div>\n';
+      html += '        <div class="zh-translation" id="trans-' + idx + '">中文翻译见下方详细分析部分引用片段</div>\n';
       html += '      </div>\n';
     });
     html += '    </div>\n';
@@ -180,14 +195,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC
     html += result.htmlContent;
     html += '    </div>\n';
 
-    html += '    <div class="original-text" id="originals-section" style="display:none;">\n';
-    html += '      <h2>附录：原文对照</h2>\n';
+    html += '    <div class="original-text" id="originals-section">\n';
+    html += '      <h2>附录：各比对项原文与中文翻译</h2>\n';
+    html += '      <p style="font-size:12px;color:#64748b;margin-bottom:16px;">以下为各参与比对项的完整原文，中文翻译在详细分析部分以"原文片段（中文翻译：...）"形式呈现。</p>\n';
     items.forEach(function(item, idx) {
       var isAnchor = item.id === anchorId;
       var sBadge = simBadgeHtml(item.label, isAnchor);
       html += '      <div class="original-item' + (isAnchor ? '" style="border-left-color:#f59e0b;background:#fffbeb;"' : '') + '">\n';
       html += '        <h4>' + (isAnchor ? '⭐ 锚点：' : '比对：') + ComparisonUtils.escapeHtml(item.label) + sBadge + '</h4>\n';
-      html += '        <pre>' + ComparisonUtils.escapeHtml(item.originalText) + '</pre>\n';
+      if (item.patentNumber) {
+        html += '        <div style="font-size:12px;color:#64748b;margin-bottom:8px;">专利号: ' + ComparisonUtils.escapeHtml(item.patentNumber) + (item.claimNumber ? ' | 权' + item.claimNumber : '') + '</div>\n';
+      }
+      html += '        <div class="orig-label">📄 原文</div>\n';
+      html += '        <div class="orig-text"><pre style="margin:0;">' + ComparisonUtils.escapeHtml(item.originalText) + '</pre></div>\n';
+      var isZh = /[\u4e00-\u9fa5]/.test(item.originalText.substring(0, 200));
+      if (!isZh) {
+        html += '        <div class="no-trans">💡 中文翻译已在上方详细分析中以引用片段形式给出</div>\n';
+      }
       html += '      </div>\n';
     });
     html += '    </div>\n';
@@ -201,8 +225,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC
     html += 'function toggleOriginals() {\n';
     html += '  var el = document.getElementById("originals-section");\n';
     html += '  var btn = document.getElementById("toggle-org-btn");\n';
-    html += '  if (el.style.display === "none") { el.style.display = "block"; btn.classList.add("active"); }\n';
-    html += '  else { el.style.display = "none"; btn.classList.remove("active"); }\n';
+    html += '  if (el.style.display === "none") { el.style.display = "block"; btn.classList.add("active"); btn.textContent = "📄 隐藏附录原文"; }\n';
+    html += '  else { el.style.display = "none"; btn.classList.remove("active"); btn.textContent = "📄 显示附录原文"; }\n';
+    html += '}\n';
+    html += 'function toggleCard(id) {\n';
+    html += '  var card = document.getElementById(id);\n';
+    html += '  var btn = card.querySelector(".toggle-btn");\n';
+    html += '  if (card.classList.contains("expanded")) {\n';
+    html += '    card.classList.remove("expanded");\n';
+    html += '    btn.textContent = "▼ 展开查看完整原文";\n';
+    html += '  } else {\n';
+    html += '    card.classList.add("expanded");\n';
+    html += '    btn.textContent = "▲ 收起";\n';
+    html += '  }\n';
     html += '}\n';
 
     html += 'document.querySelectorAll(".analysis table tr").forEach(function(tr) {\n';
