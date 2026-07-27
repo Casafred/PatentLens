@@ -17711,15 +17711,15 @@ document.addEventListener("DOMContentLoaded", () => {
   if (mergeExportOverlay) mergeExportOverlay.addEventListener("click", () => mergeExportModal.classList.add("hidden"));
   if (mergeExportDoBtn) mergeExportDoBtn.addEventListener("click", doMergeExport);
 
-  // Splash screen - show briefly then remove (minimize blocking user interaction)
+  // Splash screen - wait for the GIF animation to finish before fading out
   setTimeout(() => {
     const splash = document.getElementById("splash-screen");
     if (splash) {
       splash.style.opacity = "0";
       splash.style.pointerEvents = "none";
-      setTimeout(() => splash.remove(), 300);
+      setTimeout(() => splash.remove(), 500);
     }
-  }, 100);
+  }, 3500);
 });
 
 async function sendChatMessage() {
@@ -19731,8 +19731,8 @@ updateFloatingBallsVisibility();
 // ── Fallback splash-screen removal (in case DOMContentLoaded handler fails) ──
 setTimeout(() => {
   const splash = document.getElementById("splash-screen");
-  if (splash) { splash.style.opacity = "0"; splash.style.pointerEvents = "none"; setTimeout(() => splash.remove(), 300); }
-}, 800);
+  if (splash) { splash.style.opacity = "0"; splash.style.pointerEvents = "none"; setTimeout(() => splash.remove(), 500); }
+}, 4000);
 
 // ================================================================
 //  Intelligent Field Extraction Mode (智能抽取)
