@@ -16,6 +16,7 @@
   height: calc(100vh - 140px);
   min-height: 500px;
   box-sizing: border-box;
+  position: relative;
 }
 
 .cmp-step-tabs {
@@ -229,6 +230,128 @@
   border-radius: 10px;
   font-weight: 500;
   margin-left: 4px;
+}
+
+.comparison-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+/* ===== 历史记录悬浮下拉面板 ===== */
+.cmp-history-btn {
+  position: relative;
+}
+
+.cmp-history-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 20px;
+  width: 380px;
+  max-height: 420px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cmp-history-dropdown.open {
+  display: flex;
+}
+
+.cmp-history-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--bg-secondary, #f9fafb);
+}
+
+.cmp-history-dropdown-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px;
+}
+
+.cmp-history-empty {
+  text-align: center;
+  padding: 30px 20px;
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.cmp-history-dropdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: default;
+  transition: background 0.15s;
+}
+
+.cmp-history-dropdown-item:hover {
+  background: var(--bg-hover, rgba(0,0,0,0.04));
+}
+
+.cmp-history-dd-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.cmp-history-dd-date {
+  font-size: 11px;
+  color: var(--text-secondary, #6b7280);
+  font-weight: 500;
+}
+
+.cmp-history-dd-patents {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmp-history-dd-meta {
+  font-size: 11px;
+  color: var(--text-tertiary, #9ca3af);
+}
+
+.cmp-history-dd-item-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ===== 锚点TAB提示 ===== */
+.cmp-anchor-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, color-mix(in srgb, #f59e0b 8%, var(--bg-card)), color-mix(in srgb, #f59e0b 3%, var(--bg-card)));
+  border: 1px solid color-mix(in srgb, #f59e0b 25%, var(--border-color));
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.cmp-anchor-hint strong {
+  color: #d97706;
 }
 
 .comparison-usage-hint {
@@ -882,12 +1005,37 @@
   margin-top: 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  max-height: 400px;
+  max-height: 500px;
   overflow-y: auto;
 }
 
 .claims-selector.hidden {
   display: none;
+}
+
+.claims-selector-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.claims-selector-title {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  color: var(--text-primary);
+}
+
+.claims-selector-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .patent-claims-group {
@@ -928,6 +1076,18 @@
   margin-left: auto;
   font-size: 12px;
   color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.patent-title-text {
+  color: var(--text-secondary);
+  font-weight: normal;
+  margin-left: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400px;
 }
 
 .patent-claims-list {
@@ -945,10 +1105,34 @@
   padding: 8px 16px;
   cursor: pointer;
   transition: background 0.15s;
+  position: relative;
 }
 
 .claim-select-item:hover {
   background: var(--bg-hover);
+}
+
+#cmp-claim-tooltip {
+  position: fixed;
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 600px;
+  max-height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  z-index: 99999;
+  pointer-events: none;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  display: none;
+}
+
+#cmp-claim-tooltip.show {
+  display: block;
 }
 
 .claim-select-checkbox {

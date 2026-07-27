@@ -9,6 +9,66 @@ var ComparisonInput = (function () {
   var _selectedClaims = {};
   var _failedPatents = {};
   var _manualTexts = {};
+  var _tooltipEl = null;
+  var _tooltipHideTimer = null;
+
+  function _getTooltipEl() {
+    if (!_tooltipEl) {
+      _tooltipEl = document.getElementById('cmp-claim-tooltip');
+      if (!_tooltipEl) {
+        _tooltipEl = document.createElement('div');
+        _tooltipEl.id = 'cmp-claim-tooltip';
+        document.body.appendChild(_tooltipEl);
+      }
+    }
+    return _tooltipEl;
+  }
+
+  function _showClaimTooltip(text, event) {
+    if (_tooltipHideTimer) { clearTimeout(_tooltipHideTimer); _tooltipHideTimer = null; }
+    var tip = _getTooltipEl();
+    tip.textContent = text;
+    tip.classList.add('show');
+    var x = event.clientX + 12;
+    var y = event.clientY + 16;
+    var maxW = 600;
+    var w = Math.min(maxW, window.innerWidth - 24);
+    if (x + w > window.innerWidth - 12) x = window.innerWidth - w - 12;
+    var h = tip.offsetHeight;
+    if (y + h > window.innerHeight - 12) y = event.clientY - h - 8;
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+    tip.style.maxWidth = w + 'px';
+  }
+
+  function _hideClaimTooltip() {
+    var tip = _getTooltipEl();
+    tip.classList.remove('show');
+  }
+
+  function _bindClaimTooltip(container) {
+    if (!container) return;
+    var selector = container.querySelector('.claims-selector');
+    if (!selector) selector = container;
+    selector.addEventListener('mouseover', function(e) {
+      var item = e.target.closest('.claim-select-item');
+      if (item && item.dataset.fullText) {
+        _showClaimTooltip(item.dataset.fullText, e);
+      }
+    });
+    selector.addEventListener('mousemove', function(e) {
+      var item = e.target.closest('.claim-select-item');
+      if (item && item.dataset.fullText) {
+        _showClaimTooltip(item.dataset.fullText, e);
+      }
+    });
+    selector.addEventListener('mouseout', function(e) {
+      var item = e.target.closest('.claim-select-item');
+      if (item) {
+        _tooltipHideTimer = setTimeout(_hideClaimTooltip, 50);
+      }
+    });
+  }
 
   function renderInputArea(container, inputMode) {
     if (!container) return;
@@ -87,7 +147,7 @@ var ComparisonInput = (function () {
     ComparisonCore.setManualInput('', '');
     var items = ComparisonCore.getItems();
     labelInput.placeholder = '文本' + (items.length + 1);
-    ComparisonUI.render();
+    ComparisonUI.scrollToAnchorTab();
   }
 
   function renderPatentInput(container) {
@@ -394,7 +454,7 @@ var ComparisonInput = (function () {
     delete _manualTexts[pn];
     var claimsContainer = document.getElementById('cmp-claims-selector');
     _renderFailedPatents(claimsContainer);
-    ComparisonUI.render();
+    ComparisonUI.scrollToAnchorTab();
   }
 
   async function fetchPatents() {
@@ -479,6 +539,7 @@ var ComparisonInput = (function () {
 
     if (Object.keys(fetchedPatents).length > 0) {
       renderClaimsSelector(claimsContainer, fetchedPatents);
+      ComparisonUI.scrollToClaimsSelector();
     } else {
       if (claimsContainer) claimsContainer.innerHTML = '';
     }
@@ -491,7 +552,18 @@ var ComparisonInput = (function () {
   function renderClaimsSelector(container, patents) {
     if (!container) return;
 
-    var html = '<div class="claims-selector" style="margin-top:16px;">';
+    var html = '<div class="claims-selector" style="margin-top:16px;" id="cmp-claims-selector-inner">';
+
+    html += '<div class="claims-selector-toolbar">';
+    html += '  <span class="claims-selector-title">';
+    html += '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:-2px;margin-right:4px;"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+    html += '    权利要求列表';
+    html += '  </span>';
+    html += '  <div class="claims-selector-actions">';
+    html += '    <button class="btn-secondary btn-small" onclick="ComparisonInput.expandAllPatentGroups()">展开全部</button>';
+    html += '    <button class="btn-secondary btn-small" onclick="ComparisonInput.collapseAllPatentGroups()">折叠全部</button>';
+    html += '  </div>';
+    html += '</div>';
 
     Object.keys(patents).forEach(function(patentNum) {
       var patent = patents[patentNum];
@@ -502,15 +574,15 @@ var ComparisonInput = (function () {
       });
 
       html += '<div class="patent-claims-group" data-patent="' + patentNum + '">';
-      html += '  <div class="patent-claims-header" onclick="ComparisonInput.togglePatentGroup(this)">';
+      html += '  <div class="patent-claims-header collapsed" onclick="ComparisonInput.togglePatentGroup(this)">';
       html += '    <svg class="patent-claims-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>';
       html += '    <strong>' + ComparisonUtils.escapeHtml(patentNum) + '</strong>';
       if (patent.title) {
-        html += '  <span style="color:var(--text-secondary);font-weight:normal;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:400px;">' + ComparisonUtils.escapeHtml(patent.title) + '</span>';
+        html += '  <span class="patent-title-text">' + ComparisonUtils.escapeHtml(patent.title) + '</span>';
       }
-      html += '    <span class="patent-claims-count">' + claims.length + '项权利要求 (' + indCount + '项独权)</span>';
+      html += '    <span class="patent-claims-count">' + claims.length + '项 (' + indCount + '项独权)</span>';
       html += '  </div>';
-      html += '  <div class="patent-claims-list">';
+      html += '  <div class="patent-claims-list collapsed">';
 
       claims.forEach(function(claim, idx) {
         var isInd = ComparisonCore.isIndependentClaim(claim, idx);
@@ -520,11 +592,12 @@ var ComparisonInput = (function () {
           _selectedClaims[key] = isInd;
         }
         var isChecked = _selectedClaims[key];
+        var fullText = (claim.text || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-        html += '<label class="claim-select-item">';
+        html += '<label class="claim-select-item" data-full-text="' + fullText + '">';
         html += '  <input type="checkbox" class="claim-select-checkbox" data-patent="' + patentNum + '" data-claim-num="' + claimNum + '" data-claim-idx="' + idx + '" ' + (isChecked ? 'checked' : '') + ' onchange="ComparisonInput.toggleClaimSelect(this)">';
         html += '  <div class="claim-select-content">';
-        html += '    <span class="claim-select-num">权' + claimNum + (isInd ? ' (独权)' : ' (从权)') + '</span>';
+        html += '    <span class="claim-select-num">' + claimNum + (isInd ? ' 独权' : ' 从权') + '</span>';
         html += '    <span class="claim-select-text">' + ComparisonUtils.escapeHtml(ComparisonUtils.truncateText(claim.text, 150)) + '</span>';
         html += '  </div>';
         html += '</label>';
@@ -537,13 +610,36 @@ var ComparisonInput = (function () {
     html += '</div>';
 
     html += '<div style="display:flex;gap:8px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">';
-    html += '  <button class="btn-primary" onclick="ComparisonInput.addSelectedClaims()">添加选中权利要求到比对列表</button>';
+    html += '  <button class="btn-primary" onclick="ComparisonInput.addSelectedClaims()">添加选中权利要求到比对列表 →</button>';
     html += '  <button class="btn-secondary" onclick="ComparisonInput.selectAllClaims(true)">全选独权</button>';
     html += '  <button class="btn-secondary" onclick="ComparisonInput.selectAllClaims(false)">全选/取消全选</button>';
     html += '</div>';
 
     container.innerHTML = html;
     container._patentsData = patents;
+    _bindClaimTooltip(container);
+  }
+
+  function expandAllPatentGroups() {
+    var container = document.getElementById('cmp-claims-selector-inner');
+    if (!container) return;
+    var headers = container.querySelectorAll('.patent-claims-header');
+    headers.forEach(function(h) {
+      h.classList.remove('collapsed');
+      var list = h.nextElementSibling;
+      if (list) list.classList.remove('collapsed');
+    });
+  }
+
+  function collapseAllPatentGroups() {
+    var container = document.getElementById('cmp-claims-selector-inner');
+    if (!container) return;
+    var headers = container.querySelectorAll('.patent-claims-header');
+    headers.forEach(function(h) {
+      h.classList.add('collapsed');
+      var list = h.nextElementSibling;
+      if (list) list.classList.add('collapsed');
+    });
   }
 
   function _restoreClaimSelections() {
@@ -644,7 +740,7 @@ var ComparisonInput = (function () {
     });
 
     if (addedCount > 0) {
-      ComparisonUI.render();
+      ComparisonUI.scrollToAnchorTab();
     } else {
       alert('请至少选择一项权利要求');
     }
@@ -684,6 +780,8 @@ var ComparisonInput = (function () {
     retryAllFailed: retryAllFailed,
     showManualInput: showManualInput,
     updateManualText: updateManualText,
-    addManualTextForPatent: addManualTextForPatent
+    addManualTextForPatent: addManualTextForPatent,
+    expandAllPatentGroups: expandAllPatentGroups,
+    collapseAllPatentGroups: collapseAllPatentGroups
   };
 })();

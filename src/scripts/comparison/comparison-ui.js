@@ -2,7 +2,7 @@
  * PatentLens - 智能比对模块 - UI渲染
  * Copyright (c) 2026 Alfred Shi. All rights reserved.
  * @author Alfred Shi
- * @version 260729
+ * @version 260727
  */
 
 var ComparisonUI = (function () {
@@ -10,6 +10,8 @@ var ComparisonUI = (function () {
   var _streamContent = '';
   var _onStreamUpdate = null;
   var _initialized = false;
+  var _historyDropdownOpen = false;
+  var _lastActiveTab = 'prepare';
 
   function getContainer() {
     if (!_container) {
@@ -38,6 +40,10 @@ var ComparisonUI = (function () {
     var container = getContainer();
     if (!container) return;
 
+    var oldTabContent = container.querySelector('.cmp-tab-content');
+    var savedScrollTop = oldTabContent ? oldTabContent.scrollTop : 0;
+    var prevActiveTab = _lastActiveTab;
+
     var items = ComparisonCore.getItems();
     var selected = ComparisonCore.getSelectedItems();
     var anchor = ComparisonCore.getAnchor();
@@ -46,13 +52,23 @@ var ComparisonUI = (function () {
     var inputMode = ComparisonCore.getState().inputMode;
     var activeTab = ComparisonCore.getActiveTab();
 
+    var canGoAnchor = items.length >= 1;
     var canPreview = selected.length >= 2 && anchor && !isLoading;
     if (result && activeTab !== 'result') {
       activeTab = 'result';
     }
     if (!isLoading && !result && activeTab === 'result') {
-      activeTab = canPreview ? 'preview' : 'prepare';
+      activeTab = canPreview ? 'preview' : (canGoAnchor ? 'anchor' : 'prepare');
     }
+    if (!isLoading && !result && activeTab === 'preview' && !canPreview) {
+      activeTab = canGoAnchor ? 'anchor' : 'prepare';
+    }
+    if (!isLoading && !result && activeTab === 'anchor' && !canGoAnchor) {
+      activeTab = 'prepare';
+    }
+
+    var tabChanged = (activeTab !== prevActiveTab);
+    _lastActiveTab = activeTab;
 
     var html = '';
 
@@ -62,21 +78,31 @@ var ComparisonUI = (function () {
     html += '    智能比对';
     html += '    <span class="comparison-mode-badge">锚定模式</span>';
     html += '  </div>';
-    html += '  <button class="btn-secondary" onclick="ComparisonCore.clearItems();ComparisonUI.render();">清空全部</button>';
+    html += '  <div class="comparison-header-actions">';
+    html += '    <button class="btn-secondary btn-small cmp-history-btn" onclick="ComparisonUI.toggleHistoryDropdown(event)" title="比对历史记录">';
+    html += '      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:4px;vertical-align:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    html += '      历史';
+    html += '    </button>';
+    html += '    <button class="btn-secondary btn-small" onclick="ComparisonCore.clearItems();ComparisonUI.render();">清空全部</button>';
+    html += '  </div>';
     html += '</div>';
 
     html += '<div class="cmp-step-tabs">';
     html += renderStepTab('prepare', '①', '准备数据', '添加文本或查询专利权利要求', activeTab === 'prepare', true);
-    html += '<div class="cmp-step-connector' + (canPreview || activeTab !== 'prepare' ? ' done' : '') + '"></div>';
-    html += renderStepTab('preview', '②', '预览确认', '确认锚点与并排对照', activeTab === 'preview', canPreview || activeTab === 'preview' || activeTab === 'result');
+    html += '<div class="cmp-step-connector' + (canGoAnchor || activeTab !== 'prepare' ? ' done' : '') + '"></div>';
+    html += renderStepTab('anchor', '②', '选择锚点', '设置锚点与勾选比对项', activeTab === 'anchor', canGoAnchor || activeTab === 'anchor' || activeTab === 'preview' || activeTab === 'result');
+    html += '<div class="cmp-step-connector' + (canPreview || activeTab === 'preview' || activeTab === 'result' ? ' done' : '') + '"></div>';
+    html += renderStepTab('preview', '③', '预览确认', '确认锚点与并排对照', activeTab === 'preview', canPreview || activeTab === 'preview' || activeTab === 'result');
     html += '<div class="cmp-step-connector' + (result ? ' done' : '') + '"></div>';
-    html += renderStepTab('result', '③', '分析结果', 'AI比对分析报告', activeTab === 'result', !!result);
+    html += renderStepTab('result', '④', '分析结果', 'AI比对分析报告', activeTab === 'result', !!result);
     html += '</div>';
 
     html += '<div class="cmp-tab-content">';
 
     if (activeTab === 'prepare') {
-      html += renderPrepareTab(inputMode, items, selected, anchor);
+      html += renderPrepareTab(inputMode);
+    } else if (activeTab === 'anchor') {
+      html += renderAnchorTab(items, selected, anchor);
     } else if (activeTab === 'preview') {
       html += renderPreviewTab(selected, anchor);
     } else if (activeTab === 'result') {
@@ -85,10 +111,21 @@ var ComparisonUI = (function () {
 
     html += '</div>';
 
-    html += renderActionBar(activeTab, isLoading, selected, anchor, result, canPreview);
+    html += renderActionBar(activeTab, isLoading, selected, anchor, result, canPreview, canGoAnchor);
+
+    html += renderHistoryDropdown();
 
     container.innerHTML = html;
     bindEvents(container);
+
+    var newTabContent = container.querySelector('.cmp-tab-content');
+    if (newTabContent) {
+      if (tabChanged) {
+        newTabContent.scrollTop = 0;
+      } else if (savedScrollTop > 0) {
+        newTabContent.scrollTop = savedScrollTop;
+      }
+    }
 
     if (activeTab === 'prepare') {
       ComparisonInput.renderInputArea(document.getElementById('comparison-input-area'), inputMode);
@@ -113,7 +150,7 @@ var ComparisonUI = (function () {
     return html;
   }
 
-  function renderPrepareTab(inputMode, items, selected, anchor) {
+  function renderPrepareTab(inputMode) {
     var html = '';
 
     html += '<div class="comparison-input-tabs">';
@@ -122,7 +159,16 @@ var ComparisonUI = (function () {
     html += '</div>';
     html += '<div id="comparison-input-area"></div>';
 
-    html += renderHistoryPanel();
+    return html;
+  }
+
+  function renderAnchorTab(items, selected, anchor) {
+    var html = '';
+
+    html += '<div class="cmp-anchor-hint">';
+    html += '  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--accent);flex-shrink:0;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+    html += '  <span>点击项右侧的 ⭐ 按钮将该项设为<strong>锚点</strong>（比对基准），勾选复选框选择需要参与比对的项。至少需要选中2项（含锚点）才能进入下一步。</span>';
+    html += '</div>';
 
     html += '<div class="comparison-items-panel">';
     html += '  <div class="comparison-items-header">';
@@ -138,12 +184,12 @@ var ComparisonUI = (function () {
     }
     html += '    </div>';
     html += '  </div>';
-    html += '  <div class="comparison-items-list" style="max-height:400px;overflow-y:auto;">';
+    html += '  <div class="comparison-items-list" style="max-height:none;overflow-y:visible;">';
 
     if (items.length === 0) {
       html += '    <div class="comparison-empty-list">';
       html += '      <p>暂无待比对项</p>';
-      html += '      <p style="font-size:12px;margin-top:8px;">通过上方"手动输入文本"添加，或使用"专利号查询"导入权利要求。至少需要2项（含锚点）才能开始比对。</p>';
+      html += '      <p style="font-size:12px;margin-top:8px;">请在"①准备数据"步骤中通过手动输入或专利号查询添加比对项。</p>';
       html += '    </div>';
     } else {
       items.forEach(function(item, idx) {
@@ -177,7 +223,7 @@ var ComparisonUI = (function () {
     return html;
   }
 
-  function renderActionBar(activeTab, isLoading, selected, anchor, result, canPreview) {
+  function renderActionBar(activeTab, isLoading, selected, anchor, result, canPreview, canGoAnchor) {
     var html = '<div class="cmp-action-bar">';
 
     if (isLoading) {
@@ -188,23 +234,34 @@ var ComparisonUI = (function () {
       html += '  <button class="btn-danger" onclick="ComparisonCore.abort()">中止比对</button>';
     } else if (activeTab === 'prepare') {
       var hint = '';
-      var canGoNext = selected.length >= 2 && anchor;
-      if (!anchor) {
-        hint = '请先点击 ⭐ 按钮选择一个文本作为锚点（比对基准）';
-      } else if (selected.length < 2) {
-        hint = '请至少勾选2项（含锚点）才能进入预览';
+      var items = ComparisonCore.getItems();
+      if (items.length === 0) {
+        hint = '请先添加文本或查询专利权利要求';
       } else {
-        hint = '锚点: ' + ComparisonUtils.truncateText(anchor.label, 30) + '，已选 ' + selected.length + ' 项';
+        hint = '已添加 ' + items.length + ' 项，可继续添加或进入下一步选择锚点';
       }
       html += '  <span class="comparison-hint">' + hint + '</span>';
-      html += '  <button class="btn-primary" onclick="ComparisonCore.setActiveTab(\'preview\');ComparisonUI.render();" ' + (canGoNext ? '' : 'disabled') + '>下一步：预览确认 →</button>';
+      html += '  <button class="btn-primary" onclick="ComparisonCore.setActiveTab(\'anchor\');ComparisonUI.render();" ' + (canGoAnchor ? '' : 'disabled') + '>下一步：选择锚点 →</button>';
+    } else if (activeTab === 'anchor') {
+      var hint2 = '';
+      if (!anchor) {
+        hint2 = '请先点击 ⭐ 按钮选择一个文本作为锚点（比对基准）';
+      } else if (selected.length < 2) {
+        hint2 = '请至少勾选2项（含锚点）才能进入预览';
+      } else {
+        hint2 = '锚点: ' + ComparisonUtils.truncateText(anchor.label, 30) + '，已选 ' + selected.length + ' 项';
+      }
+      html += '  <button class="btn-secondary" onclick="ComparisonCore.setActiveTab(\'prepare\');ComparisonUI.render();">← 返回准备</button>';
+      html += '  <span class="comparison-hint">' + hint2 + '</span>';
+      html += '  <span style="flex:1;"></span>';
+      html += '  <button class="btn-primary" onclick="ComparisonCore.setActiveTab(\'preview\');ComparisonUI.render();" ' + (canPreview ? '' : 'disabled') + '>下一步：预览确认 →</button>';
     } else if (activeTab === 'preview') {
-      html += '  <button class="btn-secondary" onclick="ComparisonCore.setActiveTab(\'prepare\');ComparisonUI.render();">← 返回修改</button>';
+      html += '  <button class="btn-secondary" onclick="ComparisonCore.setActiveTab(\'anchor\');ComparisonUI.render();">← 返回修改</button>';
       html += '  <span style="flex:1;"></span>';
       html += '  <span class="comparison-hint">确认锚点和比对项无误后，开始AI分析</span>';
       html += '  <button class="btn-primary comparison-run-btn" onclick="ComparisonUI.runComparison();">开始锚定比对</button>';
     } else if (activeTab === 'result') {
-      html += '  <button class="btn-secondary" onclick="ComparisonCore.setActiveTab(\'prepare\');ComparisonUI.render();">← 返回准备</button>';
+      html += '  <button class="btn-secondary" onclick="ComparisonCore.setActiveTab(\'anchor\');ComparisonUI.render();">← 返回选择</button>';
       html += '  <span style="flex:1;"></span>';
       if (result && result.markdownContent) {
         html += '  <button class="btn-secondary" onclick="if(confirm(\'确定清空当前结果重新比对吗？\')){ComparisonCore.clearItems();ComparisonUI.render();}">重新比对</button>';
@@ -221,65 +278,67 @@ var ComparisonUI = (function () {
     return html;
   }
 
-  var _latestHistoryId = null;
-
-  function renderHistoryPanel() {
+  function renderHistoryDropdown() {
     var history = ComparisonCore.history.getAll();
-    var hasRecords = history.length > 0;
-    var isExpanded = hasRecords;
-    var html = '<div class="comparison-history-panel">';
-    html += '<div class="comparison-history-header" onclick="ComparisonUI.toggleHistoryList();">';
-    html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-    html += '<span>比对历史记录 (' + history.length + ')</span>';
-    if (hasRecords) {
-      html += '<span style="font-size:11px;color:var(--accent);background:var(--accent-light, rgba(16,185,129,0.1));padding:1px 6px;border-radius:4px;margin-left:6px;">点击恢复查看</span>';
+    var html = '<div id="cmp-history-dropdown" class="cmp-history-dropdown' + (_historyDropdownOpen ? ' open' : '') + '" onclick="event.stopPropagation();">';
+    html += '  <div class="cmp-history-dropdown-header">';
+    html += '    <span>比对历史记录 (' + history.length + ')</span>';
+    if (history.length > 0) {
+      html += '    <button class="btn-secondary btn-small" onclick="if(confirm(\'确定清空全部历史？\')){ComparisonCore.history.clear();ComparisonUI.render();}" style="color:#ef4444;border-color:#fca5a5;font-size:11px;padding:2px 8px;">清空全部</button>';
     }
-    html += '<span class="comparison-history-toggle" id="cmp-history-toggle-text">' + (isExpanded ? '收起' : '展开') + '</span>';
-    html += '</div>';
-    html += '<div id="cmp-history-list" style="display:' + (isExpanded ? 'block' : 'none') + ';">';
-    if (!hasRecords) {
-      html += '<div style="padding:12px;text-align:center;color:var(--text-secondary);font-size:12px;">暂无比对历史记录，完成一次比对后将自动保存</div>';
+    html += '  </div>';
+    html += '  <div class="cmp-history-dropdown-list">';
+    if (history.length === 0) {
+      html += '  <div class="cmp-history-empty">暂无比对历史记录</div>';
     } else {
-      history.forEach(function(entry, idx) {
+      history.forEach(function(entry) {
         var date = new Date(entry.timestamp || 0);
         var dateStr = (date.getMonth() + 1) + '/' + date.getDate() + ' ' + String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
         var patentStr = (entry.patentNumbers || []).join(', ');
-        if (patentStr.length > 40) patentStr = patentStr.substring(0, 40) + '...';
-        var isLatest = idx === 0;
-        html += '<div class="comparison-history-item' + (isLatest ? ' comparison-history-item-latest' : '') + '" data-history-id="' + entry.id + '">';
-        if (isLatest) {
-          html += '<span style="position:absolute;top:6px;right:6px;font-size:10px;color:#fff;background:var(--accent);padding:0px 6px;border-radius:3px;">最新</span>';
-        }
-        html += '<div class="comparison-history-item-info">';
-        html += '<span class="comparison-history-date">' + dateStr + '</span>';
-        html += '<span class="comparison-history-patents">' + ComparisonUtils.escapeHtml(patentStr || '手动输入') + '</span>';
-        html += '<span class="comparison-history-meta">' + (entry.itemCount || 0) + '项' + (entry.anchorLabel ? ' | 锚点: ' + ComparisonUtils.escapeHtml(entry.anchorLabel) : '') + '</span>';
-        html += '</div>';
-        html += '<div class="comparison-history-item-actions">';
-        html += '<button class="btn-secondary btn-small" data-action="view" data-id="' + entry.id + '">查看</button>';
-        html += '<button class="btn-primary btn-small" data-action="restore" data-id="' + entry.id + '" style="font-size:11px;padding:2px 8px;">恢复</button>';
-        html += '<button class="btn-secondary btn-small" data-action="delete" data-id="' + entry.id + '" style="color:#ef4444;border-color:#fca5a5;">删除</button>';
-        html += '</div>';
+        if (patentStr.length > 50) patentStr = patentStr.substring(0, 50) + '...';
+        html += '<div class="cmp-history-dropdown-item" data-history-id="' + entry.id + '">';
+        html += '  <div class="cmp-history-dd-item-main" onclick="ComparisonUI.viewHistoryEntry(\'' + entry.id + '\')">';
+        html += '    <span class="cmp-history-dd-date">' + dateStr + '</span>';
+        html += '    <span class="cmp-history-dd-patents">' + ComparisonUtils.escapeHtml(patentStr || '手动输入') + '</span>';
+        html += '    <span class="cmp-history-dd-meta">' + (entry.itemCount || 0) + '项' + (entry.anchorLabel ? ' | 锚点: ' + ComparisonUtils.escapeHtml(entry.anchorLabel) : '') + '</span>';
+        html += '  </div>';
+        html += '  <div class="cmp-history-dd-item-actions">';
+        html += '    <button class="btn-secondary btn-small" onclick="ComparisonUI.restoreHistory(\'' + entry.id + '\')">恢复</button>';
+        html += '    <button class="btn-secondary btn-small" onclick="if(confirm(\'确定删除？\')){ComparisonCore.history.remove(\'' + entry.id + '\');ComparisonUI.render();}" style="color:#ef4444;border-color:#fca5a5;">删除</button>';
+        html += '  </div>';
         html += '</div>';
       });
-      html += '<button class="btn-secondary btn-small" data-action="clear-all" style="margin-top:8px;width:100%;justify-content:center;color:#ef4444;border-color:#fca5a5;">清空全部历史</button>';
     }
-    html += '</div>';
+    html += '  </div>';
     html += '</div>';
     return html;
   }
 
-  function toggleHistoryList() {
-    var list = document.getElementById('cmp-history-list');
-    var toggleText = document.getElementById('cmp-history-toggle-text');
-    if (!list) return;
-    if (list.style.display === 'none') {
-      list.style.display = 'block';
-      if (toggleText) toggleText.textContent = '收起';
-    } else {
-      list.style.display = 'none';
-      if (toggleText) toggleText.textContent = '展开';
+  function toggleHistoryDropdown(e) {
+    if (e) e.stopPropagation();
+    _historyDropdownOpen = !_historyDropdownOpen;
+    var dd = document.getElementById('cmp-history-dropdown');
+    if (dd) {
+      dd.classList.toggle('open', _historyDropdownOpen);
     }
+    if (_historyDropdownOpen) {
+      setTimeout(function() {
+        document.addEventListener('click', _closeHistoryDropdown, { once: true });
+      }, 10);
+    }
+  }
+
+  function _closeHistoryDropdown() {
+    _historyDropdownOpen = false;
+    var dd = document.getElementById('cmp-history-dropdown');
+    if (dd) dd.classList.remove('open');
+  }
+
+  function viewHistoryEntry(id) {
+    _showHistoryDetail(id);
+    _historyDropdownOpen = false;
+    var dd = document.getElementById('cmp-history-dropdown');
+    if (dd) dd.classList.remove('open');
   }
 
   function renderItem(item, idx, anchor) {
@@ -303,7 +362,7 @@ var ComparisonUI = (function () {
       html += '  <span style="font-size:11px;color:var(--text-secondary);">' + ComparisonUtils.escapeHtml(item.patentNumber) + '</span>';
     }
     html += '    </div>';
-    html += '    <div class="comparison-item-preview">' + ComparisonUtils.escapeHtml(ComparisonUtils.truncateText(item.originalText, 200)) + '</div>';
+    html += '    <div class="comparison-item-preview" title="' + ComparisonUtils.escapeHtml(item.originalText) + '">' + ComparisonUtils.escapeHtml(ComparisonUtils.truncateText(item.originalText, 200)) + '</div>';
     html += '  </div>';
     html += '  <div class="comparison-item-actions">';
     if (!isAnchor && item.isSelected) {
@@ -391,29 +450,6 @@ var ComparisonUI = (function () {
         render();
       });
     });
-
-    // History panel event binding
-    var historyBtns = container.querySelectorAll('[data-action]');
-    historyBtns.forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var action = this.dataset.action;
-        var id = this.dataset.id;
-        if (action === 'view') {
-          _showHistoryDetail(id);
-        } else if (action === 'restore') {
-          _restoreHistory(id);
-        } else if (action === 'delete') {
-          ComparisonCore.history.remove(id);
-          render();
-        } else if (action === 'clear-all') {
-          if (confirm('确定清空全部比对历史记录？')) {
-            ComparisonCore.history.clear();
-            render();
-          }
-        }
-      });
-    });
   }
 
   function _showHistoryDetail(id) {
@@ -435,12 +471,10 @@ var ComparisonUI = (function () {
     html += '</div>';
     html += '<div style="padding:16px 20px;overflow-y:auto;flex:1;">';
 
-    // Patent numbers
     if (entry.patentNumbers && entry.patentNumbers.length > 0) {
       html += '<div style="margin-bottom:12px;"><strong>专利号:</strong> ' + ComparisonUtils.escapeHtml(entry.patentNumbers.join(', ')) + '</div>';
     }
 
-    // Items summary
     if (entry.itemsSummary && entry.itemsSummary.length > 0) {
       html += '<div style="margin-bottom:12px;"><strong>比对项 (' + entry.itemsSummary.length + '):</strong></div>';
       html += '<ul style="margin:0 0 12px 20px;padding:0;font-size:13px;">';
@@ -450,7 +484,6 @@ var ComparisonUI = (function () {
       html += '</ul>';
     }
 
-    // Claims snapshot
     if (entry.claimsSnapshot && Object.keys(entry.claimsSnapshot).length > 0) {
       html += '<details style="margin-bottom:12px;"><summary style="cursor:pointer;font-weight:600;">权利要求原文快照</summary>';
       html += '<div style="margin-top:8px;">';
@@ -472,14 +505,12 @@ var ComparisonUI = (function () {
       html += '</div></details>';
     }
 
-    // Result
     if (entry.htmlContent) {
       html += '<div style="margin-top:12px;"><strong>比对结果:</strong></div>';
       html += '<div class="markdown-body" style="margin-top:8px;">' + entry.htmlContent + '</div>';
     }
 
     html += '</div>';
-    // Actions
     html += '<div style="padding:12px 20px;border-top:1px solid var(--border-color);display:flex;gap:8px;justify-content:flex-end;">';
     html += '<button class="btn-secondary btn-small" onclick="document.getElementById(\'comparison-history-modal\').style.display=\'none\';">关闭</button>';
     html += '<button class="btn-primary btn-small" onclick="document.getElementById(\'comparison-history-modal\').style.display=\'none\';ComparisonUI.restoreHistory(\'' + entry.id + '\');">恢复到此比对</button>';
@@ -492,7 +523,6 @@ var ComparisonUI = (function () {
   function _restoreHistory(id) {
     var entry = ComparisonCore.history.get(id);
     if (!entry) return;
-    console.log('[ComparisonHistory] restoring:', entry.id);
     ComparisonCore.clearItems();
     var restoredItems = [];
     var anchorItem = null;
@@ -759,6 +789,31 @@ var ComparisonUI = (function () {
     console.error('Comparison error:', message);
   }
 
+  function _scrollToClaimsSelector() {
+    setTimeout(function() {
+      var el = document.getElementById('cmp-claims-selector');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  }
+
+  function _scrollToAnchorTab() {
+    ComparisonCore.setActiveTab('anchor');
+    render();
+    setTimeout(function() {
+      var container = getContainer();
+      if (container) {
+        var cmpSection = container.closest('.comparison-section') || container.parentElement;
+        if (cmpSection) cmpSection.scrollTop = 0;
+      }
+      var tabContent = document.querySelector('.cmp-tab-content');
+      if (tabContent) {
+        tabContent.scrollTop = 0;
+      }
+    }, 80);
+  }
+
   function init() {
     if (_initialized) return;
     _initialized = true;
@@ -781,7 +836,10 @@ var ComparisonUI = (function () {
     runComparison: runComparison,
     previewItem: previewItem,
     restoreHistory: _restoreHistory,
-    toggleHistoryList: toggleHistoryList,
+    toggleHistoryDropdown: toggleHistoryDropdown,
+    viewHistoryEntry: viewHistoryEntry,
+    scrollToClaimsSelector: _scrollToClaimsSelector,
+    scrollToAnchorTab: _scrollToAnchorTab,
     init: init
   };
 })();

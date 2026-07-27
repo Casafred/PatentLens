@@ -360,7 +360,7 @@ var ComparisonCore = (function () {
   }
 
   function setActiveTab(tab) {
-    if (['prepare', 'preview', 'result'].indexOf(tab) === -1) return;
+    if (['prepare', 'anchor', 'preview', 'result'].indexOf(tab) === -1) return;
     _state.activeTab = tab;
     emit('activeTabChanged', tab);
   }
