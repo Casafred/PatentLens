@@ -105,6 +105,7 @@ const __PATENTLENS_COPYRIGHT__ = "PatentLens (c) 2026 Alfred Shi - All Rights Re
     // // script load time ensures GT never touches them, even before our _GT_UI_SELECTORS
     // // protection runs during translation.
     function _protectEarly() {
+      var ae = document.activeElement;
       var protSels = [
         'input', 'textarea', 'select', 'button',
         '#patent-ask-modal', '.patent-ask-modal',
@@ -120,36 +121,38 @@ const __PATENTLENS_COPYRIGHT__ = "PatentLens (c) 2026 Alfred Shi - All Rights Re
       protSels.forEach(function(sel) {
         try {
           document.querySelectorAll(sel).forEach(function(el) {
+            if (el === ae || el.contains(ae)) return;
+            if (el.classList.contains('notranslate') && el.getAttribute('translate') === 'no') return;
             el.classList.add('notranslate');
             el.setAttribute('translate', 'no');
           });
         } catch(_) {}
       });
     }
-    _protectEarly();
-    // Re-run protection periodically for the first 5 seconds as elements are created dynamically
-    var _protCount = 0;
-    var _protTimer = setInterval(function() {
-      _protCount++;
+    // Run protection once DOM is ready (not at script eval time — DOM isn't parsed yet then,
+    // and repeated polling via setInterval mutates DOM attributes which causes focus loss / IME
+    // reset in Electron WebView, making textareas untypeable).
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', _protectEarly);
+    } else {
       _protectEarly();
-      if (_protCount >= 20) clearInterval(_protTimer);
-    }, 250);
+    }
 
     // Also sweep any existing GT elements right now
     var sweepSelectors = '.goog-te-spinner-pos, .goog-te-banner-frame, #goog-gt-tt, .goog-te-balloon';
     document.querySelectorAll(sweepSelectors).forEach(function(el) {
       el.style.cssText += ';display:none !important;pointer-events:none !important;';
     });
-    // Re-sweep periodically for the first 10 seconds to catch late-arriving GT chrome
+    // Re-sweep periodically for the first 8 seconds to catch late-arriving GT chrome.
+    // NOTE: do NOT call _protectEarly from this sweep — it already runs on its own timer,
+    // and double-running increases DOM mutations that can interfere with textarea focus.
     var sweeps = 0;
     var sweepTimer = setInterval(function() {
       sweeps++;
       document.querySelectorAll(sweepSelectors).forEach(function(el) {
         el.style.cssText += ';display:none !important;pointer-events:none !important;';
       });
-      // Also re-apply protection on each sweep
-      _protectEarly();
-      if (sweeps >= 40) clearInterval(sweepTimer);
+      if (sweeps >= 16) clearInterval(sweepTimer); // 16 * 500ms = 8 seconds total
     }, 500);
   } catch(e) { console.warn('[GT] immediate shield install failed:', e); }
 })();
@@ -17656,15 +17659,15 @@ document.addEventListener("DOMContentLoaded", () => {
   if (mergeExportOverlay) mergeExportOverlay.addEventListener("click", () => mergeExportModal.classList.add("hidden"));
   if (mergeExportDoBtn) mergeExportDoBtn.addEventListener("click", doMergeExport);
 
-  // Splash screen - wait for GIF animation to complete at least one loop (~4.5s)
+  // Splash screen - show briefly then remove (minimize blocking user interaction)
   setTimeout(() => {
     const splash = document.getElementById("splash-screen");
     if (splash) {
       splash.style.opacity = "0";
       splash.style.pointerEvents = "none";
-      setTimeout(() => splash.remove(), 500);
+      setTimeout(() => splash.remove(), 300);
     }
-  }, 1500);
+  }, 100);
 });
 
 async function sendChatMessage() {
@@ -19676,8 +19679,8 @@ updateFloatingBallsVisibility();
 // ── Fallback splash-screen removal (in case DOMContentLoaded handler fails) ──
 setTimeout(() => {
   const splash = document.getElementById("splash-screen");
-  if (splash) { splash.style.opacity = "0"; splash.style.pointerEvents = "none"; setTimeout(() => splash.remove(), 500); }
-}, 3000);
+  if (splash) { splash.style.opacity = "0"; splash.style.pointerEvents = "none"; setTimeout(() => splash.remove(), 300); }
+}, 800);
 
 // ================================================================
 //  Intelligent Field Extraction Mode (智能抽取)
