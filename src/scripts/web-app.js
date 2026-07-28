@@ -9631,16 +9631,34 @@ function openPatentAsk(source) {
     inputEl.removeAttribute('disabled');
   }
   modal.classList.remove("hidden");
-  // Force focus with retry — modal may not be fully visible yet on first try,
-  // and DOM mutations from other subsystems can steal focus right after opening.
+
+  // Run global input unblock first to clear any stale overlays / compositing issues
+  if (window._forceInputUnblock) {
+    try { window._forceInputUnblock(); } catch (_) {}
+  }
+
+  // Force focus with extended retry — modal may not be fully visible yet on first try,
+  // and DOM mutations from other subsystems (GT, MutationObservers, animations) can
+  // steal focus right after opening. In Electron webviews the compositing layer can
+  // also block focus for several seconds after page load, so we retry longer.
   function _forceFocus(attempt) {
     if (!inputEl) return;
-    try { inputEl.focus(); } catch(_) {}
-    if (document.activeElement !== inputEl && attempt < 10) {
-      setTimeout(function() { _forceFocus(attempt + 1); }, 50 + attempt * 30);
+    try {
+      // Ensure input is still editable
+      if (inputEl.hasAttribute('disabled')) inputEl.removeAttribute('disabled');
+      if (inputEl.hasAttribute('readonly')) inputEl.removeAttribute('readonly');
+      inputEl.style.pointerEvents = 'auto';
+      inputEl.focus();
+    } catch(_) {}
+    if (document.activeElement !== inputEl && attempt < 30) {
+      // Retry with progressively longer delays: 50ms, 100ms, 150ms, ... up to ~4.4s total
+      setTimeout(function() { _forceFocus(attempt + 1); }, 50 + attempt * 10);
     }
   }
+  // Multi-phase focus: quick initial attempt, then delayed retry, then extended retry window
   setTimeout(function() { _forceFocus(0); }, 30);
+  setTimeout(function() { _forceFocus(15); }, 500);
+  setTimeout(function() { if (document.activeElement !== inputEl) _forceFocus(25); }, 1500);
 }
 
 function closePatentAsk() {
@@ -16100,13 +16118,22 @@ function switchRightPanelTab(panelName) {
       ci.style.pointerEvents = 'auto';
       ci.removeAttribute('readonly');
       ci.removeAttribute('disabled');
+      // Run global unblock first
+      if (window._forceInputUnblock) { try { window._forceInputUnblock(); } catch(_) {} }
       function _focusChat(attempt) {
-        try { ci.focus(); } catch(_) {}
-        if (document.activeElement !== ci && attempt < 10) {
-          setTimeout(function() { _focusChat(attempt + 1); }, 50 + attempt * 30);
+        try {
+          if (ci.hasAttribute('disabled')) ci.removeAttribute('disabled');
+          if (ci.hasAttribute('readonly')) ci.removeAttribute('readonly');
+          ci.style.pointerEvents = 'auto';
+          ci.focus();
+        } catch(_) {}
+        if (document.activeElement !== ci && attempt < 30) {
+          setTimeout(function() { _focusChat(attempt + 1); }, 50 + attempt * 10);
         }
       }
       setTimeout(function() { _focusChat(0); }, 30);
+      setTimeout(function() { _focusChat(15); }, 500);
+      setTimeout(function() { if (document.activeElement !== ci) _focusChat(25); }, 1500);
     }
   }
 }
@@ -18093,7 +18120,30 @@ async function sendAnalysisChatMessage() {
       if (analysisChatPanel) {
         analysisChatPanel.classList.toggle("hidden");
         if (!analysisChatPanel.classList.contains("hidden")) {
-          if (analysisChatInput) analysisChatInput.focus();
+          if (analysisChatInput) {
+            analysisChatInput.disabled = false;
+            analysisChatInput.readOnly = false;
+            analysisChatInput.style.pointerEvents = 'auto';
+            analysisChatInput.removeAttribute('readonly');
+            analysisChatInput.removeAttribute('disabled');
+            // Run global unblock first
+            if (window._forceInputUnblock) { try { window._forceInputUnblock(); } catch(_) {} }
+            // Extended focus retry
+            function _focusAnalysis(attempt) {
+              try {
+                if (analysisChatInput.hasAttribute('disabled')) analysisChatInput.removeAttribute('disabled');
+                if (analysisChatInput.hasAttribute('readonly')) analysisChatInput.removeAttribute('readonly');
+                analysisChatInput.style.pointerEvents = 'auto';
+                analysisChatInput.focus();
+              } catch(_) {}
+              if (document.activeElement !== analysisChatInput && attempt < 30) {
+                setTimeout(function() { _focusAnalysis(attempt + 1); }, 50 + attempt * 10);
+              }
+            }
+            setTimeout(function() { _focusAnalysis(0); }, 30);
+            setTimeout(function() { _focusAnalysis(15); }, 500);
+            setTimeout(function() { if (document.activeElement !== analysisChatInput) _focusAnalysis(25); }, 1500);
+          }
         }
       }
     });
@@ -19758,6 +19808,159 @@ setTimeout(() => {
   const splash = document.getElementById("splash-screen");
   if (splash) { splash.style.opacity = "0"; splash.style.pointerEvents = "none"; setTimeout(() => splash.remove(), 500); }
 }, 4000);
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  GLOBAL INPUT UNBLOCK MECHANISM
+//  Symptom: all text inputs/textarea become untypeable until DevTools is opened
+//  (opening DevTools forces reflow + focus shift which instantly unblocks).
+//  Root cause: a combination of GPU compositing layer issues, stale overlay
+//  elements intercepting pointer events, and focus deadlock that occurs in
+//  Electron webviews under certain GPU/rendering conditions.
+//
+//  This fix:
+//  1. Forces reflow on page load and window events (mimics DevTools open effect)
+//  2. Periodically sanitizes inputs (removes stale disabled/readonly/pointer-events:none)
+//  3. Installs focusin/mousedown guards to prevent focus stealing
+//  4. Cleans up any stale fullscreen overlays
+// ═══════════════════════════════════════════════════════════════════════════
+(function _installInputUnblock() {
+  function _forceReflow() {
+    try {
+      // Force layout recalculation — this is the same effect opening DevTools triggers
+      void document.body.offsetHeight;
+      void document.documentElement.offsetHeight;
+      // Force style recalc by briefly toggling a style
+      const origZoom = document.body.style.zoom;
+      document.body.style.zoom = '1';
+      document.body.offsetHeight;
+      document.body.style.zoom = origZoom;
+    } catch (_) {}
+  }
+
+  function _sanitizeInputs() {
+    try {
+      // Only fix pointer-events:none on visible inputs — do NOT auto-remove
+      // readonly/disabled here because some inputs (e.g. annotation number box)
+      // are intentionally readonly for IME protection. The focusin/mousedown
+      // guards handle those attributes when the user actually interacts.
+      document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea').forEach(function(el) {
+        if (el.closest('.hidden')) return;
+        if (el.hasAttribute('data-locked')) return;
+        if (el.style.pointerEvents === 'none' && !el.dataset.intentionalPointerNone) {
+          el.style.pointerEvents = '';
+        }
+      });
+    } catch (_) {}
+  }
+
+  function _cleanupStaleOverlays() {
+    try {
+      // Find fixed/absolute positioned elements covering the whole viewport
+      var vw = window.innerWidth, vh = window.innerHeight;
+      document.querySelectorAll('body > *').forEach(function(el) {
+        if (el.id === 'splash-screen') return; // will be removed by its own timer
+        var style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+          // Element is invisible — if it's a fixed overlay covering everything, ensure it doesn't intercept events
+          if ((style.position === 'fixed' || style.position === 'absolute') && style.pointerEvents !== 'none') {
+            var rect = el.getBoundingClientRect();
+            // If the element covers the entire viewport and has no visible children,
+            // it's likely a stale overlay — disable pointer events
+            if (rect.width >= vw * 0.95 && rect.height >= vh * 0.95 && rect.left <= 10 && rect.top <= 10) {
+              // Check if the element actually has visible content
+              var hasVisibleContent = false;
+              var children = el.children;
+              for (var i = 0; i < children.length; i++) {
+                var cs = window.getComputedStyle(children[i]);
+                if (cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.01) {
+                  hasVisibleContent = true;
+                  break;
+                }
+              }
+              if (!hasVisibleContent) {
+                el.style.pointerEvents = 'none';
+              }
+            }
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  function _unblockAll() {
+    _cleanupStaleOverlays();
+    _sanitizeInputs();
+    _forceReflow();
+  }
+
+  // 1. Focus guard: when any editable element receives focus, ensure pointer-events is clear
+  //    (do NOT auto-remove readonly/disabled here — some inputs like annotation number box
+  //    are intentionally readonly for IME protection. Those are explicitly cleared when
+  //    opening panels/modals that should be editable.)
+  document.addEventListener('focusin', function(e) {
+    var el = e.target;
+    if (!el || !el.tagName) return;
+    var tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) {
+      setTimeout(function() {
+        if (el.style.pointerEvents === 'none' && !el.dataset.intentionalPointerNone) {
+          el.style.pointerEvents = '';
+        }
+      }, 0);
+    }
+  }, true);
+
+  // 2. Click guard: when user clicks an input/textarea, force reflow and ensure focus.
+  //    This is the most reliable moment to unblock — it mimics what happens when
+  //    DevTools opens (forced reflow + focus shift).
+  document.addEventListener('mousedown', function(e) {
+    var el = e.target;
+    if (!el || !el.closest) return;
+    var input = el.closest('input, textarea, [contenteditable="true"]');
+    if (input && !input.hasAttribute('data-locked')) {
+      if (input.closest('.hidden')) return;
+      // Force reflow first (this is what DevTools does)
+      _forceReflow();
+      // Then schedule focus with a small delay to let the browser process the click
+      setTimeout(function() {
+        try {
+          // Ensure pointer-events is clear
+          if (input.style.pointerEvents === 'none' && !input.dataset.intentionalPointerNone) {
+            input.style.pointerEvents = '';
+          }
+          if (document.activeElement !== input) {
+            input.focus();
+          }
+        } catch (_) {}
+      }, 10);
+    }
+  }, true);
+
+  // 3. Window events trigger unblock (mimics DevTools opening effect)
+  window.addEventListener('resize', function() { _unblockAll(); });
+  window.addEventListener('focus', function() { _unblockAll(); });
+
+  // 4. Run unblock periodically during initial page load (most critical period)
+  var unblockAttempts = 0;
+  var maxUnblockAttempts = 20; // 20 * 1500ms = 30 seconds of protection
+  var unblockTimer = setInterval(function() {
+    unblockAttempts++;
+    _unblockAll();
+    if (unblockAttempts >= maxUnblockAttempts) {
+      clearInterval(unblockTimer);
+    }
+  }, 1500);
+
+  // 5. Also run immediately and at key DOM lifecycle moments
+  setTimeout(_unblockAll, 500);
+  setTimeout(_unblockAll, 1500);
+  setTimeout(_unblockAll, 3000);
+  setTimeout(_unblockAll, 5000);
+
+  // Expose for manual debugging
+  window._forceInputUnblock = _unblockAll;
+  window._forceReflow = _forceReflow;
+})();
 
 // ================================================================
 //  Intelligent Field Extraction Mode (智能抽取)
