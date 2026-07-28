@@ -113,6 +113,43 @@ const __PATENTLENS_COPYRIGHT__ = "PatentLens (c) 2026 Alfred Shi - All Rights Re
       }, 0);
     }, true);
 
+    // ── RENDERER FOCUS DESYNC DETECTION + RECOVERY ──
+    // When a cross-origin iframe (GT, in-app webview pd-wv-iframe, etc.)
+    // steals focus and is then hidden/removed, Chromium's renderer-level
+    // focused_frame_ can become stale. Symptom: keydown fires but NO input
+    // event fires (characters not inserted). Only OS-level window activation
+    // normally resyncs it. This detector catches the desync on the FIRST
+    // keystroke and (a) re-injects the lost character and (b) asks the main
+    // process to refocus the webContents, so the user never has to switch
+    // windows to type.
+    document.addEventListener('keydown', function(e) {
+      var t = e.target;
+      if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+      if (e.key.length !== 1) return; // only printable keys for re-injection
+      var prevValue = t.value;
+      var prevStart = t.selectionStart;
+      var prevEnd = t.selectionEnd;
+      var key = e.key;
+      setTimeout(function() {
+        // If value changed, input was processed normally — no desync
+        if (t.value !== prevValue) return;
+        // Value unchanged → renderer focus desynced
+        console.warn('[FOCUS] Desync detected on ' + (t.id || t.tagName) + ', refocusing + re-injecting "' + key + '"');
+        try {
+          if (window.electronAPI && window.electronAPI.forceRefocus) {
+            window.electronAPI.forceRefocus();
+          }
+        } catch(_) {}
+        // Re-inject the character that was lost
+        try {
+          t.value = prevValue.substring(0, prevStart) + key + prevValue.substring(prevEnd);
+          t.selectionStart = t.selectionEnd = prevStart + 1;
+          t.dispatchEvent(new Event('input', { bubbles: true }));
+        } catch(_) {}
+      }, 0);
+    }, true);
+
     // ── 2. IMMEDIATELY protect all form elements and critical UI panels from GT ──
     // GT's DOM-walking translation can replace/refunction textarea/input elements,
     // // breaking their event handlers and focus state. Marking them notranslate at

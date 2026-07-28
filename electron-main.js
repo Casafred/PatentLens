@@ -4348,6 +4348,15 @@ app.whenReady().then(async () => {
     }
   });
 
+  // IPC: 渲染进程请求强制重新聚焦 webContents —— 修复 renderer focus desync
+  // 当跨域 iframe（GT、内置 webview 等）抢夺焦点后被隐藏/移除时，
+  // Chromium 渲染进程的 focused_frame_ 会变成过期状态，导致 keydown 事件
+  // 正常触发但字符无法输入（input 事件不触发）。webContents.focus() 会向
+  // 渲染进程发送聚焦消息，强制重新同步焦点状态。
+  ipcMain.on("force-refocus", (event) => {
+    try { event.sender.focus(); } catch (e) { /* ignore */ }
+  });
+
   // IPC: 渲染进程同步当前是否存在未导出的 PDF 标注（用于关闭前确认）
   ipcMain.on("set-has-annotations", (_event, val, summary) => {
     hasUnsavedAnnotations = !!val;
