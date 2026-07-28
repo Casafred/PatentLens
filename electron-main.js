@@ -4466,32 +4466,31 @@ app.whenReady().then(async () => {
   // 症状：跨域 iframe（GT banner、内嵌 webview pd-wv-iframe 等）抢焦点后
   // 被隐藏/移除时，Chromium 渲染进程的 focused_frame_ 停留在已失效的子 frame。
   // 键盘事件路由到失效 frame，主 frame document 收不到 keydown，textarea
-  // 看似有焦点但敲键盘无反应。
+  // 看似有焦点（document.activeElement 正确）但敲键盘无反应。
+  // 只有 OS 级窗口失焦再获焦（最小化/切应用/开 DevTools）才能恢复。
   //
-  // 不闪方案：在主 frame 的 V8 上下文执行 window.blur() + window.focus()，
-  // 触发 WebFrameWidget::ClearFocus() → SetFocus()，重置 focused_frame_。
-  // 这不改变 OS 窗口激活状态（标题栏不变色），所以不闪。
-  // 辅以 win.setFocusable(false)+true toggle 作为双保险。
+  // 关键教训：webContents.blur()+focus() 不够 —— webContents 级别在
+  // BrowserWindow 已获焦时是 no-op，不会让 widget-level focus 真正变 false。
+  // 必须用 BrowserWindow.blur()+focus()（OS 窗口级），强制窗口真正失焦再获焦，
+  // 触发 Chromium 完整的 focus loss → focus gain 事件链，重置 focused_frame_。
+  // 50ms 延时足够 OS 注册 blur，又足够短用户几乎无感（标题栏可能闪一下）。
   ipcMain.on("force-refocus", (event) => {
     try {
       const wc = event.sender;
       if (!wc || wc.isDestroyed()) return;
       const win = BrowserWindow.fromWebContents(wc);
       if (!win || win.isDestroyed()) return;
-      console.log("[FOCUS] force-refocus: window.blur()+focus() in main frame");
-      // 方案 1：在主 frame V8 上下文执行 window.blur()+focus()
-      // 这会触发 WebFrameWidget 的 focus 状态变化，重置 focused_frame_
-      wc.executeJavaScript(
-        'try { window.blur(); } catch(_) {};\n' +
-        'setTimeout(function() { try { window.focus(); } catch(_) {} }, 0);',
-        true
-      ).catch(() => { /* ignore */ });
-      // 方案 2：setFocusable toggle + wc.focus()（不闪，双保险）
-      try {
-        win.setFocusable(false);
-        win.setFocusable(true);
-        if (!wc.isDestroyed()) wc.focus();
-      } catch (_) { /* ignore */ }
+      console.log("[FOCUS] force-refocus: BrowserWindow blur → focus");
+      win.blur();
+      setTimeout(() => {
+        try {
+          if (!win.isDestroyed()) {
+            win.focus();
+            // 双保险：窗口级 focus 后再补一次 webContents 级 focus
+            if (!wc.isDestroyed()) wc.focus();
+          }
+        } catch (_) { /* ignore */ }
+      }, 50);
     } catch (e) { console.error("[FOCUS] force-refocus error:", e); }
   });
 
