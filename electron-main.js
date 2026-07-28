@@ -4462,31 +4462,36 @@ app.whenReady().then(async () => {
     }
   });
 
-  // IPC: 渲染进程请求强制重新聚焦 webContents —— 修复 renderer focus desync
-  // 当跨域 iframe（GT、内置 webview 等）抢夺焦点后被隐藏/移除时，
-  // Chromium 渲染进程的 focused_frame_ 会变成过期状态，键盘事件被路由到
-  // 已失效的子 frame，主 frame 的 document 收不到 keydown，textarea
-  // 看似有焦点但敲键盘无反应（必须切 OS 应用或开关 DevTools 才能恢复）。
+  // IPC: 渲染进程请求强制重新聚焦 —— 修复 renderer frame-level focus desync
+  // 症状：跨域 iframe（GT banner、内嵌 webview pd-wv-iframe 等）抢焦点后
+  // 被隐藏/移除时，Chromium 渲染进程的 focused_frame_ 停留在已失效的子 frame。
+  // 键盘事件路由到失效 frame，主 frame document 收不到 keydown，textarea
+  // 看似有焦点（document.activeElement 正确）但敲键盘无反应。
+  // 只有 OS 级窗口失焦再获焦（最小化/切应用/开 DevTools）才能恢复。
   //
-  // 关键点：BrowserWindow 已是焦点时，单独 webContents.focus() 是 no-op
-  // （widget-level focus 已为 true，不会重新走 frame 路由）。必须先 blur
-  // 让 widget-level focus 变 false，再 focus 让它变 true，强制 Chromium
-  // 重新运行 frame focus 路由逻辑，把 focused_frame_ 指回主 frame。
-  // 这等效于"切换 OS 应用再切回来"，但不会闪窗口（webContents-level 操作
-  // 不影响 BrowserWindow 的 OS 窗口激活状态）。
+  // 关键教训：webContents.blur()+focus() 不够 —— webContents 级别在
+  // BrowserWindow 已获焦时是 no-op，不会让 widget-level focus 真正变 false。
+  // 必须用 BrowserWindow.blur()+focus()（OS 窗口级），强制窗口真正失焦再获焦，
+  // 触发 Chromium 完整的 focus loss → focus gain 事件链，重置 focused_frame_。
+  // 50ms 延时足够 OS 注册 blur，又足够短用户几乎无感（标题栏可能闪一下）。
   ipcMain.on("force-refocus", (event) => {
     try {
       const wc = event.sender;
       if (!wc || wc.isDestroyed()) return;
-      wc.blur();
-      // 短延时确保 blur 的 IPC 先于 focus 投递到渲染进程；
-      // 两个消息按顺序到达，渲染进程会先失焦再获焦，强制重跑路由逻辑。
+      const win = BrowserWindow.fromWebContents(wc);
+      if (!win || win.isDestroyed()) return;
+      console.log("[FOCUS] force-refocus: BrowserWindow blur → focus");
+      win.blur();
       setTimeout(() => {
         try {
-          if (!wc.isDestroyed()) wc.focus();
+          if (!win.isDestroyed()) {
+            win.focus();
+            // 双保险：窗口级 focus 后再补一次 webContents 级 focus
+            if (!wc.isDestroyed()) wc.focus();
+          }
         } catch (_) { /* ignore */ }
-      }, 10);
-    } catch (e) { /* ignore */ }
+      }, 50);
+    } catch (e) { console.error("[FOCUS] force-refocus error:", e); }
   });
 
   // IPC: 渲染进程同步当前是否存在未导出的 PDF 标注（用于关闭前确认）
