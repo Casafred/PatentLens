@@ -7,7 +7,7 @@
  * or reproduction is strictly prohibited.
  *
  * @author Alfred Shi
- * @version 260710
+ * @version 260728
  */
 var PATENT_STATUS = {
   US: {
@@ -24,7 +24,7 @@ var PATENT_STATUS = {
       "NFOA": { name: "首次非最终驳回 (Non-Final Office Action - First)", type: "office_action", stage: "审查中" },
       "FOA": { name: "首次最终驳回 (Final Office Action)", type: "office_action", stage: "审查中" },
       "OA": { name: "审查意见 (Office Action)", type: "office_action", stage: "审查中" },
-      "RCEX": { name: "请求继续审查 (Request for Continued Examination)", type: "response", stage: "审查中" },
+      "RCEX": { name: "请求继续审查 (Request for Continued Examination)", type: "applicant_request", stage: "审查中" },
       "AMSB": { name: "修改提交 (Amendment Submitted)", type: "response", stage: "审查中" },
       "A": { name: "申请人修改 (Amendment)", type: "response", stage: "审查中" },
       "F": { name: "最终驳回 (Final Rejection)", type: "office_action", stage: "审查中" },
@@ -63,16 +63,16 @@ var PATENT_STATUS = {
       "M327": { name: "申请人杂项通知 (Miscellaneous Communication to Applicant - No Action Count)", type: "notification", stage: "审查中" },
       "PA..": { name: "代理委托书 (Power of Attorney)", type: "misc", stage: "审查中" },
       "R3.73": { name: "受让人所有权证明 (Assignee Showing of Ownership per 37 CFR 3.73)", type: "misc", stage: "审查中" },
-      "R46C.REQ": { name: "申请人更正请求 (Request under 37CFR 1.46(c) to Correct/Update/Change Applicant)", type: "response", stage: "审查中" },
+      "R46C.REQ": { name: "申请人更正请求 (Request under 37CFR 1.46(c) to Correct/Update/Change Applicant)", type: "applicant_request", stage: "审查中" },
       "TRAN.LET": { name: "传送信函 (Transmittal Letter)", type: "misc", stage: "审查中" },
       "APP.FILE.REC": { name: "申请受理回执 (Filing Receipt)", type: "notification", stage: "审查前" },
-      "PET.PCT": { name: "PCT法律审查请愿 (Petition for Review by the PCT Legal Office)", type: "response", stage: "审查中" },
+      "PET.PCT": { name: "PCT法律审查请愿 (Petition for Review by the PCT Legal Office)", type: "applicant_request", stage: "审查中" },
       "PET.OP.DEC": { name: "请愿决定 (Office of Petitions Decision)", type: "notification", stage: "审查中" },
       "PETDEC": { name: "请愿决定 (Petition Decision)", type: "notification", stage: "审查中" },
       "PET.DEC.TC": { name: "技术中心请愿决定 (Petition Decision Routed to Technology Center)", type: "notification", stage: "审查中" },
-      "RFN.REQ": { name: "退费请求 (Refund Request)", type: "response", stage: "审查中" },
-      "XT/": { name: "延期请求 (Extension of Time)", type: "response", stage: "审查中" },
-      "136A": { name: "延期授权 (Authorization for Extension of Time)", type: "response", stage: "审查中" },
+      "RFN.REQ": { name: "退费请求 (Refund Request)", type: "applicant_request", stage: "审查中" },
+      "XT/": { name: "延期请求 (Extension of Time)", type: "applicant_request", stage: "审查中" },
+      "136A": { name: "延期授权 (Authorization for Extension of Time)", type: "applicant_request", stage: "审查中" },
       "IMIS": { name: "内部杂项文件 (Miscellaneous Internal Document)", type: "misc", stage: "审查中" },
       "SCORE": { name: "补充内容占位页 (Supplemental Complex Repository for Examiners)", type: "misc", stage: "审查中" },
       "DRW.NONBW": { name: "非黑白线条图 (Drawings - Other than Black and White Line Drawings)", type: "patent_doc", stage: "审查中" },
@@ -105,20 +105,20 @@ var PATENT_STATUS = {
       "BRAP": { name: "复审请求书 (Appeal Brief Filed)", type: "response", stage: "复审" },
       "EXBR": { name: "审查员复审答辩意见 (Examiner's Answer to Appeal Brief)", type: "office_action", stage: "复审" },
       "REBR": { name: "复审答复书 (Reply Brief Filed)", type: "response", stage: "复审" },
-      "PABC": { name: "预复审会议请求 (Pre-Appeal Brief Conference Request)", type: "response", stage: "复审" },
+      "PABC": { name: "预复审会议请求 (Pre-Appeal Brief Conference Request)", type: "applicant_request", stage: "复审" },
       "PABC.D": { name: "预复审会议决定 (Pre-Brief Appeal Conference Decision)", type: "notification", stage: "复审" },
       "NOAP": { name: "上诉通知 (Notice of Appeal Filed)", type: "response", stage: "复审" },
-      "RCFR": { name: "更正受理回执请求 (Request for Corrected Filing Receipt)", type: "response", stage: "审查前" },
+      "RCFR": { name: "更正受理回执请求 (Request for Corrected Filing Receipt)", type: "applicant_request", stage: "审查前" },
       "ECOFC.NTF": { name: "电子更正证书当日通知 (eCofC day-of Notification)", type: "notification", stage: "授权" },
       "COFC.POST": { name: "更正证书-授权后往来函件 (Certificate of Correction - Post Issue Communication)", type: "notification", stage: "授权" },
       "COFC.SPE.RET": { name: "监督审查员答复-退回更正证书 (Supervisory Patent Examiner Response - Return for Certificate of Correction)", type: "notification", stage: "授权" },
       "COFC.PET.DEC": { name: "路由至更正证书的请愿决定 (Petition Decision routed to Certificate of Correction)", type: "notification", stage: "授权" },
-      "COFC.REQ": { name: "更正证书请求 (Request for Certificate of Correction)", type: "response", stage: "授权" },
-      "PTA.PET": { name: "专利期限调整请愿 (Patent Term Adjustment Petition)", type: "response", stage: "授权" },
-      "MFEE.ADDR": { name: "年费地址变更 (Maintenance Fee Address Change)", type: "response", stage: "授权" },
+      "COFC.REQ": { name: "更正证书请求 (Request for Certificate of Correction)", type: "applicant_request", stage: "授权" },
+      "PTA.PET": { name: "专利期限调整请愿 (Patent Term Adjustment Petition)", type: "applicant_request", stage: "授权" },
+      "MFEE.ADDR": { name: "年费地址变更 (Maintenance Fee Address Change)", type: "applicant_request", stage: "授权" },
       "IDS.FEE.ASSN": { name: "关于信息披露声明(IDS)超页费声明(SB/08C) (Assertion regarding IDS Size Fee)", type: "citation", stage: "审查中" },
-      "PET.OP.REV": { name: "请愿处审查请愿 (Petition for review by the Office of Petitions)", type: "response", stage: "审查中" },
-      "RFP": { name: "继续审查请求 (Request for Further Processing)", type: "response", stage: "审查中" },
+      "PET.OP.REV": { name: "请愿处审查请愿 (Petition for review by the Office of Petitions)", type: "applicant_request", stage: "审查中" },
+      "RFP": { name: "继续审查请求 (Request for Further Processing)", type: "applicant_request", stage: "审查中" },
       "SPEC.AMD.NE": { name: "说明书修改未录入 (Specification-Amendment Not Entered)", type: "notification", stage: "审查中" },
     },
     typeNames: {
@@ -127,6 +127,7 @@ var PATENT_STATUS = {
       "patent_doc": "专利文件",
       "citation": "审查员引用与IDS",
       "allowance": "授权通知",
+      "applicant_request": "申请人其他请求",
       "notification": "通知",
       "misc": "其他文件",
     },
@@ -187,10 +188,11 @@ var PATENT_STATUS = {
     },
     abstract: {
       "office_action": "审查员发出审查意见",
-      "response": "申请人提交答复/请求",
+      "response": "申请人提交答复/修改",
       "patent_doc": "专利基础文件",
       "citation": "审查员引用文献/IDS/检索",
       "allowance": "审查员同意授权",
+      "applicant_request": "申请人提交其他请求",
       "notification": "官方通知",
       "misc": "其他往来文件",
     },
@@ -221,7 +223,8 @@ var PATENT_STATUS = {
     typeNames: {
       "office_action": "审查意见", "response": "申请人答复",
       "patent_doc": "专利文件", "citation": "审查员引用与IDS",
-      "allowance": "授权通知", "notification": "通知", "misc": "其他文件"
+      "allowance": "授权通知", "applicant_request": "申请人其他请求",
+      "notification": "通知", "misc": "其他文件"
     },
     stageNames: {
       "申请": "申请", "审查中": "审查中", "授权": "授权", "复审": "复审", "未知": "未知"
@@ -247,11 +250,11 @@ var PATENT_STATUS = {
       "CLMSABEX": { name: "检索后修改权利要求 (Amended Claims After Search Report)", type: "response", stage: "审查中" },
       "DESCABEX": { name: "检索后修改说明书 (Amended Description After Search Report)", type: "response", stage: "审查中" },
       "EXRE3": { name: "对审查意见的答复 (Reply to Examining Division)", type: "response", stage: "审查中" },
-      "EXRE92": { name: "审查意见答复延期请求 (Request for Extension of Time Limit)", type: "response", stage: "审查中" },
+      "EXRE92": { name: "审查意见答复延期请求 (Request for Extension of Time Limit)", type: "applicant_request", stage: "审查中" },
       "FORAREPLY": { name: "补正答复 (Reply to Invitation to Remedy Deficiencies)", type: "response", stage: "审查中" },
       "CLMS-HWA": { name: "标注修改的权利要求 (Amended Claims with Annotations)", type: "response", stage: "审查中" },
       "DESC-HWA": { name: "标注修改的说明书 (Amended Description with Annotations)", type: "response", stage: "审查中" },
-      "IGRA7": { name: "提交权利要求翻译 (Filing of Translations of Claims)", type: "response", stage: "授权" },
+      "IGRA7": { name: "提交权利要求翻译 (Filing of Translations of Claims)", type: "applicant_request", stage: "授权" },
       "RO-DESC-26": { name: "替换页-说明书 (Substitute Sheet - Description)", type: "response", stage: "审查中" },
 
       // === 授权通知 (Allowance) ===
@@ -292,10 +295,10 @@ var PATENT_STATUS = {
       "RO106": { name: "国际申请补正邀请 (Invitation to Correct Defects)", type: "notification", stage: "审查前" },
       "RO105": { name: "国际申请号通知 (Notification of International Application Number)", type: "notification", stage: "审查前" },
 
-      // === 申请人请求 (Requests - merged into response) ===
-      "1001P": { name: "欧洲专利授权请求 (Request for Grant of European Patent)", type: "response", stage: "审查前" },
-      "1200P": { name: "进入欧洲阶段请求 (Request for Entry into European Phase)", type: "response", stage: "审查前" },
-      "RO101E": { name: "国际申请电子请求 (Electronic Request for International Application)", type: "response", stage: "审查前" },
+      // === 申请人其他请求 (Applicant Requests) ===
+      "1001P": { name: "欧洲专利授权请求 (Request for Grant of European Patent)", type: "applicant_request", stage: "审查前" },
+      "1200P": { name: "进入欧洲阶段请求 (Request for Entry into European Phase)", type: "applicant_request", stage: "审查前" },
+      "RO101E": { name: "国际申请电子请求 (Electronic Request for International Application)", type: "applicant_request", stage: "审查前" },
 
       // === 专利文件 (Patent Documents) ===
       "DESC": { name: "说明书 (Description)", type: "patent_doc", stage: "审查前" },
@@ -402,7 +405,8 @@ var PATENT_STATUS = {
     typeNames: {
       "office_action": "审查意见", "response": "申请人答复",
       "patent_doc": "专利文件", "citation": "审查员引用与IDS",
-      "allowance": "授权通知", "notification": "通知", "misc": "其他文件"
+      "allowance": "授权通知", "applicant_request": "申请人其他请求",
+      "notification": "通知", "misc": "其他文件"
     },
     stageNames: {
       "审查前": "审查前", "审查中": "审查中", "授权": "已授权", "复审": "复审阶段", "未知": "未知"
@@ -441,7 +445,8 @@ var PATENT_STATUS = {
     typeNames: {
       "office_action": "审查意见", "response": "申请人答复",
       "patent_doc": "专利文件", "citation": "审查员引用与IDS",
-      "allowance": "授权通知", "notification": "通知", "misc": "其他文件"
+      "allowance": "授权通知", "applicant_request": "申请人其他请求",
+      "notification": "通知", "misc": "其他文件"
     },
     stageNames: {
       "申请": "申请", "审查中": "审查中", "授权": "授权", "复审": "复审", "未知": "未知"
@@ -457,8 +462,8 @@ var PATENT_STATUS = {
       "A53-JP": { name: "意见书（原文）", type: "response", stage: "审查中" },
       "A523": { name: "补正书", type: "response", stage: "审查中" },
       "A523-JP": { name: "补正书（原文）", type: "response", stage: "审查中" },
-      "A621": { name: "审查请求书", type: "response", stage: "申请" },
-      "A621-JP": { name: "审查请求书（原文）", type: "response", stage: "申请" },
+      "A621": { name: "审查请求书", type: "applicant_request", stage: "申请" },
+      "A621-JP": { name: "审查请求书（原文）", type: "applicant_request", stage: "申请" },
       "A63": { name: "申请文件", type: "patent_doc", stage: "申请" },
       "A63-JP": { name: "申请文件（原文）", type: "patent_doc", stage: "申请" },
       "A01": { name: "授权决定", type: "allowance", stage: "授权" },
@@ -482,7 +487,8 @@ var PATENT_STATUS = {
     typeNames: {
       "office_action": "审查意见", "response": "申请人答复",
       "patent_doc": "专利文件", "citation": "审查员引用与IDS",
-      "allowance": "授权通知", "notification": "通知", "misc": "其他文件"
+      "allowance": "授权通知", "applicant_request": "申请人其他请求",
+      "notification": "通知", "misc": "其他文件"
     },
     stageNames: {
       "申请": "申请", "审查中": "审查中", "授权": "授权", "复审": "复审", "未知": "未知"
@@ -566,19 +572,37 @@ function classifyDocCode(code, desc) {
   if (/^200201-CN$|^A01/.test(codeUpper)) return "allowance";
   if (/授权|allowance/.test(text)) return "allowance";
 
-  // === Responses and Requests (申请人答复 - merged) ===
+  // === Applicant Requests (申请人其他请求) - procedural/administrative requests, NOT responses to OA ===
+  if (/filing of the translations of the claims/.test(descLower)) return "applicant_request";
+  if (/request for grant of a european patent/.test(descLower)) return "applicant_request";
+  if (/request for entry into the european phase|entry into european phase/.test(descLower)) return "applicant_request";
+  if (/electronic request for international application/.test(descLower)) return "applicant_request";
+  if (/request for extension of time limit/.test(descLower)) return "applicant_request";
+  if (/request for continued examination/.test(text)) return "applicant_request";
+  if (/request for further processing/.test(text)) return "applicant_request";
+  if (/request for certificate of correction/.test(text)) return "applicant_request";
+  if (/patent term adjustment petition/.test(text)) return "applicant_request";
+  if (/maintenance fee address change/.test(text)) return "applicant_request";
+  if (/petition for review/.test(text)) return "applicant_request";
+  if (/pre-appeal brief conference request/.test(text)) return "applicant_request";
+  if (/request for corrected filing receipt/.test(text)) return "applicant_request";
+  if (/request for examination/.test(descLower)) return "applicant_request";
+  if (/extension of time/.test(text) && /request|authorization/.test(text)) return "applicant_request";
+  if (/refund request/.test(text)) return "applicant_request";
+  if (/request under 37cfr/.test(text)) return "applicant_request";
+  if (/^RCEX$|^R46C\.REQ$|^RFN\.REQ$|^XT\/$|^136A$|^RCFR$|^COFC\.REQ$|^PTA\.PET$|^MFEE\.ADDR$|^PET\.OP\.REV$|^PET\.PCT$|^RFP$|^PABC$/.test(codeUpper)) return "applicant_request";
+  if (/^IGRA7$|^1001P$|^1200P$|^RO101E$|^EXRE92$/.test(codeUpper)) return "applicant_request";
+  if (/^A621$|^A621-JP$/.test(codeUpper)) return "applicant_request";
+
+  // === Responses (申请人答复 - replies to office actions, amendments) ===
   if (/amendments? received before examination/.test(descLower)) return "response";
   if (/amended claims filed after receipt of/.test(descLower)) return "response";
   if (/amended description filed after receipt of/.test(descLower)) return "response";
   if (/amended claims with annotations/.test(descLower)) return "response";
   if (/amended description with annotations/.test(descLower)) return "response";
   if (/reply to communication from the examining division/.test(descLower)) return "response";
-  if (/filing of the translations of the claims/.test(descLower)) return "response";
   if (/reply to the invitation to remedy/.test(descLower)) return "response";
   if (/substitute sheet/.test(descLower)) return "response";
-  if (/request for grant of a european patent/.test(descLower)) return "response";
-  if (/request for entry into the european phase/.test(descLower)) return "response";
-  if (/request for extension of time limit/.test(descLower)) return "response";
   if (/request for substantive examination/.test(descLower)) return "response";
   if (/statement of opinions|opinion statement/.test(descLower)) return "response";
   if (/correction|amendment.*replacement|replacement page/.test(descLower)) return "response";
@@ -599,20 +623,14 @@ function classifyDocCode(code, desc) {
   if (/response after final|after final consideration/.test(text)) return "response";
   if (/amendment.*after.*notice of allowance/.test(text)) return "response";
   if (/applicant argument|applicant remark|remarks made in an amendment/.test(text)) return "response";
-  if (/pre-appeal brief conference request/.test(text)) return "response";
   if (/notice of appeal filed/.test(text)) return "response";
-  if (/corrected filing receipt/.test(text)) return "response";
-  if (/certificate of correction/.test(text) && /request/.test(text)) return "response";
-  if (/patent term adjustment petition/.test(text)) return "response";
-  if (/maintenance fee address change/.test(text)) return "response";
-  if (/petition for review by the office of petitions/.test(text)) return "response";
-  if (/^CTED$|^CTEQ$|^AMSB$|^A\.NE$|^A\.NE\.AFCP$|^A\.NA$|^REM$|^RCEX$|^AFCP$|^BRAP$|^REBR$|^PABC$|^NOAP$|^RCFR$|^XT\//.test(codeUpper)) return "response";
-  if (/^IFEE$|^R46C\.REQ$|^PET\.PCT$|^RFN\.REQ$|^136A$|^PA$|^COFC\.REQ$|^PTA\.PET$|^MFEE\.ADDR$|^PET\.OP\.REV$/.test(codeUpper)) return "response";
-  if (/^ABEX$|^CLMSABEX$|^DESCABEX$|^EXRE3$|^EXRE92$|^FORAREPLY$|^CLMS-HWA$|^DESC-HWA$|^IGRA7$|^RO-DESC-26$|^1001P$|^1200P$|^RO101E$/.test(codeUpper)) return "response";
+  if (/^CTED$|^CTEQ$|^AMSB$|^A\.NE$|^A\.NE\.AFCP$|^A\.NA$|^REM$|^AFCP$|^BRAP$|^REBR$|^NOAP$/.test(codeUpper)) return "response";
+  if (/^IFEE$|^PA$/.test(codeUpper)) return "response";
+  if (/^ABEX$|^CLMSABEX$|^DESCABEX$|^EXRE3$|^FORAREPLY$|^CLMS-HWA$|^DESC-HWA$|^RO-DESC-26$/.test(codeUpper)) return "response";
   if (/^200104-CN$|^200105-CN$|^200106-CN$|^200107-CN$|^200108-CN$/.test(codeUpper)) return "response";
-  if (/^A53$|^A523$|^A621$/.test(codeUpper)) return "response";
-  if (/response|amendment|reply|remand|petition|request for/.test(text) && !/notification/.test(text)) return "response";
-  if (/答复|修改|请求|补正|意见陈述/.test(text)) return "response";
+  if (/^A53$|^A523$/.test(codeUpper)) return "response";
+  if (/response|amendment|reply|remand/.test(text) && !/notification/.test(text)) return "response";
+  if (/答复|修改|补正|意见陈述/.test(text)) return "response";
 
   // === Notifications (通知) ===
   if (/notification of forthcoming publication/.test(descLower)) return "notification";
@@ -763,7 +781,10 @@ function _classifyEpoDescType(key) {
   // 申请人答复类
   if (["amendment after non-final", "amendment", "response", "reply", "observations",
        "remarks", "arguments", "request for reconsideration",
-       "request for continued examination", "appeal brief", "reply brief"].includes(key)) return "response";
+       "appeal brief", "reply brief"].includes(key)) return "response";
+  // 申请人其他请求类
+  if (["request for continued examination", "entry into european phase", "european phase",
+       "extension of time", "authorization for extension"].includes(key)) return "applicant_request";
   // 授权通知类
   if (["notice of allowance", "intention to grant", "grant notification",
        "issue notification", "issue information", "decision to grant", "grant of patent"].includes(key)) return "allowance";

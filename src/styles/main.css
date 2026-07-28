@@ -1297,6 +1297,7 @@ body {
 .kanban-col-patent-doc { border-left: 3px solid #3b82f6; }
 .kanban-col-citation { border-left: 3px solid #f59e0b; }
 .kanban-col-allowance { border-left: 3px solid var(--success); }
+.kanban-col-applicant-request { border-left: 3px solid #14b8a6; }
 .kanban-col-notification { border-left: 3px solid #a78bfa; }
 
 .kanban-column-body {
@@ -1352,6 +1353,7 @@ body {
 .kanban-col-patent-doc .kanban-card-code { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
 .kanban-col-citation .kanban-card-code { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
 .kanban-col-allowance .kanban-card-code { background: rgba(52, 211, 153, 0.15); color: var(--success); }
+.kanban-col-applicant-request .kanban-card-code { background: rgba(20, 184, 166, 0.15); color: #14b8a6; }
 .kanban-col-notification .kanban-card-code { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
 
 .kanban-card-date {
@@ -4671,7 +4673,7 @@ body {
 /* Dot colors by type */
 .tl-dot-oa { background: var(--danger); }
 .tl-dot-response { background: var(--accent); }
-.tl-dot-request { background: var(--warning); }
+.tl-dot-applicant-request { background: #14b8a6; }
 .tl-dot-allowance { background: var(--success); }
 .tl-dot-notification { background: #a78bfa; }
 .tl-dot-citation { background: #06b6d4; }
@@ -4681,7 +4683,7 @@ body {
 /* Badge colors */
 .tl-dot-oa.tl-node-badge { background: rgba(248,113,113,0.12); color: var(--danger); }
 .tl-dot-response.tl-node-badge { background: rgba(96,165,250,0.12); color: var(--accent); }
-.tl-dot-request.tl-node-badge { background: rgba(251,191,36,0.12); color: var(--warning); }
+.tl-dot-applicant-request.tl-node-badge { background: rgba(20,184,166,0.12); color: #14b8a6; }
 .tl-dot-allowance.tl-node-badge { background: rgba(52,211,153,0.12); color: var(--success); }
 .tl-dot-notification.tl-node-badge { background: rgba(167,139,250,0.12); color: #a78bfa; }
 .tl-dot-citation.tl-node-badge { background: rgba(6,182,212,0.12); color: #06b6d4; }
@@ -5275,6 +5277,7 @@ body {
 .tl-s-dot.tl-dot-oa.tl-s-dot-key { background: linear-gradient(135deg, #f87171, #ef4444); }
 .tl-s-dot.tl-dot-patentdoc.tl-s-dot-key { background: linear-gradient(135deg, #818cf8, #6366f1); }
 .tl-s-dot.tl-dot-allowance.tl-s-dot-key { background: linear-gradient(135deg, #4ade80, #22c55e); }
+.tl-s-dot.tl-dot-applicant-request.tl-s-dot-key { background: linear-gradient(135deg, #2dd4bf, #14b8a6); }
 .tl-s-dot.tl-dot-notification.tl-s-dot-key { background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
 .tl-s-dot.tl-dot-request.tl-s-dot-key { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
 .tl-s-dot.tl-dot-citation.tl-s-dot-key { background: linear-gradient(135deg, #38bdf8, #0ea5e9); }
@@ -5338,6 +5341,7 @@ body {
 .tl-s-connector.tl-dot-oa { --conn-color: #ef4444; }
 .tl-s-connector.tl-dot-patentdoc { --conn-color: #6366f1; }
 .tl-s-connector.tl-dot-allowance { --conn-color: #22c55e; }
+.tl-s-connector.tl-dot-applicant-request { --conn-color: #14b8a6; }
 .tl-s-connector.tl-dot-notification { --conn-color: #8b5cf6; }
 .tl-s-connector.tl-dot-request { --conn-color: #f59e0b; }
 .tl-s-connector.tl-dot-citation { --conn-color: #0ea5e9; }
@@ -5473,6 +5477,7 @@ body {
 .tl-s-badge.tl-dot-oa { background: #ef4444; }
 .tl-s-badge.tl-dot-patentdoc { background: #6366f1; }
 .tl-s-badge.tl-dot-allowance { background: #22c55e; }
+.tl-s-badge.tl-dot-applicant-request { background: #14b8a6; }
 .tl-s-badge.tl-dot-notification { background: #8b5cf6; }
 .tl-s-badge.tl-dot-request { background: #f59e0b; }
 .tl-s-badge.tl-dot-citation { background: #0ea5e9; }
@@ -5577,6 +5582,7 @@ body {
 .tl-s-popup-dot.tl-dot-oa { background: #ef4444; }
 .tl-s-popup-dot.tl-dot-patentdoc { background: #6366f1; }
 .tl-s-popup-dot.tl-dot-allowance { background: #22c55e; }
+.tl-s-popup-dot.tl-dot-applicant-request { background: #14b8a6; }
 .tl-s-popup-dot.tl-dot-notification { background: #8b5cf6; }
 .tl-s-popup-dot.tl-dot-request { background: #f59e0b; }
 .tl-s-popup-dot.tl-dot-citation { background: #0ea5e9; }
@@ -5596,6 +5602,7 @@ body {
 .tl-s-popup-badge.tl-dot-oa { background: #ef4444; }
 .tl-s-popup-badge.tl-dot-patentdoc { background: #6366f1; }
 .tl-s-popup-badge.tl-dot-allowance { background: #22c55e; }
+.tl-s-popup-badge.tl-dot-applicant-request { background: #14b8a6; }
 .tl-s-popup-badge.tl-dot-notification { background: #8b5cf6; }
 .tl-s-popup-badge.tl-dot-request { background: #f59e0b; }
 .tl-s-popup-badge.tl-dot-citation { background: #0ea5e9; }

@@ -509,7 +509,7 @@ function mapJpDocType(docCode, type) {
   if (code.includes("SA") || code.includes("DISPATCH") || type === "allowance") {
     return "dispatch";
   }
-  if (code.includes("IK") || code.includes("HO") || code.includes("SUBMISSION") || type === "response") {
+  if (code.includes("IK") || code.includes("HO") || code.includes("SUBMISSION") || type === "response" || type === "applicant_request") {
     return "submission";
   }
   if (code.includes("SH") || code.includes("TRIAL")) {
@@ -8334,7 +8334,8 @@ function renderKanban(data) {
     const typeNames = (typeof PATENT_STATUS !== 'undefined' && PATENT_STATUS[office] && PATENT_STATUS[office].typeNames) || {
       "office_action": "审查意见", "response": "申请人答复",
       "patent_doc": "专利文件", "citation": "审查员引用与IDS",
-      "allowance": "授权通知", "notification": "通知", "misc": "其他文件"
+      "allowance": "授权通知", "applicant_request": "申请人其他请求",
+      "notification": "通知", "misc": "其他文件"
     };
     let filterHtml = '<input type="text" id="kanban-filter-input" class="doc-filter-input" placeholder="搜索文档名称、代码...">';
     filterHtml += '<button class="doc-filter-chip active" data-filter-type="all">全部 <span class="chip-count">' + items.length + '</span></button>';
@@ -8386,6 +8387,7 @@ function renderKanban(data) {
     { key: "patent_doc", title: "专利文件", icon: '<svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>', color: "kanban-col-patent-doc" },
     { key: "citation", title: "审查员引用与IDS", icon: '<svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>', color: "kanban-col-citation" },
     { key: "allowance", title: "授权通知", icon: '<svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>', color: "kanban-col-allowance" },
+    { key: "applicant_request", title: "申请人其他请求", icon: '<svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>', color: "kanban-col-applicant-request" },
     { key: "notification", title: "通知", icon: '<svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>', color: "kanban-col-notification" },
   ];
 
@@ -8473,8 +8475,9 @@ function renderKanban(data) {
     const patentDocCount = items.filter(it => it.type === "patent_doc").length;
     const citationCount = items.filter(it => it.type === "citation").length;
     const allowanceCount = items.filter(it => it.type === "allowance").length;
+    const appReqCount = items.filter(it => it.type === "applicant_request").length;
     const notificationCount = items.filter(it => it.type === "notification").length;
-    statusEl.textContent = "共 " + items.length + " 份文档（审查意见 " + oaCount + "，答复 " + respCount + "，专利文件 " + patentDocCount + "，引用 " + citationCount + "，授权 " + allowanceCount + "，通知 " + notificationCount + "）";
+    statusEl.textContent = "共 " + items.length + " 份文档（审查意见 " + oaCount + "，答复 " + respCount + "，专利文件 " + patentDocCount + "，引用 " + citationCount + "，授权 " + allowanceCount + "，其他请求 " + appReqCount + "，通知 " + notificationCount + "）";
   }
 }
 
@@ -8583,6 +8586,7 @@ function renderOverview(data) {
   const patentDocCount = items.filter(it => it.type === "patent_doc").length;
   const citationCount = items.filter(it => it.type === "citation").length;
   const allowCount = items.filter(it => it.type === "allowance").length;
+  const appReqCount = items.filter(it => it.type === "applicant_request").length;
   const notifCount = items.filter(it => it.type === "notification").length;
 
   let statusHtml = '';
@@ -8606,6 +8610,9 @@ function renderOverview(data) {
     }
     if (allowCount > 0) {
       statusHtml += '<div class="info-row"><span class="info-label">授权通知</span><span class="info-value">' + allowCount + ' 份</span></div>';
+    }
+    if (appReqCount > 0) {
+      statusHtml += '<div class="info-row"><span class="info-label">申请人其他请求</span><span class="info-value">' + appReqCount + ' 份</span></div>';
     }
     if (notifCount > 0) {
       statusHtml += '<div class="info-row"><span class="info-label">通知文件</span><span class="info-value">' + notifCount + ' 份</span></div>';
@@ -10141,7 +10148,8 @@ function renderDocuments(data) {
 
   const typeNames = (PATENT_STATUS[office] && PATENT_STATUS[office].typeNames) || {
     "office_action": "审查意见", "response": "申请人答复", "patent_doc": "专利文件",
-    "citation": "审查员引用与IDS", "allowance": "授权通知", "notification": "通知"
+    "citation": "审查员引用与IDS", "allowance": "授权通知", "applicant_request": "申请人其他请求",
+    "notification": "通知"
   };
 
   let filterHtml = '<div class="doc-filter-bar">';
@@ -11021,7 +11029,7 @@ function buildTimelineSummary(office, documents) {
 
   const typeLabels = {
     office_action: "审查意见", response: "答复", allowance: "授权",
-    request: "请求", notification: "通知", misc: "其他",
+    applicant_request: "其他请求", notification: "通知", misc: "其他",
   };
 
   // Sort documents by date for timeline
@@ -12546,7 +12554,7 @@ function _updateTimelineSelectSummary() {
   const dotClassMap = {
     office_action: "tl-dot-oa",
     response: "tl-dot-response",
-    request: "tl-dot-request",
+    applicant_request: "tl-dot-applicant-request",
     allowance: "tl-dot-allowance",
     notification: "tl-dot-notification",
     citation: "tl-dot-citation",
@@ -12556,7 +12564,7 @@ function _updateTimelineSelectSummary() {
   const typeLabelMap = {
     office_action: "审查意见",
     response: "申请人答复",
-    request: "申请人请求",
+    applicant_request: "申请人其他请求",
     allowance: "授权通知",
     notification: "通知",
     citation: "审查员引用",
@@ -12760,7 +12768,7 @@ function renderTimeline(data) {
   const dotClassMap = {
     office_action: "tl-dot-oa",
     response: "tl-dot-response",
-    request: "tl-dot-request",
+    applicant_request: "tl-dot-applicant-request",
     allowance: "tl-dot-allowance",
     notification: "tl-dot-notification",
     citation: "tl-dot-citation",
@@ -12771,7 +12779,7 @@ function renderTimeline(data) {
   const typeLabelMap = {
     office_action: "审查意见",
     response: "申请人答复",
-    request: "申请人请求",
+    applicant_request: "申请人其他请求",
     allowance: "授权通知",
     notification: "通知",
     citation: "审查员引用",
@@ -12782,12 +12790,12 @@ function renderTimeline(data) {
   const typeIconMap = {
     office_action: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
     response: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
+    applicant_request: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
     allowance: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
     notification: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
     citation: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
     patent_doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
     misc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
-    request: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
   };
 
   // ── 按日期分组 ──
@@ -17451,7 +17459,7 @@ async function exportToWord() {
 
     const sortedDocs = [...kanbanState.documents].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
     sortedDocs.forEach((it, idx) => {
-      const typeNames = { "office_action": "审查意见", "response": "申请人答复", "patent_doc": "专利文件", "citation": "审查员引用与IDS", "allowance": "授权通知", "notification": "通知" };
+      const typeNames = { "office_action": "审查意见", "response": "申请人答复", "patent_doc": "专利文件", "citation": "审查员引用与IDS", "allowance": "授权通知", "applicant_request": "申请人其他请求", "notification": "通知" };
       tlRows.push(new docx.TableRow({
         children: [
           new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: String(idx + 1), size: 18, font: "Microsoft YaHei" })] })] }),
@@ -19004,7 +19012,8 @@ function openMergeExportModal() {
     const canDownload = !!downloadUrl;
     const typeNames = {
       "office_action": "审查意见", "response": "申请人答复", "patent_doc": "专利文件",
-      "citation": "审查员引用与IDS", "allowance": "授权通知", "notification": "通知"
+      "citation": "审查员引用与IDS", "allowance": "授权通知", "applicant_request": "申请人其他请求",
+      "notification": "通知"
     };
 
     html += `
