@@ -122,9 +122,11 @@ const __PATENTLENS_COPYRIGHT__ = "PatentLens (c) 2026 Alfred Shi - All Rights Re
     // keystroke and (a) re-injects the lost character and (b) asks the main
     // process to refocus the webContents, so the user never has to switch
     // windows to type.
+    console.log('[FOCUS] Desync detector installing...');
     document.addEventListener('keydown', function(e) {
       var t = e.target;
       if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+      console.log('[FOCUS] keydown detected:', { tag: t.tagName, id: t.id, key: e.key, keyLen: e.key.length, defaultPrevented: e.defaultPrevented, isComposing: e.isComposing, keyCode: e.keyCode });
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
       if (e.key.length !== 1) return; // only printable keys for re-injection
       var prevValue = t.value;
@@ -133,22 +135,34 @@ const __PATENTLENS_COPYRIGHT__ = "PatentLens (c) 2026 Alfred Shi - All Rights Re
       var key = e.key;
       setTimeout(function() {
         // If value changed, input was processed normally — no desync
-        if (t.value !== prevValue) return;
+        if (t.value !== prevValue) {
+          console.log('[FOCUS] Value changed normally, no desync');
+          return;
+        }
         // Value unchanged → renderer focus desynced
         console.warn('[FOCUS] Desync detected on ' + (t.id || t.tagName) + ', refocusing + re-injecting "' + key + '"');
         try {
           if (window.electronAPI && window.electronAPI.forceRefocus) {
+            console.log('[FOCUS] Calling forceRefocus...');
             window.electronAPI.forceRefocus();
+          } else {
+            console.warn('[FOCUS] electronAPI.forceRefocus not available');
           }
-        } catch(_) {}
+        } catch(err) {
+          console.error('[FOCUS] forceRefocus error:', err);
+        }
         // Re-inject the character that was lost
         try {
           t.value = prevValue.substring(0, prevStart) + key + prevValue.substring(prevEnd);
           t.selectionStart = t.selectionEnd = prevStart + 1;
           t.dispatchEvent(new Event('input', { bubbles: true }));
-        } catch(_) {}
+          console.log('[FOCUS] Character re-injected successfully');
+        } catch(err) {
+          console.error('[FOCUS] Re-injection error:', err);
+        }
       }, 0);
     }, true);
+    console.log('[FOCUS] Desync detector installed');
 
     // ── 2. IMMEDIATELY protect all form elements and critical UI panels from GT ──
     // GT's DOM-walking translation can replace/refunction textarea/input elements,
