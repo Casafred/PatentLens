@@ -3142,6 +3142,10 @@ function switchPatentTab(tabName) {
 function _hideFindBarIfNeeded(tabName) {
   var pdFindBarEl = document.getElementById('patent-detail-find-bar');
   if (!pdFindBarEl || pdFindBarEl.classList.contains('hidden')) return;
+  // 查找跳转期间不隐藏查找栏/不清除高亮 —— _scrollToCurrentMatch 会调用
+  // switchPatentTab，后者会触发本函数，若不阻止会导致高亮被清除、匹配列表
+  // 被清空，使 matchEl 引用的 DOM 节点失效，跨TAB跳转完全失效。
+  if (window._pdFindJumping) return;
   // Check if split-view is active in the current tab
   var panel = document.querySelector('#patent-detail-content .pd-tab-panel[data-panel="' + tabName + '"]');
   var splitActive = panel && panel.classList.contains('pd-split-view');
@@ -19751,19 +19755,25 @@ function _scrollToCurrentMatch() {
   });
   if (_pdFindCurrentIdx >= 0 && _pdFindMatches[_pdFindCurrentIdx]) {
     const matchEl = _pdFindMatches[_pdFindCurrentIdx];
-    // Auto-switch to the tab panel containing this match if it's hidden
-    const panel = matchEl.closest(".pd-tab-panel");
-    if (panel && !panel.classList.contains("active") && panel.dataset.panel) {
-      switchPatentTab(panel.dataset.panel);
-    }
-    // Expand any collapsed ancestor blocks
-    const collapsedAncestor = matchEl.closest(".collapsed");
-    if (collapsedAncestor) {
-      collapsedAncestor.classList.remove("collapsed");
+    // 设置跳转标志，阻止 switchPatentTab → _hideFindBarIfNeeded 清除高亮
+    window._pdFindJumping = true;
+    try {
+      // Auto-switch to the tab panel containing this match if it's hidden
+      const panel = matchEl.closest(".pd-tab-panel");
+      if (panel && !panel.classList.contains("active") && panel.dataset.panel) {
+        switchPatentTab(panel.dataset.panel);
+      }
+      // Expand any collapsed ancestor blocks
+      const collapsedAncestor = matchEl.closest(".collapsed");
+      if (collapsedAncestor) {
+        collapsedAncestor.classList.remove("collapsed");
+      }
+    } finally {
+      window._pdFindJumping = false;
     }
     // Use requestAnimationFrame to ensure the tab switch has rendered before scrolling
     requestAnimationFrame(() => {
-      matchEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      try { matchEl.scrollIntoView({ behavior: "smooth", block: "center" }); } catch(_) {}
     });
   }
 }
