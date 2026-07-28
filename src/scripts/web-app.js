@@ -530,6 +530,24 @@ async function tauriInvoke(cmd, args) {
   }
 }
 
+// 主动让 Electron 主进程对 webContents 做 blur+focus 强制重同步。
+// 用途：打开 AI 问一问 / 继续对话 / reader chat 等含 textarea 的悬浮面板时，
+// 渲染进程的 frame-level focused_frame_ 可能因先前跨域 iframe（GT banner、
+// 内嵌 webview pd-wv-iframe 等）抢焦点后被隐藏/移除而处于失步状态。
+// 失步时键盘事件被路由到已失效的子 frame，主 frame document 收不到 keydown，
+// textarea 看似有焦点但敲键盘无反应。
+//
+// 之前的 desync detector（document capture keydown）无法捕获这种情况，因为
+// 失步时主 frame 根本收不到 keydown 事件。必须在面板打开瞬间主动 kick 一次，
+// 让主进程 blur+focus webContents，强制 Chromium 重新走 frame 路由逻辑。
+function _electronFocusKick() {
+  try {
+    if (window.electronAPI && typeof window.electronAPI.forceRefocus === "function") {
+      window.electronAPI.forceRefocus();
+    }
+  } catch (_) { /* ignore */ }
+}
+
 const patentInput = document.getElementById("patent-input");
 const searchBtn = document.getElementById("search-btn");
 const queryTypeSelect = document.getElementById("query-type");
@@ -9711,6 +9729,10 @@ function openPatentAsk(source) {
     inputEl.removeAttribute('disabled');
   }
   modal.classList.remove("hidden");
+  // 主动让主进程 blur+focus webContents，强制 Chromium 重新走 frame 路由，
+  // 把 focused_frame_ 指回主 frame。否则若先前跨域 iframe 抢过焦点，
+  // 键盘事件会路由到失效子 frame，textarea 看似有焦点但敲键盘无反应。
+  _electronFocusKick();
   // Force focus with retry — modal may not be fully visible yet on first try,
   // and DOM mutations from other subsystems can steal focus right after opening.
   function _forceFocus(attempt) {
@@ -16514,6 +16536,8 @@ function switchRightPanelTab(panelName) {
     const chatProviderSelect = document.getElementById("chat-provider-select");
     const chatModelSelect = document.getElementById("chat-model-select");
     if (chatProviderSelect) populateChatProviderSelect(chatProviderSelect, chatModelSelect, chatProviderOverride, chatModelOverride);
+    // 主动让主进程 blur+focus webContents，强制重同步 frame-level 焦点
+    _electronFocusKick();
     // Ensure chat input is usable and force focus
     const ci = document.getElementById("chat-input");
     if (ci) {
@@ -18557,6 +18581,9 @@ async function sendAnalysisChatMessage() {
       if (analysisChatPanel) {
         analysisChatPanel.classList.toggle("hidden");
         if (!analysisChatPanel.classList.contains("hidden")) {
+          // 主动让主进程 blur+focus webContents，强制重同步 frame-level 焦点，
+          // 否则 textarea 看似有焦点但敲键盘无反应（失步症状）
+          _electronFocusKick();
           if (analysisChatInput) analysisChatInput.focus();
         }
       }

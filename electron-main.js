@@ -4464,11 +4464,29 @@ app.whenReady().then(async () => {
 
   // IPC: 渲染进程请求强制重新聚焦 webContents —— 修复 renderer focus desync
   // 当跨域 iframe（GT、内置 webview 等）抢夺焦点后被隐藏/移除时，
-  // Chromium 渲染进程的 focused_frame_ 会变成过期状态，导致 keydown 事件
-  // 正常触发但字符无法输入（input 事件不触发）。webContents.focus() 会向
-  // 渲染进程发送聚焦消息，强制重新同步焦点状态。
+  // Chromium 渲染进程的 focused_frame_ 会变成过期状态，键盘事件被路由到
+  // 已失效的子 frame，主 frame 的 document 收不到 keydown，textarea
+  // 看似有焦点但敲键盘无反应（必须切 OS 应用或开关 DevTools 才能恢复）。
+  //
+  // 关键点：BrowserWindow 已是焦点时，单独 webContents.focus() 是 no-op
+  // （widget-level focus 已为 true，不会重新走 frame 路由）。必须先 blur
+  // 让 widget-level focus 变 false，再 focus 让它变 true，强制 Chromium
+  // 重新运行 frame focus 路由逻辑，把 focused_frame_ 指回主 frame。
+  // 这等效于"切换 OS 应用再切回来"，但不会闪窗口（webContents-level 操作
+  // 不影响 BrowserWindow 的 OS 窗口激活状态）。
   ipcMain.on("force-refocus", (event) => {
-    try { event.sender.focus(); } catch (e) { /* ignore */ }
+    try {
+      const wc = event.sender;
+      if (!wc || wc.isDestroyed()) return;
+      wc.blur();
+      // 短延时确保 blur 的 IPC 先于 focus 投递到渲染进程；
+      // 两个消息按顺序到达，渲染进程会先失焦再获焦，强制重跑路由逻辑。
+      setTimeout(() => {
+        try {
+          if (!wc.isDestroyed()) wc.focus();
+        } catch (_) { /* ignore */ }
+      }, 10);
+    } catch (e) { /* ignore */ }
   });
 
   // IPC: 渲染进程同步当前是否存在未导出的 PDF 标注（用于关闭前确认）
