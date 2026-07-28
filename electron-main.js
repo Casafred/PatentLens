@@ -4467,31 +4467,48 @@ app.whenReady().then(async () => {
   // 被隐藏/移除时，Chromium 渲染进程的 focused_frame_ 停留在已失效的子 frame。
   // 键盘事件路由到失效 frame，主 frame document 收不到 keydown，textarea
   // 看似有焦点（document.activeElement 正确）但敲键盘无反应。
-  // 只有 OS 级窗口失焦再获焦（最小化/切应用/开 DevTools）才能恢复。
   //
-  // 关键教训：webContents.blur()+focus() 不够 —— webContents 级别在
-  // BrowserWindow 已获焦时是 no-op，不会让 widget-level focus 真正变 false。
-  // 必须用 BrowserWindow.blur()+focus()（OS 窗口级），强制窗口真正失焦再获焦，
-  // 触发 Chromium 完整的 focus loss → focus gain 事件链，重置 focused_frame_。
-  // 50ms 延时足够 OS 注册 blur，又足够短用户几乎无感（标题栏可能闪一下）。
+  // 每窗口每页面只 kick 一次：kick 后 focused_frame_ 已重置回主 frame，
+  // 同一页面内后续打开面板不需要再 kick（除非有新的跨域 iframe 加载，
+  // 此时 did-navigate 会重置标记）。延时 20ms 足够 OS 处理 blur/focus，
+  // 又尽量减少标题栏可见闪动。
+  const _forceRefocusDone = new Set();
   ipcMain.on("force-refocus", (event) => {
     try {
       const wc = event.sender;
       if (!wc || wc.isDestroyed()) return;
+      const wcId = wc.id;
+      if (_forceRefocusDone.has(wcId)) {
+        console.log("[FOCUS] force-refocus: already kicked for this wc, skipping");
+        return;
+      }
+      _forceRefocusDone.add(wcId);
       const win = BrowserWindow.fromWebContents(wc);
       if (!win || win.isDestroyed()) return;
-      console.log("[FOCUS] force-refocus: BrowserWindow blur → focus");
+      console.log("[FOCUS] force-refocus: BrowserWindow blur → focus (one-time)");
       win.blur();
       setTimeout(() => {
         try {
           if (!win.isDestroyed()) {
             win.focus();
-            // 双保险：窗口级 focus 后再补一次 webContents 级 focus
             if (!wc.isDestroyed()) wc.focus();
           }
         } catch (_) { /* ignore */ }
-      }, 50);
+      }, 20);
+      // 页面导航后重置标记（新页面可能再次失步）
+      wc.once("did-navigate", () => { _forceRefocusDone.delete(wcId); });
+      wc.once("did-navigate-in-page", () => { _forceRefocusDone.delete(wcId); });
     } catch (e) { console.error("[FOCUS] force-refocus error:", e); }
+  });
+
+  // 渲染进程通知：GT/iframe 被清理后，焦点可能再次失步，允许下一次 kick
+  ipcMain.on("reset-focus-kick", (event) => {
+    try {
+      const wc = event.sender;
+      if (!wc || wc.isDestroyed()) return;
+      _forceRefocusDone.delete(wc.id);
+      console.log("[FOCUS] reset-focus-kick: flag cleared for wc", wc.id);
+    } catch (_) { /* ignore */ }
   });
 
   // IPC: 渲染进程同步当前是否存在未导出的 PDF 标注（用于关闭前确认）

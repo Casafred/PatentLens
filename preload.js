@@ -32,4 +32,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   triggerImmersiveTranslate: () => ipcRenderer.invoke("trigger-immersive-translate"),
   onForceClose: (callback) => ipcRenderer.on("force-close-app", () => callback()),
   forceRefocus: () => ipcRenderer.send("force-refocus"),
+  resetFocusKick: () => ipcRenderer.send("reset-focus-kick"),
 });

@@ -530,19 +530,14 @@ async function tauriInvoke(cmd, args) {
   }
 }
 
-// 主动让 Electron 主进程对 BrowserWindow 做 blur+focus 强制重同步。
-// 用途：打开 AI 问一问 / 继续对话 / reader chat 等含 textarea 的悬浮面板时，
-// 渲染进程的 frame-level focused_frame_ 可能因先前跨域 iframe（GT banner、
-// 内嵌 webview pd-wv-iframe 等）抢焦点后被隐藏/移除而处于失步状态。
-// 失步时键盘事件被路由到已失效的子 frame，主 frame document 收不到 keydown，
-// textarea 看似有焦点但敲键盘无反应。
-//
-// 三管齐下：
-// 1. renderer 级：blur 掉可能持有焦点的 iframe（GT banner frame 等）
-// 2. renderer 级：window.focus() 尝试重置 frame focus
-// 3. main 级：BrowserWindow.blur()+focus() 强制 OS 级窗口失焦再获焦，
-//    触发 Chromium 完整 focus loss → focus gain 事件链，重置 focused_frame_
+// 全局标记：本页面是否已经 kick 过焦点重同步。
+// kick 成功后 focused_frame_ 已重置回主 frame，同一页面内后续不需要再 kick
+// （除非有新的跨域 iframe 再次抢夺焦点，此时可通过 _resetFocusKickFlag 重置）。
+var _focusKickDone = false;
+
 function _electronFocusKick() {
+  if (_focusKickDone) return;
+  _focusKickDone = true;
   try {
     // 1. Blur any iframe that might be holding frame-level focus
     try {
@@ -551,21 +546,18 @@ function _electronFocusKick() {
         console.log('[FOCUS] Blurring focused iframe:', ae.id || ae.className || ae.src);
         try { ae.blur(); } catch(_) {}
       }
-      // Also sweep all GT/webview iframes and blur them
       document.querySelectorAll('iframe.goog-te-banner-frame, iframe[class*="VIpgJd"], iframe#pd-wv-iframe').forEach(function(f) {
         try { f.blur(); } catch(_) {}
       });
     } catch(_) {}
 
-    // 2. Renderer-side window.focus() to try resetting frame focus
+    // 2. Renderer-side window.focus()
     try { window.focus(); } catch(_) {}
 
-    // 3. Ask main process to do BrowserWindow blur+focus (the real fix)
+    // 3. Ask main process to do BrowserWindow blur+focus (the real fix, one-time)
     if (window.electronAPI && typeof window.electronAPI.forceRefocus === "function") {
-      console.log('[FOCUS] Calling forceRefocus (BrowserWindow blur+focus)');
+      console.log('[FOCUS] Calling forceRefocus (one-time, BrowserWindow blur+focus)');
       window.electronAPI.forceRefocus();
-    } else {
-      console.warn('[FOCUS] electronAPI.forceRefocus not available');
     }
   } catch (_) { /* ignore */ }
 }
@@ -4678,6 +4670,15 @@ function _purgeGoogleTranslateCompletely() {
     _figLinkLastTextSnapshot = '';
 
     console.log('[FigLink] GT reset complete (UI hidden, state cleared)');
+
+    // GT iframe 被隐藏/移除后，焦点可能再次失步，重置 kick 标记，
+    // 下次打开 AI 面板时允许再 kick 一次
+    _focusKickDone = false;
+    try {
+      if (window.electronAPI && typeof window.electronAPI.resetFocusKick === "function") {
+        window.electronAPI.resetFocusKick();
+      }
+    } catch(_) {}
   } catch(e) {
     console.warn('[FigLink] error in _purgeGoogleTranslateCompletely:', e);
   }
@@ -9751,13 +9752,8 @@ function openPatentAsk(source) {
     inputEl.removeAttribute('disabled');
   }
   modal.classList.remove("hidden");
-  // 主动让主进程 BrowserWindow blur+focus，强制 OS 级窗口失焦再获焦，
-  // 重置 Chromium 渲染进程的 focused_frame_（否则键盘事件路由到失效子 frame）。
+  // 首次打开 AI 问一问时 kick 一次（本页面只 kick 一次，后续开关不再闪）
   _electronFocusKick();
-  // 200ms 后再 kick 一次：首次 kick 可能因 GT iframe 尚未完全清理而无效
-  setTimeout(_electronFocusKick, 200);
-  // Force focus with retry — modal may not be fully visible yet on first try,
-  // and DOM mutations from other subsystems can steal focus right after opening.
   function _forceFocus(attempt) {
     if (!inputEl) return;
     try { inputEl.focus(); } catch(_) {}
@@ -16559,9 +16555,7 @@ function switchRightPanelTab(panelName) {
     const chatProviderSelect = document.getElementById("chat-provider-select");
     const chatModelSelect = document.getElementById("chat-model-select");
     if (chatProviderSelect) populateChatProviderSelect(chatProviderSelect, chatModelSelect, chatProviderOverride, chatModelOverride);
-    // 主动让主进程 BrowserWindow blur+focus，强制重同步 frame-level 焦点
     _electronFocusKick();
-    setTimeout(_electronFocusKick, 200);
     // Ensure chat input is usable and force focus
     const ci = document.getElementById("chat-input");
     if (ci) {
@@ -18605,10 +18599,7 @@ async function sendAnalysisChatMessage() {
       if (analysisChatPanel) {
         analysisChatPanel.classList.toggle("hidden");
         if (!analysisChatPanel.classList.contains("hidden")) {
-          // 主动让主进程 BrowserWindow blur+focus，强制重同步 frame-level 焦点，
-          // 否则 textarea 看似有焦点但敲键盘无反应（失步症状）
           _electronFocusKick();
-          setTimeout(_electronFocusKick, 200);
           if (analysisChatInput) analysisChatInput.focus();
         }
       }
