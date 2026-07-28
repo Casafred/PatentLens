@@ -15800,6 +15800,12 @@ async function ocrPdf(pageRange) {
   const isPartialOcr = !!pageRange;
   // 阶段标签，用于在进度文字中区分部分 OCR
   const phaseLabel = isPartialOcr ? "（第 " + pageRange + " 页）" : "";
+  // 计算实际 OCR 的页数（部分OCR时从pageRange解析，否则用总页数）
+  let ocrPageCount = totalPages;
+  if (isPartialOcr) {
+    const parsed = _parsePageRange(pageRange, totalPages);
+    if (parsed.valid && parsed.pages.length > 0) ocrPageCount = parsed.pages.length;
+  }
 
   // 中断控制器，用于在部分 OCR 时停止当前任务
   _ocrAbortController = new AbortController();
@@ -15840,11 +15846,11 @@ async function ocrPdf(pageRange) {
       // Simulate OCR phase progress
       let ocrTimer = null;
       let ocrProgress = 35;
-      if (totalPages > 0) {
+      if (ocrPageCount > 0) {
         ocrTimer = setInterval(() => {
           if (ocrProgress < 85) {
             ocrProgress += Math.max(1, Math.floor((85 - ocrProgress) * 0.08));
-            showOcrProgressOverlay("正在 OCR 识别 (" + (engine === "paddle_ocr_vl" ? "PaddleOCR" : "GLM OCR") + ")..." + phaseLabel + " " + Math.round(ocrProgress * totalPages / 85) + "/" + totalPages + " 页", ocrProgress, idx);
+            showOcrProgressOverlay("正在 OCR 识别 (" + (engine === "paddle_ocr_vl" ? "PaddleOCR" : "GLM OCR") + ")..." + phaseLabel + " " + Math.round(ocrProgress * ocrPageCount / 85) + "/" + ocrPageCount + " 页", ocrProgress, idx);
           }
         }, 800);
         if (ocrJobs[idx] && ocrJobs[idx].timers) ocrJobs[idx].timers.push(ocrTimer);
