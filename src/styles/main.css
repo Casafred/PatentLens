@@ -7921,8 +7921,8 @@ body {
   position: fixed;
   right: 24px;
   bottom: 24px;
-  width: 420px;
-  min-width: 320px;
+  width: 560px;
+  min-width: 380px;
   min-height: 300px;
   max-width: calc(100vw - 48px);
   height: 540px;
