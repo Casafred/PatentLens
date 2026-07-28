@@ -14,6 +14,92 @@
   <link rel="stylesheet" href="styles/main.css?v=260724d">
   <link rel="stylesheet" href="styles/agent.css?v=260717d">
   <link rel="stylesheet" href="styles/comparison.css?v=260717d">
+  <script>
+  // ── 输入阻塞诊断器 ──
+  // 在所有其他脚本之前执行，监控输入框被阻止的真正原因
+  (function() {
+    var _diagLog = [];
+    function _log(msg) {
+      var entry = Date.now().toFixed(0) + ' ' + msg;
+      _diagLog.push(entry);
+      if (_diagLog.length > 200) _diagLog.shift();
+      console.log('[DIAG] ' + entry);
+    }
+    _log('diag script loaded');
+
+    // 1. 监控 document.activeElement 变化
+    var _lastActive = null;
+    setInterval(function() {
+      var ae = document.activeElement;
+      if (ae !== _lastActive) {
+        var desc = ae ? (ae.tagName + (ae.id ? '#' + ae.id : '') + (ae.className ? '.' + (typeof ae.className === 'string' ? ae.className.split(' ').join('.') : '') : '')) : 'null';
+        _log('activeElement changed: ' + desc);
+        _lastActive = ae;
+      }
+    }, 200);
+
+    // 2. 监控 keydown 事件是否被拦截
+    document.addEventListener('keydown', function(e) {
+      var target = e.target;
+      var tag = target ? target.tagName : 'null';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        _log('keydown on ' + tag + '#' + (target.id || '') + ' key=' + e.key + ' defaultPrevented=' + e.defaultPrevented + ' canceled=' + (e.cancelable ? 'yes' : 'no'));
+      }
+    }, true); // capture phase — fires before any other handler
+
+    // 3. 监控 keydown 在 bubble 阶段是否到达
+    document.addEventListener('keydown', function(e) {
+      var target = e.target;
+      var tag = target ? target.tagName : 'null';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        _log('keydown BUBBLE reached for ' + tag + '#' + (target.id || '') + ' key=' + e.key);
+      }
+    }, false);
+
+    // 4. 监控 input 事件是否触发
+    document.addEventListener('input', function(e) {
+      var target = e.target;
+      var tag = target ? target.tagName : 'null';
+      if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        _log('INPUT EVENT on ' + tag + '#' + (target.id || '') + ' value="' + (target.value || '').substring(0, 20) + '"');
+      }
+    }, true);
+
+    // 5. 检测覆盖层 — 每2秒扫描一次
+    setInterval(function() {
+      var inputs = document.querySelectorAll('input[type="text"], input:not([type]), textarea');
+      for (var i = 0; i < inputs.length; i++) {
+        var el = inputs[i];
+        if (el.closest('.hidden')) continue;
+        var rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+        var cx = rect.left + rect.width / 2;
+        var cy = rect.top + rect.height / 2;
+        var topEl = document.elementFromPoint(cx, cy);
+        if (topEl && topEl !== el && !el.contains(topEl) && !topEl.contains(el)) {
+          var desc = topEl.tagName + (topEl.id ? '#' + topEl.id : '') + (topEl.className ? '.' + (typeof topEl.className === 'string' ? topEl.className.split(' ').join('.') : '') : '');
+          _log('OVERLAY DETECTED: input ' + (el.id || el.tagName) + ' is covered by ' + desc + ' at (' + cx.toFixed(0) + ',' + cy.toFixed(0) + ')');
+        }
+      }
+    }, 2000);
+
+    // 6. 检测事件循环阻塞 — 测量 setInterval 的实际执行间隔
+    var _lastTick = Date.now();
+    setInterval(function() {
+      var now = Date.now();
+      var delta = now - _lastTick;
+      if (delta > 500) {
+        _log('EVENT LOOP BLOCKED for ' + delta + 'ms');
+      }
+      _lastTick = now;
+    }, 100);
+
+    // 7. 暴露诊断接口
+    window._getDiagLog = function() { return _diagLog.join('\n'); };
+    window._clearDiagLog = function() { _diagLog = []; };
+    _log('diag monitors installed');
+  })();
+  </script>
 </head>
 <body>
   <div id="splash-screen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg-primary, #0f1713);display:flex;align-items:center;justify-content:center;z-index:99999;transition:opacity 0.5s ease;">
