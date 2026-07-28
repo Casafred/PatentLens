@@ -143,17 +143,10 @@ const __PATENTLENS_COPYRIGHT__ = "PatentLens (c) 2026 Alfred Shi - All Rights Re
     document.querySelectorAll(sweepSelectors).forEach(function(el) {
       el.style.cssText += ';display:none !important;pointer-events:none !important;';
     });
-    // Re-sweep periodically for the first 8 seconds to catch late-arriving GT chrome.
-    // NOTE: do NOT call _protectEarly from this sweep — it already runs on its own timer,
-    // and double-running increases DOM mutations that can interfere with textarea focus.
-    var sweeps = 0;
-    var sweepTimer = setInterval(function() {
-      sweeps++;
-      document.querySelectorAll(sweepSelectors).forEach(function(el) {
-        el.style.cssText += ';display:none !important;pointer-events:none !important;';
-      });
-      if (sweeps >= 16) clearInterval(sweepTimer); // 16 * 500ms = 8 seconds total
-    }, 500);
+    // NOTE: Removed the 8-second periodic sweep — repeated setInterval DOM mutations
+    // were causing focus loss / IME reset in Chrome, making textareas temporarily untypeable.
+    // The CSS shield (#gt-chrome-shield with !important rules) already handles late-arriving
+    // GT elements persistently without needing JS polling.
   } catch(e) { console.warn('[GT] immediate shield install failed:', e); }
 })();
 
@@ -9629,9 +9622,25 @@ function openPatentAsk(source) {
   _patentAskMessages = cached ? cached.slice() : [];
   _renderPatentAskMessages();
   const inputEl = document.getElementById("patent-ask-input");
-  if (inputEl) inputEl.value = "";
+  if (inputEl) {
+    inputEl.value = "";
+    inputEl.disabled = false;
+    inputEl.readOnly = false;
+    inputEl.style.pointerEvents = 'auto';
+    inputEl.removeAttribute('readonly');
+    inputEl.removeAttribute('disabled');
+  }
   modal.classList.remove("hidden");
-  if (inputEl) setTimeout(() => inputEl.focus(), 50);
+  // Force focus with retry — modal may not be fully visible yet on first try,
+  // and DOM mutations from other subsystems can steal focus right after opening.
+  function _forceFocus(attempt) {
+    if (!inputEl) return;
+    try { inputEl.focus(); } catch(_) {}
+    if (document.activeElement !== inputEl && attempt < 10) {
+      setTimeout(function() { _forceFocus(attempt + 1); }, 50 + attempt * 30);
+    }
+  }
+  setTimeout(function() { _forceFocus(0); }, 30);
 }
 
 function closePatentAsk() {
@@ -16083,6 +16092,22 @@ function switchRightPanelTab(panelName) {
     const chatProviderSelect = document.getElementById("chat-provider-select");
     const chatModelSelect = document.getElementById("chat-model-select");
     if (chatProviderSelect) populateChatProviderSelect(chatProviderSelect, chatModelSelect, chatProviderOverride, chatModelOverride);
+    // Ensure chat input is usable and force focus
+    const ci = document.getElementById("chat-input");
+    if (ci) {
+      ci.disabled = false;
+      ci.readOnly = false;
+      ci.style.pointerEvents = 'auto';
+      ci.removeAttribute('readonly');
+      ci.removeAttribute('disabled');
+      function _focusChat(attempt) {
+        try { ci.focus(); } catch(_) {}
+        if (document.activeElement !== ci && attempt < 10) {
+          setTimeout(function() { _focusChat(attempt + 1); }, 50 + attempt * 30);
+        }
+      }
+      setTimeout(function() { _focusChat(0); }, 30);
+    }
   }
 }
 
