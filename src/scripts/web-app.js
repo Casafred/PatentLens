@@ -99,6 +99,20 @@ const __PATENTLENS_COPYRIGHT__ = "PatentLens (c) 2026 Alfred Shi - All Rights Re
     // Insert as early as possible — into head if it exists, else into documentElement
     (document.head || document.documentElement).appendChild(style);
 
+    // ── FOCUS RECOVERY: clear stale renderer focus from GT iframes ──
+    // GT creates cross-origin iframes (translate.google.com) that can steal
+    // focus. When hidden/removed, Chromium's focused_frame_ can stay stale,
+    // blocking ALL text inputs until a focus reset (DevTools / window switch).
+    // On window focus, proactively blur any focused iframe to force resync.
+    window.addEventListener('focus', function() {
+      setTimeout(function() {
+        try {
+          var ae = document.activeElement;
+          if (ae && ae.tagName === 'IFRAME') { ae.blur(); }
+        } catch(_) {}
+      }, 0);
+    }, true);
+
     // ── 2. IMMEDIATELY protect all form elements and critical UI panels from GT ──
     // GT's DOM-walking translation can replace/refunction textarea/input elements,
     // // breaking their event handlers and focus state. Marking them notranslate at
@@ -3153,12 +3167,15 @@ function autoTriggerGoogleTranslate(scope) {
     setTimeout(function() { linkFigureReferences(scope); }, 200);
     return;
   }
-  // No cache yet → start translation. Only the 说明书 tab is translated; other
-  // panels AND the other scope's entire container are guarded as notranslate by
-  // _protectNonDescriptionAll(scope).
+  // No cache yet → GT auto-trigger DISABLED. GT's cross-origin iframes
+  // (translate.google.com) steal focus from the main document; when later
+  // hidden with display:none, Chromium's focused_frame_ becomes stale and
+  // blocks ALL text inputs until a focus reset (DevTools toggle / window
+  // switch). The user can manually trigger translation via the "网页翻译"
+  // button. Figure-linking still runs so figure references stay clickable.
   _protectNonDescriptionAll(scope);
   _figLinkScope = scope;
-  toggleGoogleTranslate(scope);
+  setTimeout(function() { try { linkFigureReferences(scope); } catch(e) {} }, 200);
 }
 
 // ── 复制到剪贴板 ──
@@ -4488,6 +4505,14 @@ function _disableGoogleTranslateQuiet(onReady) {
 // Fully remove all GT traces from the page
 function _purgeGoogleTranslateCompletely() {
   try {
+    // 0. Blur any focused GT iframe BEFORE hiding it — setting display:none on
+    // a focused cross-origin iframe leaves Chromium's focused_frame_ stale,
+    // which blocks ALL text inputs until a focus reset (DevTools / window switch).
+    var _ae = document.activeElement;
+    if (_ae && _ae.tagName === 'IFRAME') {
+      try { _ae.blur(); } catch(_) {}
+    }
+
     // 1. Immediately stop any polling timer
     if (_figLinkPollTimer) { clearTimeout(_figLinkPollTimer); _figLinkPollTimer = null; }
 
