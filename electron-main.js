@@ -31,6 +31,15 @@ app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled");
 // 需要 CHROME_UA 的站点（CNIPA 等）通过 session.setUserAgent / webContents.setUserAgent 显式设置。
 app.commandLine.appendSwitch("lang", "zh-CN");
 
+// ── GPU 合成层修复 ──
+// 症状：所有输入框（input/textarea）无法输入，直到打开 DevTools 才瞬间恢复。
+// 根因：Electron 35 (Chromium 134) 在某些 Windows GPU 驱动上，GPU 合成层
+// (compositing layer) 会出现事件路由阻塞——合成层捕获了输入事件但不传递给
+// DOM 元素。打开 DevTools 会强制销毁并重建合成层，所以能瞬间修复。
+// disable-gpu-compositing 强制回退到软件合成，从根本上避免此问题。
+app.commandLine.appendSwitch("disable-gpu-compositing");
+app.commandLine.appendSwitch("disable-gpu-sandbox");
+
 const http = require("http");
 const https = require("https");
 const fs = require("fs");
