@@ -3137,7 +3137,98 @@ async function extractPdfText(req, res) {
   const engine = urlObj.searchParams.get("engine") || "auto";
   const apiKey = urlObj.searchParams.get("api_key") || "";
   const epoDirect = urlObj.searchParams.get("epoDirect") === "1";
+  // pageRange: 指定页OCR，格式如 "1-3,5,7-9"（1-based），为空或"all"表示全文档
+  const pageRange = urlObj.searchParams.get("pageRange") || "";
   const gdUrl = `${GD_API_BASE}/doc-content/svc/doccontent${urlPath}`;
+
+  // 解析 pageRange → 返回有序去重的页码数组（1-based），空表示全文档
+  function parsePageRange(range, totalPageCount) {
+    if (!range || range.trim() === "" || range.trim().toLowerCase() === "all") return null;
+    const pages = new Set();
+    const parts = range.split(",");
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const dashMatch = trimmed.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (dashMatch) {
+        let s = parseInt(dashMatch[1]);
+        let e = parseInt(dashMatch[2]);
+        if (s > e) { const t = s; s = e; e = t; }
+        for (let p = s; p <= e; p++) {
+          if (totalPageCount && (p < 1 || p > totalPageCount)) continue;
+          pages.add(p);
+        }
+      } else if (/^\d+$/.test(trimmed)) {
+        const p = parseInt(trimmed);
+        if (totalPageCount && (p < 1 || p > totalPageCount)) continue;
+        pages.add(p);
+      }
+    }
+    return Array.from(pages).sort((a, b) => a - b);
+  }
+
+  // 截取 PDF 指定页，返回 { buffer, pageMap }
+  // pageMap[extractedIdx] = originalPage（extractedIdx 从0开始，originalPage从1开始）
+  async function extractPdfPages(pdfBuffer, targetPages) {
+    if (!targetPages || targetPages.length === 0) {
+      return { buffer: pdfBuffer, pageMap: null };
+    }
+    const srcDoc = await PDFDocument.load(pdfBuffer);
+    const total = srcDoc.getPageCount();
+    const validPages = targetPages.filter(p => p >= 1 && p <= total);
+    if (validPages.length === 0) {
+      return { buffer: pdfBuffer, pageMap: null };
+    }
+    // 如果要全部页，直接返回原文档
+    if (validPages.length === total) {
+      const pageMap = {};
+      for (let i = 0; i < total; i++) pageMap[i] = i + 1;
+      return { buffer: pdfBuffer, pageMap };
+    }
+    const newDoc = await PDFDocument.create();
+    // copyPages 接受0-based索引数组
+    const zeroBased = validPages.map(p => p - 1);
+    const copied = await newDoc.copyPages(srcDoc, zeroBased);
+    copied.forEach(page => newDoc.addPage(page));
+    const newBuffer = await newDoc.save();
+    // 构建页码映射：extractedIdx(0-based) → originalPage(1-based)
+    const pageMap = {};
+    for (let i = 0; i < validPages.length; i++) {
+      pageMap[i] = validPages[i];
+    }
+    return { buffer: Buffer.from(newBuffer), pageMap };
+  }
+
+  // 将 OCR 结果中的页码映射回原 PDF 页码
+  function remapOcrResult(result, pageMap) {
+    if (!pageMap || !result) return result;
+    // 映射 blocks 的 page 字段
+    if (result.blocks && Array.isArray(result.blocks)) {
+      result.blocks = result.blocks.map(b => {
+        // OCR引擎返回的page是1-based，对应截取后PDF的页码
+        // pageMap的key是0-based extractedIdx，value是1-based originalPage
+        const extractedPage = b.page; // 1-based
+        const originalPage = pageMap[extractedPage - 1] || extractedPage;
+        // 同时更新 block_id 中的页码
+        let newBlockId = b.block_id;
+        if (newBlockId) {
+          newBlockId = newBlockId.replace(/^B_p\d+_/, "B_p" + originalPage + "_");
+        }
+        return { ...b, page: originalPage, block_id: newBlockId };
+      });
+    }
+    // 映射 pageDimensions 的 key
+    if (result.pageDimensions && typeof result.pageDimensions === "object") {
+      const newDims = {};
+      for (const [k, v] of Object.entries(result.pageDimensions)) {
+        const extractedPage = parseInt(k);
+        const originalPage = pageMap[extractedPage - 1] || extractedPage;
+        newDims[originalPage] = v;
+      }
+      result.pageDimensions = newDims;
+    }
+    return result;
+  }
 
   const corsHeaders = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
 
@@ -3221,7 +3312,22 @@ async function extractPdfText(req, res) {
   }
 
   try {
-    const pdfBase64 = pdfBuffer.toString("base64");
+    // 指定页 OCR：截取 PDF 指定页后再提交 OCR
+    let ocrBuffer = pdfBuffer;
+    let pageMap = null; // extractedIdx(0-based) → originalPage(1-based)
+    const targetPages = parsePageRange(pageRange, 0);
+    if (targetPages && targetPages.length > 0) {
+      try {
+        const extracted = await extractPdfPages(pdfBuffer, targetPages);
+        ocrBuffer = extracted.buffer;
+        pageMap = extracted.pageMap;
+        console.log(`[OCR] pageRange="${pageRange}" → 截取 ${targetPages.length} 页 (原始页码: ${targetPages.join(",")})`);
+      } catch (e) {
+        console.warn("[OCR] 截取PDF页面失败，回退到全文档OCR:", e.message);
+      }
+    }
+
+    const pdfBase64 = ocrBuffer.toString("base64");
     let text = "";
     let markdown = "";
     let usedEngine = "none";
@@ -3271,10 +3377,18 @@ async function extractPdfText(req, res) {
       }
     }
 
+    // 指定页OCR：将OCR结果中的页码映射回原始PDF页码
+    if (pageMap) {
+      const remapped = remapOcrResult({ blocks, pageDimensions }, pageMap);
+      blocks = remapped.blocks;
+      pageDimensions = remapped.pageDimensions;
+    }
+
     res.writeHead(200, corsHeaders);
     res.end(JSON.stringify({
       text, markdown, engine: usedEngine, char_count: text.length,
       blocks, page_dimensions: pageDimensions,
+      ocr_pages: targetPages || null, // 返回实际OCR的页码列表（供前端记录）
     }));
   } catch (e) {
     console.error("Extract error:", e);
