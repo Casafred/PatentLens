@@ -291,7 +291,15 @@ function epoClassifyDoc(desc, phase) {
   let stage = "其他";
   let docCode;
 
-  if (lower.includes("non-final rejection") || lower.includes("ctnf")) {
+  // 复合标题优先：含"amendment"/"request for reconsideration"/"arguments"/"remarks"且含"non-final rejection"的是申请人答复，不是审查意见
+  if ((lower.includes("amendment") || lower.includes("request for reconsideration")
+      || lower.includes("arguments") || lower.includes("remarks"))
+      && lower.includes("non-final rejection")) {
+    docCode = "AMD"; docType = "response"; stage = "申请人答复";
+  } else if ((lower.includes("amendment") || lower.includes("response"))
+      && lower.includes("final rejection") && !lower.includes("non-final")) {
+    docCode = "AMD"; docType = "response"; stage = "申请人答复";
+  } else if (lower.includes("non-final rejection") || lower.includes("ctnf")) {
     docCode = "CTNF"; docType = "office_action"; stage = "审查意见";
   } else if (lower.includes("final rejection") || lower.includes("ctfr")) {
     docCode = "CTFR"; docType = "office_action"; stage = "审查意见";

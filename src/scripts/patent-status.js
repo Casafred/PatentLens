@@ -701,6 +701,11 @@ var EPO_DESC_MAP = {
   "search opinion": "检索意见 (Search Opinion)",
   "written opinion": "书面意见 (Written Opinion)",
   // ── 申请人答复类 ──
+  "applicant arguments/remarks made in an amendment": "申请人意见陈述 (Applicant Arguments/Remarks Made in an Amendment)",
+  "amendment/request for reconsideration-after non-final rejection": "非最终驳回后修改/复审请求 (Amendment/Request for Reconsideration-After Non-Final Rejection)",
+  "amendment after final rejection": "最终驳回后修改 (Amendment after Final Rejection)",
+  "response after non-final rejection": "非最终驳回后答复 (Response after Non-Final Rejection)",
+  "response after final rejection": "最终驳回后答复 (Response after Final Rejection)",
   "amendment after non-final": "非最终驳回后修改 (Amendment after Non-Final)",
   "amendment": "修改 (Amendment)",
   "response": "答复 (Response)",
@@ -786,7 +791,12 @@ function _classifyEpoDescType(key) {
        "examination report", "examination communication", "search opinion",
        "written opinion"].includes(key)) return "office_action";
   // 申请人答复类
-  if (["amendment after non-final", "amendment", "response", "reply", "observations",
+  if (["applicant arguments/remarks made in an amendment",
+       "amendment/request for reconsideration-after non-final rejection",
+       "amendment after final rejection",
+       "response after non-final rejection",
+       "response after final rejection",
+       "amendment after non-final", "amendment", "response", "reply", "observations",
        "remarks", "arguments", "request for reconsideration",
        "appeal brief", "reply brief"].includes(key)) return "response";
   // 申请人其他请求类
