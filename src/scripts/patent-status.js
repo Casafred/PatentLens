@@ -7,7 +7,7 @@
  * or reproduction is strictly prohibited.
  *
  * @author Alfred Shi
- * @version 260728
+ * @version 260729
  */
 var PATENT_STATUS = {
   US: {
@@ -767,6 +767,12 @@ var EPO_DESC_MAP = {
   "placeholder sheet indicating presence of supplemental content": "补充内容占位页 (Supplemental Complex Repository for Examiners - SCORE)",
   "supplemental complex repository": "补充内容占位页 (Supplemental Complex Repository for Examiners - SCORE)",
   "opposition": "异议 (Opposition)",
+  // ── EPO 通信/登记类 ──
+  "withdrawal from representation": "确认撤回代理通知 (Communication confirming withdrawal from representation)",
+  "client data request": "客户数据请求附件 (Annexes in respect of a client data request)",
+  "concerning fees and payments": "费用与付款相关信函 (Letter concerning fees and payments)",
+  "transfer of rights": "权利转移申请人提交 (Submission concerning a transfer of rights)",
+  "registration of a transfer": "转移或姓名地址变更登记通知 (Communication of the registration of a transfer or change of name and/or address)",
 };
 
 // 按键长度降序排列，确保长描述优先匹配（避免"non-final rejection"被"rejection"截胡）
@@ -784,7 +790,8 @@ function _classifyEpoDescType(key) {
        "appeal brief", "reply brief"].includes(key)) return "response";
   // 申请人其他请求类
   if (["request for continued examination", "entry into european phase", "european phase",
-       "extension of time", "authorization for extension"].includes(key)) return "applicant_request";
+       "extension of time", "authorization for extension",
+       "transfer of rights"].includes(key)) return "applicant_request";
   // 授权通知类
   if (["notice of allowance", "intention to grant", "grant notification",
        "issue notification", "issue information", "decision to grant", "grant of patent"].includes(key)) return "allowance";
@@ -798,7 +805,7 @@ function _classifyEpoDescType(key) {
        "drawings", "abstract", "bibliographic data", "sequence listing",
        "english translation of the claims"].includes(key)) return "patent_doc";
   // 异议类
-  if (key === "opposition") return "misc";
+  if (key === "opposition" || key === "client data request") return "misc";
   // 默认为通知类
   return "notification";
 }
