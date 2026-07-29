@@ -4964,7 +4964,7 @@ body {
 .tl-fab {
   position: fixed;
   right: 32px;
-  bottom: 96px;
+  bottom: 165px;
   z-index: 60;
   display: flex;
   flex-direction: column;
@@ -8507,6 +8507,8 @@ body {
 /* When dossier-tabs-bar is visible, remove top rounding from tabs-wrapper and connect them */
 .dossier-tabs-bar:not(.hidden) + .tabs-wrapper {
   margin-top: -1px;
+  /* dossier-tabs-bar sticky at top:0 (height ~40px), tabs-wrapper stacks below it */
+  top: 40px;
 }
 .dossier-tabs-bar:not(.hidden) + .tabs-wrapper .tabs {
   border-top: 1px solid var(--border-color, #2a2d3a);
