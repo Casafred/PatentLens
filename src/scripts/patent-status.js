@@ -773,6 +773,7 @@ var EPO_DESC_MAP = {
   "concerning fees and payments": "费用与付款相关信函 (Letter concerning fees and payments)",
   "transfer of rights": "权利转移申请人提交 (Submission concerning a transfer of rights)",
   "registration of a transfer": "转移或姓名地址变更登记通知 (Communication of the registration of a transfer or change of name and/or address)",
+  "matter concerning the application": "申请相关事项 (Matter concerning the application)",
 };
 
 // 按键长度降序排列，确保长描述优先匹配（避免"non-final rejection"被"rejection"截胡）
@@ -883,9 +884,13 @@ function isClaimsDocument(it) {
   if (!it) return false;
   if (it.type !== "patent_doc") return false;
   const code = String(it.docCode || "").toUpperCase();
+  // 排除权利要求翻译类文档代码（ETCL/CLMSTRAN 等翻译件不属于需要梳理的权利要求原文）
+  if (/^ETCL$|^CLMSTRAN/.test(code)) return false;
   // Common claims document codes across offices
   if (/^CLM|^FWCLM|^ETCL$|^CLMS/.test(code)) return true;
   const name = String(it.name || "") + " " + String(it.desc || "");
+  // 排除含"翻译"的权利要求文档
+  if (/权利要求.*翻译|翻译.*权利要求|translation of (the )?claims/i.test(name)) return false;
   if (/权利要求/.test(name)) return true;
   return false;
 }

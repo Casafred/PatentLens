@@ -12437,6 +12437,8 @@ const _tlSelected = new Set();
 function exitTimelineSelectMode() {
   _tlSelectMode = null;
   _tlSelected.clear();
+  _tlPopupPinned = false; // 退出选择模式时解除弹窗锁定
+  _tlClosePopup();
   const board = document.getElementById("tl-board");
   if (board) {
     board.classList.remove("select-mode");
@@ -12719,6 +12721,10 @@ function _syncFabState() {
 
 function _jumpToDocFromTimeline(idx) {
   if (_tlSelectMode) {
+    // 选择模式下点击 popup 项：锁定弹窗保持打开，防止重排/scroll事件导致关闭
+    _tlPopupPinned = true;
+    clearTimeout(_tlPopupCloseTimer);
+    _tlPopupCloseTimer = null;
     _toggleTimelineNode(idx);
     return;
   }
@@ -13059,8 +13065,10 @@ function renderTimeline(data) {
 // ── Timeline hover popup（JS 接管：解决 hover 断开即收起 & 层级被穿透问题） ──
 let _tlPopupCloseTimer = null;
 let _tlOpenPopupInfo = null; // { el, home }
+let _tlPopupPinned = false; // 选择模式下点击 popup 项后锁定，防止 scroll/重排导致的意外关闭
 
 function _tlClosePopup() {
+  if (_tlPopupPinned) return; // 锁定状态下不关闭
   clearTimeout(_tlPopupCloseTimer);
   _tlPopupCloseTimer = null;
   if (!_tlOpenPopupInfo) return;
@@ -13079,12 +13087,17 @@ function _tlClosePopup() {
 }
 
 function _tlScheduleClosePopup() {
+  if (_tlPopupPinned) return; // 锁定状态下不调度关闭
   clearTimeout(_tlPopupCloseTimer);
   _tlPopupCloseTimer = setTimeout(_tlClosePopup, 350);
 }
 
 function _tlOpenPopupFor(node) {
   clearTimeout(_tlPopupCloseTimer);
+  // 切换到不同节点时解除锁定
+  if (_tlOpenPopupInfo && _tlOpenPopupInfo.home !== node) {
+    _tlPopupPinned = false;
+  }
   // 已经打开的是同一节点的弹层 → 保持
   if (_tlOpenPopupInfo && _tlOpenPopupInfo.home === node) return;
   _tlClosePopup();
@@ -13128,6 +13141,7 @@ function _tlOpenPopupFor(node) {
 
 function _bindTimelineHoverPopups(board) {
   _tlClosePopup();
+  _tlPopupPinned = false;
   board.querySelectorAll(".tl-s-node").forEach(node => {
     node.addEventListener("mouseenter", () => _tlOpenPopupFor(node));
     node.addEventListener("mouseleave", _tlScheduleClosePopup);
@@ -13142,6 +13156,20 @@ function _bindTimelineHoverPopups(board) {
       _tlClosePopup();
     }, { passive: true, capture: true });
     window.addEventListener("resize", _tlClosePopup, { passive: true });
+    // 点击 popup 外部区域时解除锁定并关闭弹窗
+    document.addEventListener("click", (e) => {
+      if (!_tlOpenPopupInfo) return;
+      // 点击在弹窗内部 → 不处理（让 popup item 的 onclick 正常执行）
+      if (_tlOpenPopupInfo.el.contains(e.target)) return;
+      // 点击在时间轴节点上 → 不处理（让 mouseenter 正常切换弹窗）
+      const node = e.target.closest(".tl-s-node");
+      if (node) return;
+      // 点击在摘要栏/选择栏等UI上 → 不处理
+      if (e.target.closest("#tl-select-bar") || e.target.closest("#tl-fab")) return;
+      // 点击在其他区域 → 解除锁定并关闭
+      _tlPopupPinned = false;
+      _tlClosePopup();
+    }, { passive: true });
     window._tlPopupGlobalBound = true;
   }
 }

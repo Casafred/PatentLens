@@ -39,6 +39,21 @@ function normalizePatentNumber(input) {
       const v = country + base + letterOnly[1];
       if (v !== normalized && !variants.includes(v)) variants.push(v);
     }
+    // 如果kind code只有字母没有数字（如B、A），补全常见数字变体
+    // 这样输入 EP3484663B 时会先尝试匹配 EP3484663B1（授权版本），而非回退到 EP3484663 返回A1版本
+    if (/^[A-Z]+$/.test(suffix)) {
+      if (suffix === "B") {
+        // B → B1（授权公告，EP最常见授权kind code）
+        const v1 = country + base + "B1";
+        if (v1 !== normalized && !variants.includes(v1)) variants.push(v1);
+      } else if (suffix === "A") {
+        // A → A1（首次公开）, A2（检索报告附公开）, A3（单独检索报告）
+        ["A1", "A2", "A3"].forEach(kc => {
+          const v = country + base + kc;
+          if (v !== normalized && !variants.includes(v)) variants.push(v);
+        });
+      }
+    }
   }
   return { normalized, variants };
 }
