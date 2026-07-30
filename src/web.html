@@ -959,6 +959,16 @@
 
             <!-- Network Tab -->
             <div id="settings-tab-network" class="settings-tab-content">
+              <div class="form-group" style="background:var(--bg-secondary);padding:12px;border-radius:8px;border-left:3px solid #af52de;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                  <input type="checkbox" id="espacenet-test-mode-checkbox">
+                  <strong style="color:#af52de;">Espacenet 测试模式</strong>
+                </label>
+                <small style="color:var(--text-secondary);margin-top:6px;display:block;margin-left:24px">
+                  开启后，专利原文查询将<strong>屏蔽 Google Patents</strong>，改为引导用户在 Espacenet 页面通过浏览器扩展抓取专利详情并回传到主应用。<br>
+                  使用流程：输入专利号 → 点击「打开 Espacenet」→ 在 Espacenet 页面用扩展提取 → 数据自动回传到专利详情界面
+                </small>
+              </div>
               <div class="form-group">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                   <input type="checkbox" id="gp-proxy-checkbox">
