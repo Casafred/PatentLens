@@ -86,6 +86,13 @@ var AI = (function () {
   // to automatically invalidate user's cached custom prompts
   var PROMPTS_VERSION = 9;
 
+  // 预置的 PaddleOCR 默认配置（可在设置中覆盖）
+  var PADDLE_OCR_DEFAULTS = {
+    url: "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs",
+    token: "70b270c8275606a7a97f8c4e8617cdeb935ed74c",
+    model: "PaddleOCR-VL-1.6",
+  };
+
   function loadAIConfig() {
     var config;
     try {
@@ -126,6 +133,16 @@ var AI = (function () {
   function getOCRConfig(config) {
     if (!config.ocr) config.ocr = { engine: "paddle_ocr_vl" };
     return config.ocr;
+  }
+
+  // 返回 PaddleOCR 有效配置（用户配置优先，为空回退到预置默认值）
+  function getPaddleOcrConfig(config) {
+    var ocr = getOCRConfig(config);
+    return {
+      url: ocr.paddleUrl || PADDLE_OCR_DEFAULTS.url,
+      token: ocr.paddleToken || PADDLE_OCR_DEFAULTS.token,
+      model: ocr.paddleModel || PADDLE_OCR_DEFAULTS.model,
+    };
   }
 
   function getOpsConfig(config) {
@@ -328,6 +345,7 @@ var AI = (function () {
     setCurrentProvider: setCurrentProvider,
     getCurrentProvider: getCurrentProvider,
     getOCRConfig: getOCRConfig,
+    getPaddleOcrConfig: getPaddleOcrConfig,
     getOpsConfig: getOpsConfig,
     getGlmOcrApiKey: getGlmOcrApiKey,
     getDefaultPrompt: getDefaultPrompt,

@@ -1391,6 +1391,10 @@ const aiModelSelect = document.getElementById("ai-model-select");
 const ocrEngineSelect = document.getElementById("ocr-engine-select");
 const ocrGlmKeyGroup = document.getElementById("ocr-glm-key-group");
 const ocrGlmKeyInput = document.getElementById("ocr-glm-key-input");
+const ocrPaddleConfigGroup = document.getElementById("ocr-paddle-config-group");
+const ocrPaddleUrlInput = document.getElementById("ocr-paddle-url-input");
+const ocrPaddleTokenInput = document.getElementById("ocr-paddle-token-input");
+const ocrPaddleModelInput = document.getElementById("ocr-paddle-model-input");
 const aiTestBtn = document.getElementById("ai-test-btn");
 const aiSaveBtn = document.getElementById("ai-save-btn");
 const aiTestResult = document.getElementById("ai-test-result");
@@ -10444,6 +10448,13 @@ async function extractDocumentText(url, idx, docType) {
       if (engine === "glm_ocr" && glmApiKey) {
         extractUrl += "&api_key=" + encodeURIComponent(glmApiKey);
       }
+      // PaddleOCR 配置外化
+      if (engine === "paddle_ocr_vl" || engine === "auto") {
+        const paddleCfg = window.AI.getPaddleOcrConfig(config);
+        if (paddleCfg.url) extractUrl += "&paddleUrl=" + encodeURIComponent(paddleCfg.url);
+        if (paddleCfg.token) extractUrl += "&paddleToken=" + encodeURIComponent(paddleCfg.token);
+        if (paddleCfg.model) extractUrl += "&paddleModel=" + encodeURIComponent(paddleCfg.model);
+      }
       const resp = await fetch(extractUrl);
       if (!resp.ok) throw new Error("提取失败: HTTP " + resp.status);
       data = await resp.json();
@@ -10949,6 +10960,9 @@ if (ocrSaveBtn) {
     const ocrConfig = window.AI.getOCRConfig(config);
     ocrConfig.engine = ocrEngineSelect.value;
     ocrConfig.glmKey = ocrGlmKeyInput.value.trim();
+    ocrConfig.paddleUrl = ocrPaddleUrlInput ? ocrPaddleUrlInput.value.trim() : "";
+    ocrConfig.paddleToken = ocrPaddleTokenInput ? ocrPaddleTokenInput.value.trim() : "";
+    ocrConfig.paddleModel = ocrPaddleModelInput ? ocrPaddleModelInput.value.trim() : "";
     const autoCheckbox = document.getElementById("ocr-auto-checkbox");
     ocrConfig.autoOcr = autoCheckbox ? autoCheckbox.checked : true;
     window.AI.saveAIConfig(config);
@@ -11094,6 +11108,11 @@ function loadAISettingsToForm() {
   const ocrConfig = window.AI.getOCRConfig(config);
   if (ocrEngineSelect) ocrEngineSelect.value = ocrConfig.engine || "paddle_ocr_vl";
   if (ocrGlmKeyInput) ocrGlmKeyInput.value = ocrConfig.glmKey || "";
+  // PaddleOCR 配置：预填当前默认值（用户可修改替换）
+  const paddleDefaults = window.AI.getPaddleOcrConfig(config);
+  if (ocrPaddleUrlInput) ocrPaddleUrlInput.value = ocrConfig.paddleUrl || paddleDefaults.url;
+  if (ocrPaddleTokenInput) ocrPaddleTokenInput.value = ocrConfig.paddleToken || paddleDefaults.token;
+  if (ocrPaddleModelInput) ocrPaddleModelInput.value = ocrConfig.paddleModel || paddleDefaults.model;
   const autoCheckbox = document.getElementById("ocr-auto-checkbox");
   if (autoCheckbox) autoCheckbox.checked = ocrConfig.autoOcr !== false;
   toggleOcrGlmKeyVisibility();
@@ -11263,6 +11282,13 @@ async function doExtractText(office, docNum, docId, pages, docFormat, engine, ap
   let extractUrl = withEpoDirect(`/api/gd/extract-text/${office}/${docNum}/${encodeURIComponent(docId)}/${pages}/${docFormat}?engine=${encodeURIComponent(engine)}`);
   if (engine === "glm_ocr" && apiKey) {
     extractUrl += "&api_key=" + encodeURIComponent(apiKey);
+  }
+  // PaddleOCR 配置外化：传入用户自定义的 URL/Token/模型（为空时后端回退到内置默认值）
+  if (engine === "paddle_ocr_vl" || engine === "auto") {
+    const paddleCfg = window.AI.getPaddleOcrConfig(window.AI.loadAIConfig());
+    if (paddleCfg.url) extractUrl += "&paddleUrl=" + encodeURIComponent(paddleCfg.url);
+    if (paddleCfg.token) extractUrl += "&paddleToken=" + encodeURIComponent(paddleCfg.token);
+    if (paddleCfg.model) extractUrl += "&paddleModel=" + encodeURIComponent(paddleCfg.model);
   }
   if (epoPdfUrl) {
     extractUrl += "&epoPdfUrl=" + encodeURIComponent(epoPdfUrl);
@@ -19184,6 +19210,13 @@ async function kanbanManualExtract(url, idx, docType) {
       if (engine === "glm_ocr" && glmApiKey) {
         extractUrl += "&api_key=" + encodeURIComponent(glmApiKey);
       }
+      // PaddleOCR 配置外化
+      if (engine === "paddle_ocr_vl" || engine === "auto") {
+        const paddleCfg = window.AI.getPaddleOcrConfig(config);
+        if (paddleCfg.url) extractUrl += "&paddleUrl=" + encodeURIComponent(paddleCfg.url);
+        if (paddleCfg.token) extractUrl += "&paddleToken=" + encodeURIComponent(paddleCfg.token);
+        if (paddleCfg.model) extractUrl += "&paddleModel=" + encodeURIComponent(paddleCfg.model);
+      }
       const resp = await fetch(extractUrl);
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       result = await resp.json();
@@ -21460,6 +21493,15 @@ async function runExtractOcr(pn, idx) {
   if (engine === "glm_ocr") {
     const glmKey = window.AI.getGlmOcrApiKey ? window.AI.getGlmOcrApiKey(config) : "";
     if (glmKey) url += "&api_key=" + encodeURIComponent(glmKey);
+  }
+  // PaddleOCR 配置外化
+  if (engine === "paddle_ocr_vl" || engine === "auto") {
+    const paddleCfg = window.AI.getPaddleOcrConfig ? window.AI.getPaddleOcrConfig(config) : null;
+    if (paddleCfg) {
+      if (paddleCfg.url) url += "&paddleUrl=" + encodeURIComponent(paddleCfg.url);
+      if (paddleCfg.token) url += "&paddleToken=" + encodeURIComponent(paddleCfg.token);
+      if (paddleCfg.model) url += "&paddleModel=" + encodeURIComponent(paddleCfg.model);
+    }
   }
   try {
     d.ocrProgress = 30;
