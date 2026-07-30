@@ -11252,6 +11252,7 @@ async function doExtractText(office, docNum, docId, pages, docFormat, engine, ap
   }
 
   if (isTauri) {
+    const paddleCfg = window.AI.getPaddleOcrConfig(window.AI.loadAIConfig());
     const result = await tauriInvoke("extract_text", {
       country: office,
       docNumber: docNum,
@@ -11260,6 +11261,9 @@ async function doExtractText(office, docNum, docId, pages, docFormat, engine, ap
       format: docFormat,
       engine: engine,
       apiKey: apiKey || "",
+      paddleUrl: paddleCfg.url || "",
+      paddleToken: paddleCfg.token || "",
+      paddleModel: paddleCfg.model || "",
       epoDirect: getEpoDirectMode(),
       epoPdfUrl: epoPdfUrl || null,
       pageRange: pageRange || null,

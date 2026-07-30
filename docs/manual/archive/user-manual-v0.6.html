@@ -37,10 +37,6 @@
     padding: 0;
   }
 
-  svg text {
-    font-family: "NotoSansSC", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "Microsoft YaHei", sans-serif;
-  }
-
   /* ===== 封面 ===== */
   .cover {
     page-break-after: always;
@@ -67,15 +63,6 @@
     margin: 0 0 10px 0;
     letter-spacing: 4px;
     color: #1b5e20;
-    bookmark-level: none;
-  }
-
-  .cover-title {
-    font-size: 28pt;
-    margin: 0 0 10px 0;
-    letter-spacing: 4px;
-    color: #1b5e20;
-    font-weight: bold;
   }
 
   .cover .subtitle {
@@ -110,17 +97,6 @@
     border-bottom: 2px solid #4caf50;
     padding-bottom: 10px;
     margin-bottom: 30px;
-    bookmark-level: none;
-  }
-
-  .toc-title {
-    text-align: center;
-    font-size: 18pt;
-    color: #1b5e20;
-    border-bottom: 2px solid #4caf50;
-    padding-bottom: 10px;
-    margin-bottom: 30px;
-    font-weight: bold;
   }
 
   .toc-list {
@@ -274,10 +250,6 @@
     height: auto;
   }
 
-  .diagram svg {
-    max-width: 100%;
-  }
-
   .diagram-caption {
     font-size: 9.5pt;
     color: #888;
@@ -361,19 +333,19 @@
 
 <!-- ==================== 封面 ==================== -->
 <div class="cover">
-  <div class="cover-logo"><img src="src/PatentLens_transparent.png" style="width:180px; height:auto;"></div>
-  <div class="cover-title">PatentLens</div>
+  <div class="cover-logo"><img src="../../../src/PatentLens_transparent.png" style="width:180px; height:auto;"></div>
+  <h1>PatentLens</h1>
   <div class="subtitle">多国专利聚合分析工具 · 用户使用说明书</div>
   <div class="divider-line"></div>
   <div class="version-info">
-    版本 V0.7.0<br/>
+    版本 V0.6.0<br/>
     2026 年 7 月
   </div>
 </div>
 
 <!-- ==================== 目录 ==================== -->
 <div class="toc-page">
-  <div class="toc-title">目 录</div>
+  <h2>目 录</h2>
   <ul class="toc-list">
     <li class="level1"><span>1 产品概述</span></li>
     <li class="level2"><span>1.1 产品简介</span></li>
@@ -386,7 +358,7 @@
     <li class="level2"><span>2.4 浏览器扩展</span></li>
     <li class="level1"><span>3 界面布局</span></li>
     <li class="level2"><span>3.1 整体布局结构</span></li>
-    <li class="level2"><span>3.2 搜索栏与四种搜索模式</span></li>
+    <li class="level2"><span>3.2 搜索栏与搜索模式</span></li>
     <li class="level2"><span>3.3 历史记录侧边栏</span></li>
     <li class="level2"><span>3.4 标签页区域</span></li>
     <li class="level2"><span>3.5 概览标签页</span></li>
@@ -397,12 +369,11 @@
     <li class="level2"><span>4.1 配置 AI 服务</span></li>
     <li class="level2"><span>4.2 搜索专利</span></li>
     <li class="level2"><span>4.3 使用 AI 问一问</span></li>
-    <li class="level2"><span>4.4 使用智能比对</span></li>
-    <li class="level2"><span>4.5 浏览审查看板</span></li>
-    <li class="level2"><span>4.6 AI 分析审查意见</span></li>
-    <li class="level2"><span>4.7 导出与阅读</span></li>
+    <li class="level2"><span>4.4 浏览审查看板</span></li>
+    <li class="level2"><span>4.5 AI 分析审查意见</span></li>
+    <li class="level2"><span>4.6 导出与阅读</span></li>
     <li class="level1"><span>5 功能详解</span></li>
-    <li class="level2"><span>5.1 四模式专利搜索</span></li>
+    <li class="level2"><span>5.1 双模式专利搜索</span></li>
     <li class="level2"><span>5.2 批量查询</span></li>
     <li class="level2"><span>5.3 历史记录管理</span></li>
     <li class="level2"><span>5.4 概览</span></li>
@@ -410,14 +381,13 @@
     <li class="level2"><span>5.6 审查看板</span></li>
     <li class="level2"><span>5.7 AI 审查意见梳理</span></li>
     <li class="level2"><span>5.8 AI 问一问（专利对话）</span></li>
-    <li class="level2"><span>5.9 智能比对（权利要求对比分析）</span></li>
-    <li class="level2"><span>5.10 溯源对照阅读器与 PDF 标注</span></li>
-    <li class="level2"><span>5.11 OCR 文字提取</span></li>
-    <li class="level2"><span>5.12 全文翻译</span></li>
-    <li class="level2"><span>5.13 专利原文查询</span></li>
-    <li class="level2"><span>5.14 Word 导出</span></li>
-    <li class="level2"><span>5.15 合并导出 PDF</span></li>
-    <li class="level2"><span>5.16 设置</span></li>
+    <li class="level2"><span>5.9 溯源对照阅读器与 PDF 标注</span></li>
+    <li class="level2"><span>5.10 OCR 文字提取</span></li>
+    <li class="level2"><span>5.11 全文翻译</span></li>
+    <li class="level2"><span>5.12 专利原文查询</span></li>
+    <li class="level2"><span>5.13 Word 导出</span></li>
+    <li class="level2"><span>5.14 合并导出 PDF</span></li>
+    <li class="level2"><span>5.15 设置</span></li>
     <li class="level1"><span>6 常见问题</span></li>
     <li class="level1"><span>7 附录</span></li>
     <li class="level2"><span>7.1 版本更新记录</span></li>
@@ -431,45 +401,41 @@
 
 <h2>1.1 产品简介</h2>
 <p>
-  PatentLens 是一款面向专利从业人员的专业工具软件，支持从 USPTO/EPO/JPO/KIPO/DPMA/CNIPA 等全球主要专利局自动获取审查历史文档，并通过看板式管理、AI 智能分析、全文翻译、OCR 提取、智能比对等能力，帮助用户高效梳理审查意见、答复策略、引用文献、专利原文及权利要求对比分析。用户只需输入专利号，软件即可自动完成文档获取、分类归档、智能分析全流程；全新的智能比对功能支持锚定模式多组权利要求对比分析，大幅提升专利审查应对、侵权风险评估、专利调研和专利对比分析的效率与质量。
+  PatentLens 是一款面向专利从业人员的专业工具软件，支持从 USPTO/EPO/JPO/DPMA/CNIPA 等全球主要专利局自动获取审查历史文档，并通过看板式管理、AI 智能分析、全文翻译、OCR 提取等能力，帮助用户高效梳理审查意见、答复策略、引用文献及专利原文。用户只需输入专利号，软件即可自动完成文档获取、分类归档、智能分析全流程，大幅提升专利审查应对、侵权风险评估和专利调研的效率与质量。
 </p>
 
 <h2>1.2 核心功能一览</h2>
 
 <div class="feature-card">
-  <div class="card-title">四模式专利搜索 <span class="new-badge">NEW</span></div>
-  <div class="card-desc">支持"审查文档"、"专利原文"、"智能抽取"、"智能比对"四种搜索模式：审查文档模式获取完整审查历史档案；专利原文模式直接查询 Google Patents；智能抽取模式批量抽取审查文档字段到Excel；智能比对模式AI对比多组权利要求分析保护范围差异。</div>
+  <div class="card-title">双模式专利搜索 <span class="new-badge">NEW</span></div>
+  <div class="card-desc">支持"审查文档"和"专利原文"两种搜索模式：审查文档模式获取完整审查历史档案；专利原文模式直接查询 Google Patents 获取说明书、权利要求、引用文献等专利全文信息。</div>
 </div>
 <div class="feature-card">
-  <div class="card-title">智能比对（锚定模式）<span class="new-badge">NEW</span></div>
-  <div class="card-desc">全新锚定模式权利要求对比分析：支持手动输入文本或专利号查询导入权利要求，设置锚点作为比对基准，自动计算文本相似度矩阵、并排对照预览，AI深度分析保护范围差异和技术特征对比，输出结构化比对报告。</div>
-</div>
-<div class="feature-card">
-  <div class="card-title">批量查询</div>
+  <div class="card-title">批量查询 <span class="new-badge">NEW</span></div>
   <div class="card-desc">支持一次输入最多 10 个专利号进行批量查询，快速获取多篇专利的原文概览信息，适合批量专利调研场景。</div>
 </div>
 <div class="feature-card">
-  <div class="card-title">历史记录管理</div>
-  <div class="card-desc">左侧侧边栏自动保存查询历史，支持关键词搜索过滤、快速回看、多选删除，无需重复输入专利号即可访问之前查询过的专利。</div>
+  <div class="card-title">历史记录管理 <span class="new-badge">NEW</span></div>
+  <div class="card-desc">左侧侧边栏自动保存查询历史，支持快速回看、多选删除，无需重复输入专利号即可访问之前查询过的专利。</div>
 </div>
 <div class="feature-card">
   <div class="card-title">智能审查看板</div>
-  <div class="card-desc">六列看板式文档管理，将审查历史文档自动分类为审查意见、答复、请求、授权、通知和其他，支持关键词与类型组合筛选，看板卡片直接进入AI梳理。</div>
+  <div class="card-desc">六列看板式文档管理，将审查历史文档自动分类为审查意见、答复、请求、授权、通知和其他，支持关键词与类型组合筛选。</div>
 </div>
 <div class="feature-card">
   <div class="card-title">AI 审查意见梳理</div>
-  <div class="card-desc">集成 DeepSeek、智谱 GLM、OpenAI 兼容等多种 AI 服务，自动梳理审查意见、答复策略、权利要求修改、引用文献分析，支持流式响应、来源标注、手动选择文档范围，新增看板直接选择文档功能。</div>
+  <div class="card-desc">集成 DeepSeek、智谱 GLM、OpenAI 兼容等多种 AI 服务，自动梳理审查意见、答复策略、权利要求修改、引用文献分析，支持流式响应、来源标注、手动选择文档范围。</div>
 </div>
 <div class="feature-card">
-  <div class="card-title">AI 问一问</div>
-  <div class="card-desc">在专利原文详情页、右侧悬浮弹窗、阅读器右侧面板均可使用 AI 问一问功能，基于当前专利内容进行连续对话提问，深入了解专利技术细节和法律状态。弹窗支持多标签页保持开启，列表页状态保持。</div>
+  <div class="card-title">AI 问一问 <span class="new-badge">NEW</span></div>
+  <div class="card-desc">在专利原文详情页、右侧悬浮弹窗、阅读器右侧面板均可使用 AI 问一问功能，基于当前专利内容进行连续对话提问，深入了解专利技术细节和法律状态。</div>
 </div>
 <div class="feature-card">
-  <div class="card-title">OCR 双引擎</div>
+  <div class="card-title">OCR 双引擎 <span class="new-badge">NEW</span></div>
   <div class="card-desc">支持 PaddleOCR-VL（免费本地）和 GLM OCR（云端高精度）双引擎切换，自动识别扫描版 PDF 文字，清理 OCR 噪音符号。</div>
 </div>
 <div class="feature-card">
-  <div class="card-title">全文翻译</div>
+  <div class="card-title">全文翻译 <span class="new-badge">NEW</span></div>
   <div class="card-desc">支持独立翻译模型配置，全文合并翻译不分块，流式实时显示翻译结果，支持选区翻译和网页一键翻译。</div>
 </div>
 <div class="feature-card">
@@ -478,19 +444,15 @@
 </div>
 <div class="feature-card">
   <div class="card-title">专利原文查询与多窗口</div>
-  <div class="card-desc">点击任意专利号即可在应用内查看 Google Patents/Espacenet 详情，支持右侧悬浮弹窗多标签页同时打开多份专利快速切换（弹窗保持开启），引用文献可一键复制全部公开号，详情页内支持关键词查找定位。</div>
+  <div class="card-desc">点击任意专利号即可在应用内查看 Google Patents/Espacenet 详情，支持右侧悬浮弹窗同时打开多份专利标签页快速切换，引用文献可一键复制全部公开号。</div>
 </div>
 <div class="feature-card">
-  <div class="card-title">浏览器扩展</div>
+  <div class="card-title">浏览器扩展 <span class="new-badge">NEW</span></div>
   <div class="card-desc">提供 Chrome 浏览器扩展，在 J-PlatPat（日本专利局）和 DPMA（德国专利局）网站浏览专利时，一键跳转至 PatentLens 进行深度分析。</div>
 </div>
 <div class="feature-card">
   <div class="card-title">Word / PDF 导出</div>
   <div class="card-desc">AI 分析结果可导出为格式完整的 .docx 文件（表格可编辑）；多份审查文档可合并为带封面书目信息的 PDF；PDF 标注可导出保存。</div>
-</div>
-<div class="feature-card">
-  <div class="card-title">韩国专利支持 <span class="new-badge">NEW</span></div>
-  <div class="card-desc">新增韩国 KIPO 专利局支持，可查询韩国专利的审查历史文档和同族信息。</div>
 </div>
 
 <h2>1.3 系统要求</h2>
@@ -500,7 +462,7 @@
   <tr><td>系统架构</td><td>x64（64 位）</td></tr>
   <tr><td>运行时</td><td>Microsoft Edge WebView2 运行时（Windows 10 2004+ 及 Windows 11 已内置）</td></tr>
   <tr><td>Python 环境</td><td>使用 PaddleOCR 本地 OCR 功能需要安装 Python 3.8+</td></tr>
-  <tr><td>网络</td><td>使用搜索、AI 分析、翻译、智能比对功能需要互联网连接</td></tr>
+  <tr><td>网络</td><td>使用搜索、AI 分析、翻译功能需要互联网连接</td></tr>
 </table>
 
 <!-- ==================== 第2章 安装与启动 ==================== -->
@@ -548,7 +510,7 @@
   </div>
 </div>
 
-<h2>2.4 浏览器扩展</h2>
+<h2>2.4 浏览器扩展 <span class="new-badge">NEW</span></h2>
 <p>PatentLens 提供 Chrome 浏览器扩展，支持在专利局官网一键跳转分析：</p>
 <ul>
   <li><strong>支持网站</strong>：J-PlatPat（日本专利局）、DPMAregister（德国专利商标局）</li>
@@ -569,46 +531,40 @@
 <h2>3.1 整体布局结构</h2>
 <p>PatentLens 采用侧边栏 + 顶部搜索栏 + 主内容区的现代化布局，支持亮色/暗色主题切换：</p>
 <ul>
-  <li><strong>左侧</strong>：历史记录侧边栏（可收起/展开），支持搜索过滤，快速访问查询过的专利</li>
-  <li><strong>顶部</strong>：搜索栏区域，包含四种搜索模式切换、专利号输入框、查询按钮、主题切换、设置按钮</li>
-  <li><strong>主区域</strong>：根据当前模式显示搜索首页、批量查询结果、智能比对工作台、专利原文详情、审查文档分析结果等内容</li>
+  <li><strong>左侧</strong>：历史记录侧边栏（可收起/展开），快速访问查询过的专利</li>
+  <li><strong>顶部</strong>：搜索栏区域，包含搜索模式切换、专利号输入框、查询按钮、主题切换、设置按钮</li>
+  <li><strong>主区域</strong>：根据当前模式显示搜索首页、批量查询结果、专利原文详情、审查文档分析结果等内容</li>
 </ul>
 
-<h2>3.2 搜索栏与四种搜索模式 <span class="new-badge">NEW</span></h2>
-<p>搜索栏位于窗口顶部，是应用的核心入口，提供四种搜索模式切换：</p>
+<h2>3.2 搜索栏与搜索模式 <span class="new-badge">NEW</span></h2>
+<p>搜索栏位于窗口顶部，是应用的核心入口，新增双模式切换：</p>
 
 <table>
   <tr><th>元素</th><th>说明</th></tr>
-  <tr><td>搜索模式切换</td><td><strong>"审查文档"</strong>模式（默认）：获取 Global Dossier 审查历史档案；<strong>"专利原文"</strong>模式：直接查询 Google Patents 获取专利全文；<strong>"智能抽取"</strong>模式：从审查文档批量抽取字段到Excel；<strong>"智能比对"</strong>模式：AI对比多组权利要求/文本分析保护范围差异</td></tr>
-  <tr><td>专利号输入框</td><td>输入专利号或申请号，支持 US、EP、JP、KR、DE、CN、WO 等格式，系统自动识别类型</td></tr>
+  <tr><td>搜索模式切换</td><td><strong>"审查文档"</strong>模式（默认）：获取 Global Dossier 审查历史档案；<strong>"专利原文"</strong>模式：直接查询 Google Patents 获取专利全文</td></tr>
+  <tr><td>专利号输入框</td><td>输入专利号或申请号，支持 US、EP、JP、DE、CN、WO 等格式，系统自动识别类型</td></tr>
   <tr><td>查询按钮</td><td>点击开始获取数据，过程中显示加载进度</td></tr>
   <tr><td>批量查询按钮</td><td>在"专利原文"模式下显示，点击展开批量输入面板（最多 10 篇）</td></tr>
   <tr><td>主题切换</td><td>太阳/月亮图标，切换浅色/深色主题</td></tr>
   <tr><td>AI 设置按钮</td><td>齿轮图标，打开完整设置对话框（AI、OCR、翻译、提示词、EPO OPS）</td></tr>
 </table>
 
-<h2>3.3 历史记录侧边栏</h2>
-<p>左侧历史记录侧边栏自动保存您查询过的专利记录：</p>
+<h2>3.3 历史记录侧边栏 <span class="new-badge">NEW</span></h2>
+<p>左侧侧边栏自动保存您查询过的专利记录：</p>
 <ul>
   <li><strong>记录列表</strong>：按时间倒序显示历史查询的专利号和标题</li>
-  <li><strong>搜索过滤 <span class="new-badge">NEW</span></strong>：顶部搜索框支持按专利号、标题、申请人关键词快速过滤历史记录</li>
-  <li><strong>快速访问</strong>：点击记录项即可重新加载该专利数据（弹窗/列表页状态保持），无需重复输入</li>
+  <li><strong>快速访问</strong>：点击记录项即可重新加载该专利数据，无需重复输入</li>
   <li><strong>多选删除</strong>：点击勾选图标进入多选模式，可批量选中并删除历史记录</li>
   <li><strong>清空全部</strong>：一键清空所有历史记录</li>
   <li><strong>收起/展开</strong>：点击边缘箭头可收起侧边栏，获得更大阅读空间</li>
 </ul>
 
-<div class="tip-box info">
-  <div class="tip-title">状态保持</div>
-  V0.7.0 版本优化了弹窗和列表页的状态保持：右侧悬浮弹窗打开后不会因其他操作自动关闭，可同时保持多个专利标签页开启；列表页（如批量查询结果）切换后状态保留，返回时无需重新加载。
-</div>
-
 <h2>3.4 标签页区域</h2>
 <p>在"审查文档"模式下加载专利后，主区域显示 4 个功能标签页：</p>
 <ul>
   <li><strong>概览</strong> — 专利基本信息 + 审查时间线</li>
-  <li><strong>同族</strong> — IP5 五局同族专利信息（含韩国 KIPO）</li>
-  <li><strong>审查看板</strong> — 六列文档看板 + 合并导出 + 直接选择文档AI梳理</li>
+  <li><strong>同族</strong> — IP5 五局同族专利信息</li>
+  <li><strong>审查看板</strong> — 六列文档看板 + 合并导出</li>
   <li><strong>AI 分析</strong> — AI 审查意见梳理、引用文献分析</li>
 </ul>
 
@@ -621,19 +577,18 @@
 </ul>
 
 <h2>3.6 同族标签页</h2>
-<p>同族标签页展示 IP5 五局同族专利信息（新增韩国 KIPO）：</p>
+<p>同族标签页展示 IP5 五局同族专利信息：</p>
 <ul>
   <li><strong>同族成员列表</strong> — 同一专利族在 USPTO/EPO/JPO/KIPO/CNIPA 的申请情况</li>
-  <li><strong>各成员状态</strong> — 显示每个同族成员的审查状态和公开信息，点击可直接查看详情</li>
+  <li><strong>各成员状态</strong> — 显示每个同族成员的审查状态和公开信息</li>
 </ul>
 
 <h2>3.7 审查看板标签页</h2>
-<p>审查看板是文档管理核心区域，顶部提供"梳理审查意见"、"梳理引用文献"、"合并导出"三个操作按钮，六列看板自动分类审查文档：</p>
+<p>审查看板是文档管理核心区域，顶部提供"合并导出"按钮，六列看板自动分类审查文档：</p>
 <ul>
   <li><strong>筛选栏</strong> — 关键词搜索 + 类型标签组合筛选</li>
   <li><strong>六列看板</strong> — 审查意见、答复、请求、授权、通知、其他</li>
   <li><strong>文档卡片</strong> — 显示文档代码、名称、日期、类型标签，点击展开文本</li>
-  <li><strong>卡片多选模式 <span class="new-badge">NEW</span></strong>：点击顶部"梳理审查意见"等按钮可直接在看板上勾选文档，支持追加模式保留已OCR结果</li>
   <li><strong>卡片操作</strong> — 手动提取文本、下载 PDF 原文</li>
 </ul>
 
@@ -641,7 +596,7 @@
 <p>AI 分析标签页提供智能梳理功能：</p>
 <ul>
   <li><strong>手动选择面板</strong> — 默认展开，支持搜索过滤、全选/全不选/默认选择，已选状态自动记忆</li>
-  <li><strong>梳理审查意见</strong> — AI 综合分析选中的审查文档，生成结构化审查历史分析报告（含来源标注）</li>
+  <li><strong>梳理审查意见</strong> — AI 综合分析选中的审查文档，生成结构化审查历史分析报告</li>
   <li><strong>梳理引用文献</strong> — AI 专门分析审查意见中引用的对比文献</li>
   <li><strong>分析结果展示</strong> — Markdown 格式渲染，专利号自动识别为可点击链接</li>
   <li><strong>操作按钮</strong> — 阅读器（溯源对照）、导出 Word、中止分析</li>
@@ -686,17 +641,17 @@
 <h2>4.2 搜索专利</h2>
 <div class="steps">
   <div class="step-item">
-    <div class="step-content">选择搜索模式：<strong>"审查文档"</strong>获取审查历史；<strong>"专利原文"</strong>直接查看专利全文；<strong>"智能比对"</strong>进行权利要求对比</div>
+    <div class="step-content">选择搜索模式：<strong>"审查文档"</strong>获取审查历史；<strong>"专利原文"</strong>直接查看专利全文</div>
   </div>
   <div class="step-item">
-    <div class="step-content">在 <strong>专利号输入框</strong> 中输入专利号（如 US12030161B2、EP4252965A3、KR101234567B1），系统自动识别类型</div>
+    <div class="step-content">在 <strong>专利号输入框</strong> 中输入专利号（如 US12030161B2、EP4252965A3），系统自动识别类型</div>
   </div>
   <div class="step-item">
     <div class="step-content">点击 <strong>查询按钮</strong>，等待数据加载完成</div>
   </div>
 </div>
 
-<h2>4.3 使用 AI 问一问</h2>
+<h2>4.3 使用 AI 问一问 <span class="new-badge">NEW</span></h2>
 <p>在专利原文详情页，您可以直接向 AI 提问了解专利详情：</p>
 <div class="steps">
   <div class="step-item">
@@ -709,31 +664,11 @@
     <div class="step-content">在对话框中输入问题（如"这个专利的核心发明点是什么？"、"独立权利要求有哪些限制？"），AI 会基于专利全文内容回答</div>
   </div>
   <div class="step-item">
-    <div class="step-content">支持 <strong>连续多轮对话</strong>，可以基于上下文深入追问。右侧弹窗打开后保持开启状态，可同时切换多个专利标签页提问</div>
+    <div class="step-content">支持 <strong>连续多轮对话</strong>，可以基于上下文深入追问</div>
   </div>
 </div>
 
-<h2>4.4 使用智能比对 <span class="new-badge">NEW</span></h2>
-<p>智能比对功能可帮助您快速对比多组权利要求或技术文本的保护范围差异：</p>
-<div class="steps">
-  <div class="step-item">
-    <div class="step-content">切换到 <strong>"智能比对"</strong>模式，进入比对工作台</div>
-  </div>
-  <div class="step-item">
-    <div class="step-content">选择输入方式：<strong>"手动输入文本"</strong>粘贴权利要求内容，或<strong>"专利号查询"</strong>输入专利号自动导入权利要求</div>
-  </div>
-  <div class="step-item">
-    <div class="step-content">添加至少2组待比对文本，点击⭐按钮设置一个<strong>锚点</strong>（作为比对基准，如本专利独权）</div>
-  </div>
-  <div class="step-item">
-    <div class="step-content">点击<strong>"下一步：预览确认"</strong>，查看文本相似度矩阵和并排对照预览</div>
-  </div>
-  <div class="step-item">
-    <div class="step-content">点击<strong>"开始AI比对"</strong>，等待AI生成结构化的保护范围差异分析报告</div>
-  </div>
-</div>
-
-<h2>4.5 浏览审查看板</h2>
+<h2>4.4 浏览审查看板</h2>
 <div class="steps">
   <div class="step-item">
     <div class="step-content">在"审查文档"模式下加载专利后，点击 <strong>"审查看板"</strong> 标签页</div>
@@ -742,14 +677,14 @@
     <div class="step-content">文档自动归入六列看板：<strong>审查意见、答复、请求、授权、通知、其他</strong></div>
   </div>
   <div class="step-item">
-    <div class="step-content">使用顶部 <strong>筛选栏</strong> 按关键词或类型快速定位文档，侧边栏历史搜索可快速查找之前的专利</div>
+    <div class="step-content">使用顶部 <strong>筛选栏</strong> 按关键词或类型快速定位文档</div>
   </div>
   <div class="step-item">
-    <div class="step-content">点击文档卡片 <strong>展开查看</strong> 提取的文本内容，或点击顶部按钮直接在看板上勾选文档进行AI梳理</div>
+    <div class="step-content">点击文档卡片 <strong>展开查看</strong> 提取的文本内容</div>
   </div>
 </div>
 
-<h2>4.6 AI 分析审查意见</h2>
+<h2>4.5 AI 分析审查意见</h2>
 <div class="steps">
   <div class="step-item">
     <div class="step-content">切换到 <strong>"AI 分析"</strong> 标签页，手动选择面板默认展开</div>
@@ -758,7 +693,7 @@
     <div class="step-content">在手动选择面板中勾选需要分析的文档（默认已勾选审查意见和答复），可使用搜索框快速过滤</div>
   </div>
   <div class="step-item">
-    <div class="step-content">点击 <strong>"梳理审查意见"</strong> 按钮，AI 开始分析，结果流式实时显示，每句话标注原文来源</div>
+    <div class="step-content">点击 <strong>"梳理审查意见"</strong> 按钮，AI 开始分析，结果流式实时显示</div>
   </div>
   <div class="step-item">
     <div class="step-content">分析过程中可随时点击红色 <strong>"中止梳理"</strong> 按钮中断</div>
@@ -768,7 +703,7 @@
   </div>
 </div>
 
-<h2>4.7 导出与阅读</h2>
+<h2>4.6 导出与阅读</h2>
 <div class="steps">
   <div class="step-item">
     <div class="step-content">点击 <strong>"阅读器"</strong> 按钮，打开全屏溯源对照阅读器，对照查看原文与 AI 分析，支持 PDF 标注</div>
@@ -777,7 +712,7 @@
     <div class="step-content">点击 <strong>"导出 Word"</strong> 按钮，将 AI 分析结果导出为格式完整的 .docx 文件</div>
   </div>
   <div class="step-item">
-    <div class="step-content">在审查看板顶部点击 <strong>"合并导出"</strong>，可直接在看板勾选需要合并的文档，导出为一个带封面的 PDF 文件</div>
+    <div class="step-content">在审查看板顶部点击 <strong>"合并导出"</strong>，将所有审查文档合并为一个带封面的 PDF 文件</div>
   </div>
 </div>
 
@@ -789,8 +724,8 @@
 <!-- ==================== 第5章 功能详解 ==================== -->
 <h1 class="page-break">5 功能详解</h1>
 
-<h2>5.1 四模式专利搜索 <span class="new-badge">NEW</span></h2>
-<p>PatentLens V0.7.0 提供四种搜索模式，覆盖不同使用场景：</p>
+<h2>5.1 双模式专利搜索 <span class="new-badge">NEW</span></h2>
+<p>PatentLens 提供两种搜索模式，覆盖不同使用场景：</p>
 
 <h3>审查文档模式</h3>
 <p>通过 Global Dossier API 获取专利的完整审查历史档案，包括：</p>
@@ -799,7 +734,6 @@
   <li>申请人答复文件（Response/Amendment）</li>
   <li>授权通知书、各类请求和官方通知</li>
   <li>自动分类归档到审查看板</li>
-  <li>支持 US/EP/JP/KR/CN/DE/WO 专利</li>
 </ul>
 
 <h3>专利原文模式</h3>
@@ -809,14 +743,8 @@
   <li>权利要求书</li>
   <li>引用专利列表、被引用专利列表、相似专利</li>
   <li>法律状态信息</li>
-  <li>支持一键下载 PDF 原文、Espacenet 跳转查询、页内关键词查找</li>
+  <li>支持一键下载 PDF 原文、Espacenet 跳转查询</li>
 </ul>
-
-<h3>智能抽取模式</h3>
-<p>从审查文档中批量抽取关键字段到 Excel 表格，适用于快速提取多份文档的结构化信息。</p>
-
-<h3>智能比对模式</h3>
-<p>锚定模式 AI 权利要求对比分析，详见 5.9 节。</p>
 
 <h3>支持的专利号格式</h3>
 <table>
@@ -824,28 +752,25 @@
   <tr><td>美国专利商标局</td><td>USPTO</td><td>US12030161B2、US17204063</td></tr>
   <tr><td>欧洲专利局</td><td>EPO</td><td>EP4252965A3、EP12345678</td></tr>
   <tr><td>日本特许厅</td><td>JPO</td><td>JP12345678、JP2020123456A</td></tr>
-  <tr><td>韩国特许厅</td><td>KIPO <span class="new-badge">NEW</span></td><td>KR101234567B1、KR20200123456A</td></tr>
   <tr><td>德国专利商标局</td><td>DPMA</td><td>DE12345678</td></tr>
   <tr><td>中国国家知识产权局</td><td>CNIPA</td><td>CN112345678A、CN12345678B</td></tr>
   <tr><td>WIPO/PCT</td><td>WIPO</td><td>WO2020123456A1</td></tr>
 </table>
 
-<h2>5.2 批量查询</h2>
+<h2>5.2 批量查询 <span class="new-badge">NEW</span></h2>
 <p>在"专利原文"模式下，点击输入框右侧的批量查询按钮（四方格图标），可一次输入最多 10 个专利号批量查询：</p>
 <ul>
   <li><strong>输入方式</strong>：每行输入一个专利号，系统自动识别格式</li>
   <li><strong>进度显示</strong>：实时显示查询进度（如"3/10 已完成"）</li>
   <li><strong>结果展示</strong>：卡片网格形式展示每篇专利的概览信息（标题、申请人、申请日等）</li>
-  <li><strong>状态保持</strong>：列表页状态保持，切换到其他页面再返回时无需重新加载</li>
   <li><strong>快捷操作</strong>：点击卡片即可进入该专利的详情页进行 AI 问一问、查看引用文献等操作</li>
 </ul>
 
-<h2>5.3 历史记录管理</h2>
+<h2>5.3 历史记录管理 <span class="new-badge">NEW</span></h2>
 <p>左侧历史记录侧边栏帮助您快速访问之前查询过的专利：</p>
 <ul>
   <li><strong>自动保存</strong>：每次查询成功后自动保存到历史记录</li>
-  <li><strong>搜索过滤 <span class="new-badge">NEW</span></strong>：顶部搜索框支持按专利号、标题、申请人关键词实时过滤，快速定位目标专利</li>
-  <li><strong>快速回看</strong>：点击记录项即可重新加载数据（有缓存时优先使用缓存，弹窗/列表状态保持）</li>
+  <li><strong>快速回看</strong>：点击记录项即可重新加载数据（有缓存时优先使用缓存）</li>
   <li><strong>多选操作</strong>：点击顶部勾选图标进入多选模式，可勾选多项后批量删除</li>
   <li><strong>清空历史</strong>：点击垃圾桶图标清空所有记录（此操作不可恢复）</li>
 </ul>
@@ -858,7 +783,7 @@
 </ul>
 
 <h2>5.5 同族</h2>
-<p>同族标签页展示 IP5 五局同族专利信息（USPTO/EPO/JPO/KIPO/CNIPA），帮助了解专利全球布局。点击同族专利号可直接查看该同族成员的详情。</p>
+<p>同族标签页展示 IP5 五局同族专利信息，帮助了解专利全球布局。点击同族专利号可直接查看该同族成员的详情。</p>
 
 <h2>5.6 审查看板</h2>
 <p>审查看板采用六列看板式布局自动分类管理审查文档：</p>
@@ -878,7 +803,6 @@
   <li><strong>关键词搜索</strong>：输入框实时过滤卡片</li>
   <li><strong>类型筛选</strong>：点击类型标签筛选</li>
   <li><strong>卡片展开</strong>：点击展开/收起 OCR 提取的文本</li>
-  <li><strong>直接选择文档 <span class="new-badge">NEW</span></strong>：点击顶部"梳理审查意见"等按钮可直接在看板上勾选文档，支持追加模式（保留已OCR结果重新梳理）</li>
   <li><strong>提取文本</strong>：手动触发 OCR 文字提取</li>
   <li><strong>下载 PDF</strong>：下载原始 PDF 文档</li>
   <li><strong>列独立滚动</strong>：各列可独立滚动，互不影响</li>
@@ -894,7 +818,6 @@
   <li><strong>快捷选择</strong>：全选、全不选、默认选择（审查意见+答复，排除 SPEC）</li>
   <li><strong>已选摘要</strong>：底部显示"已选 X 篇：审查意见 X · 答复 X"实时统计</li>
   <li><strong>选择记忆</strong>：选择状态自动保存，切换标签页后恢复</li>
-  <li><strong>看板直接选择 <span class="new-badge">NEW</span></strong>：也可在审查看板顶部点击按钮直接在卡片上勾选</li>
 </ul>
 
 <h3>分析内容</h3>
@@ -914,10 +837,10 @@
 
 <div class="tip-box info">
   <div class="tip-title">专利号自动链接</div>
-  AI 分析中引用的对比文献专利号会自动保留完整格式（如 US7456789B2、KR101234567B1），并自动转换为可点击链接，点击即可在右侧悬浮弹窗中查看该专利详情，弹窗保持开启状态，支持多标签页快速切换。
+  AI 分析中引用的对比文献专利号会自动保留完整格式（如 US7456789B2），并自动转换为可点击链接，点击即可在右侧悬浮弹窗中查看该专利详情，支持多标签页快速切换。
 </div>
 
-<h2>5.8 AI 问一问（专利对话）</h2>
+<h2>5.8 AI 问一问（专利对话） <span class="new-badge">NEW</span></h2>
 <p>AI 问一问功能让您可以就任意专利与 AI 进行多轮对话，深入了解专利内容：</p>
 
 <h3>使用场景</h3>
@@ -933,7 +856,7 @@
 <table>
   <tr><th>位置</th><th>说明</th></tr>
   <tr><td>专利原文详情页顶部</td><td>全屏查看专利时，点击"AI 问一问"按钮打开对话面板</td></tr>
-  <tr><td>右侧悬浮弹窗</td><td>审查文档中点击专利号弹出的悬浮窗，顶部同样有"AI 问一问"按钮，弹窗保持开启不自动关闭</td></tr>
+  <tr><td>右侧悬浮弹窗</td><td>审查文档中点击专利号弹出的悬浮窗，顶部同样有"AI 问一问"按钮</td></tr>
   <tr><td>阅读器右侧面板</td><td>溯源对照阅读器右侧"AI 对话"标签，基于当前审查文档对话</td></tr>
 </table>
 
@@ -942,80 +865,9 @@
   <li><strong>基于专利全文</strong>：对话上下文自动包含当前专利的说明书、权利要求等内容</li>
   <li><strong>连续多轮对话</strong>：支持追问和上下文关联，逐步深入分析</li>
   <li><strong>流式响应</strong>：AI 回答实时输出，无需等待全部完成</li>
-  <li><strong>弹窗保持开启 <span class="new-badge">NEW</span></strong>：右侧悬浮弹窗打开后不会因其他操作自动关闭，可同时保持多个专利标签页开启对话</li>
-  <li><strong>页内查找 <span class="new-badge">NEW</span></strong>：专利详情页支持 Ctrl+F 关键词查找定位，方便阅读长文档</li>
 </ul>
 
-<h2>5.9 智能比对（权利要求对比分析）<span class="new-badge">NEW</span></h2>
-<p>智能比对是 V0.7.0 全新推出的锚定模式权利要求对比分析功能，支持多组文本/权利要求的 AI 深度比对，帮助您快速分析保护范围差异。</p>
-
-<div class="diagram">
-  <svg width="520" height="200" viewBox="0 0 520 200" xmlns="http://www.w3.org/2000/svg">
-    <rect x="10" y="10" width="500" height="180" rx="8" fill="#f5f5f5" stroke="#ddd" stroke-width="1.5"/>
-    <rect x="20" y="25" width="140" height="150" rx="6" fill="#fff" stroke="#4caf50" stroke-width="2"/>
-    <text x="90" y="50" text-anchor="middle" font-size="11" fill="#1b5e20" font-weight="bold">① 准备数据</text>
-    <text x="90" y="75" text-anchor="middle" font-size="9" fill="#666">手动输入文本</text>
-    <text x="90" y="92" text-anchor="middle" font-size="9" fill="#666">或专利号导入</text>
-    <text x="90" y="115" text-anchor="middle" font-size="9" fill="#4caf50" font-weight="bold">设置锚点⭐</text>
-    <text x="90" y="140" text-anchor="middle" font-size="8" fill="#888">至少2组文本</text>
-    <polygon points="170,100 190,90 190,110" fill="#4caf50"/>
-    <rect x="200" y="25" width="140" height="150" rx="6" fill="#fff" stroke="#ddd" stroke-width="1.5"/>
-    <text x="270" y="50" text-anchor="middle" font-size="11" fill="#333" font-weight="bold">② 预览确认</text>
-    <text x="270" y="75" text-anchor="middle" font-size="9" fill="#666">相似度矩阵</text>
-    <text x="270" y="92" text-anchor="middle" font-size="9" fill="#666">并排对照预览</text>
-    <text x="270" y="115" text-anchor="middle" font-size="9" fill="#666">确认锚点</text>
-    <text x="270" y="140" text-anchor="middle" font-size="8" fill="#888">自动计算文本相似度</text>
-    <polygon points="350,100 370,90 370,110" fill="#4caf50"/>
-    <rect x="380" y="25" width="120" height="150" rx="6" fill="#e8f5e9" stroke="#4caf50" stroke-width="2"/>
-    <text x="440" y="50" text-anchor="middle" font-size="11" fill="#1b5e20" font-weight="bold">③ AI分析</text>
-    <text x="440" y="75" text-anchor="middle" font-size="9" fill="#2e7d32">技术特征对比</text>
-    <text x="440" y="92" text-anchor="middle" font-size="9" fill="#2e7d32">保护范围差异</text>
-    <text x="440" y="109" text-anchor="middle" font-size="9" fill="#2e7d32">新颖性/创造性</text>
-    <text x="440" y="126" text-anchor="middle" font-size="9" fill="#2e7d32">规避建议</text>
-    <text x="440" y="150" text-anchor="middle" font-size="8" fill="#888">流式输出结果</text>
-  </svg>
-  <div class="diagram-caption">图 5-1 智能比对三步工作流</div>
-</div>
-
-<h3>5.9.1 锚定模式说明</h3>
-<p>智能比对采用<strong>锚定模式</strong>：您需要选择一个文本作为<strong>锚点（Anchor）</strong>（通常是本专利的独立权利要求），其他所有待比对文本都将相对于锚点进行对比分析。这种方式特别适用于：</p>
-<ul>
-  <li>本专利 vs 对比文件权利要求对比（侵权分析/无效分析）</li>
-  <li>修改前后权利要求对比（审查答复策略）</li>
-  <li>多件相关专利独权对比（专利布局分析）</li>
-  <li>同族专利不同国家权利要求对比（地域保护范围差异）</li>
-</ul>
-
-<h3>5.9.2 输入方式</h3>
-<table>
-  <tr><th>输入方式</th><th>说明</th></tr>
-  <tr><td>手动输入文本</td><td>直接粘贴要比对的权利要求或技术文本，可自定义标签名称（如"US权1"、"CN独权"）</td></tr>
-  <tr><td>专利号查询</td><td>输入专利号（最多10个），系统自动从 Google Patents 获取权利要求书并提取独立权利要求供选择</td></tr>
-</table>
-
-<h3>5.9.3 预览确认</h3>
-<p>添加完待比对项并设置锚点后，可进入预览确认页面：</p>
-<ul>
-  <li><strong>相似度矩阵</strong>：自动计算所有待比对项之间的文本相似度（基于N-gram和词频Jaccard指数），用颜色标识相似度高低（绿色=高度相似、黄色=较为相似、橙色=部分相似、红色=低度相似、灰色=差异较大）</li>
-  <li><strong>并排对照</strong>：锚点文本与其他待比对文本左右并排显示，方便人工初步对比</li>
-</ul>
-
-<h3>5.9.4 AI 比对报告内容</h3>
-<p>AI 深度比对分析报告包含：</p>
-<ol>
-  <li><strong>比对概要</strong> — 锚点与各比对文本的整体相似度评估和结论概述</li>
-  <li><strong>技术特征逐一对比表</strong> — 按技术特征分解，对比锚点与比对文本的异同</li>
-  <li><strong>保护范围差异分析</strong> — 分析保护范围宽窄差异、相同特征与区别特征</li>
-  <li><strong>新颖性/创造性评估</strong> — 基于对比结果评估新颖性和创造性风险</li>
-  <li><strong>侵权风险/规避建议</strong> — 如适用，提供侵权风险点或规避设计方向建议</li>
-</ol>
-
-<div class="tip-box">
-  <div class="tip-title">提示</div>
-  智能比对支持流式响应，分析过程中可随时点击"中止比对"。待比对项列表支持从历史记录快速添加，提高工作效率。
-</div>
-
-<h2>5.10 溯源对照阅读器与 PDF 标注</h2>
+<h2>5.9 溯源对照阅读器与 PDF 标注</h2>
 <p>溯源对照阅读器是全屏模态窗口，提供两种阅读模式和完整的 PDF 标注功能：</p>
 
 <h3>两种阅读模式</h3>
@@ -1050,7 +902,7 @@
   <li><strong>阅读模式</strong>：点击"打开侧边栏"按钮收起左侧文档列表，获得更大阅读空间</li>
 </ul>
 
-<h2>5.11 OCR 文字提取</h2>
+<h2>5.10 OCR 文字提取 <span class="new-badge">NEW</span></h2>
 <p>对于扫描版 PDF 文档，需要 OCR 提取文字后才能进行搜索、翻译和 AI 分析：</p>
 
 <h3>双 OCR 引擎</h3>
@@ -1062,10 +914,10 @@
 
 <div class="tip-box">
   <div class="tip-title">提示</div>
-  OCR 自动清理常见噪音符号（如 $\Box$ 等），输出更干净的文本。在设置中可随时切换 OCR 引擎。看板追加模式下新选择的文件会自动OCR后与原有文件一起重新梳理。
+  OCR 自动清理常见噪音符号（如 $\\Box$ 等），输出更干净的文本。在设置中可随时切换 OCR 引擎。
 </div>
 
-<h2>5.12 全文翻译</h2>
+<h2>5.11 全文翻译 <span class="new-badge">NEW</span></h2>
 <p>PatentLens 提供灵活的翻译功能：</p>
 <ul>
   <li><strong>独立翻译模型配置</strong>：翻译使用的模型可独立于主 AI 分析模型配置，默认选用高性价比模型降低成本</li>
@@ -1075,10 +927,10 @@
   <li><strong>网页翻译</strong>：在专利原文详情页点击"网页翻译"按钮，一键使用 Google 翻译整个页面</li>
 </ul>
 
-<h2>5.13 专利原文查询</h2>
+<h2>5.12 专利原文查询</h2>
 <p>在审查文档界面和 AI 分析结果中，所有专利号都是可点击的链接：</p>
 <ul>
-  <li><strong>点击</strong>：在右侧弹出悬浮窗口查看该专利详情，弹窗保持开启状态，支持多标签页同时打开多份专利快速切换</li>
+  <li><strong>点击</strong>：在右侧弹出悬浮窗口查看该专利详情，支持多标签页同时打开多份专利快速切换</li>
   <li><strong>Ctrl+点击</strong>：在外部浏览器中打开 Google Patents 页面</li>
 </ul>
 
@@ -1092,13 +944,10 @@
   <tr><td>PDF 原文</td><td>下载或查看专利原始 PDF 文件</td></tr>
 </table>
 
-<h3>页内查找 <span class="new-badge">NEW</span></h3>
-<p>专利详情页支持关键词页内查找（Ctrl+F），可快速定位到说明书、权利要求中的目标段落，支持上一个/下一个匹配跳转。</p>
-
 <h3>引用文献一键复制</h3>
 <p>"引用文献"标签页分为三个列表：引用专利、被引用专利、相似文档。每个列表标题右侧都有"复制全部公开号"按钮，点击即可一键复制该列表所有专利号（每行一个），方便批量导入其他工具。</p>
 
-<h2>5.14 Word 导出</h2>
+<h2>5.13 Word 导出</h2>
 <p>AI 分析结果可导出为 .docx 文件：</p>
 <ul>
   <li><strong>Markdown 格式还原</strong>：标题、粗体、列表、段落格式完整保留</li>
@@ -1107,16 +956,15 @@
   <li><strong>彩色表头</strong>：表头带绿色背景，美观易读</li>
 </ul>
 
-<h2>5.15 合并导出 PDF</h2>
-<p>审查看板顶部的"合并导出"按钮可将审查文档合并为一个 PDF 文件：</p>
+<h2>5.14 合并导出 PDF</h2>
+<p>审查看板顶部的"合并导出"按钮可将所有审查文档合并为一个 PDF 文件：</p>
 <ul>
-  <li><strong>看板直接选择 <span class="new-badge">NEW</span></strong>：点击"合并导出"按钮可直接在看板上勾选需要合并的文档</li>
   <li><strong>自动封面页</strong>：包含专利号、标题、申请人、申请日、发明人等完整书目信息</li>
-  <li><strong>文档整合</strong>：按时间顺序合并所有审查文档 PDF，每个文档前插入分隔页</li>
+  <li><strong>文档整合</strong>：按时间顺序合并所有审查文档 PDF</li>
   <li><strong>方便归档</strong>：单文件便于离线存档和分享</li>
 </ul>
 
-<h2>5.16 设置</h2>
+<h2>5.15 设置</h2>
 <p>点击搜索栏右侧齿轮图标打开设置对话框，包含多个配置标签页：</p>
 
 <h3>AI 服务</h3>
@@ -1143,7 +991,7 @@
 
 <h3>提示词</h3>
 <ul>
-  <li>可自定义各类 AI 分析的提示词模板（审查梳理、单文档分析、引用文献分析、专利解读、智能比对等）</li>
+  <li>可自定义各类 AI 分析的提示词模板（审查梳理、单文档分析、引用文献分析、专利解读等）</li>
   <li>提供"重置为默认"按钮恢复官方提示词</li>
   <li>提示词版本升级时自动提示更新</li>
 </ul>
@@ -1162,13 +1010,13 @@
 
 <h3>Q2：搜索专利时获取文档失败怎么办？</h3>
 <ul>
-  <li>检查专利号格式是否正确，系统是否正确识别了专利局（支持US/EP/JP/KR/DE/CN/WO）</li>
+  <li>检查专利号格式是否正确，系统是否正确识别了专利局</li>
   <li>检查网络连接是否正常</li>
   <li>确认该专利确实有公开的审查历史文档</li>
   <li>部分专利局服务器可能有访问频率限制，稍后重试</li>
 </ul>
 
-<h3>Q3：AI 分析/问一问/智能比对失败怎么办？</h3>
+<h3>Q3：AI 分析/问一问失败怎么办？</h3>
 <ul>
   <li>确认 API Key 正确填写</li>
   <li>确认网络可访问对应 AI 服务商</li>
@@ -1184,57 +1032,30 @@
   <li>或者切换到 GLM OCR 云端引擎（需要智谱 API Key）</li>
 </ul>
 
-<h3>Q5：如何中止正在进行的 AI 分析/比对？</h3>
-<p>AI 分析过程中界面显示红色"中止梳理"、"中止引用梳理"或"中止比对"按钮，点击即可中断。已生成的部分结果会保留。</p>
+<h3>Q5：如何中止正在进行的 AI 分析？</h3>
+<p>AI 分析过程中界面显示红色"中止梳理"或"中止引用梳理"按钮，点击即可中断。已生成的部分结果会保留。</p>
 
 <h3>Q6：为什么 SPEC（说明书）默认不纳入 AI 分析？</h3>
 <p>SPEC 通常篇幅很长，纳入分析会消耗大量 Token 且对审查意见梳理帮助有限。默认排除可提高效率、降低成本。如需包含，可在手动选择面板中勾选。</p>
 
-<h3>Q7：智能比对中"锚点"是什么意思？</h3>
-<p>锚点是比对的基准文本，通常选择本专利的独立权利要求。其他所有待比对文本都会相对于锚点进行对比分析，生成差异报告。至少需要设置1个锚点并勾选2项（含锚点）才能开始比对。</p>
-
-<h3>Q8：右侧悬浮弹窗会自动关闭吗？</h3>
-<p>V0.7.0 版本优化后弹窗不会自动关闭，打开后保持开启状态，可同时在弹窗内打开多个专利标签页快速切换。关闭弹窗时所有标签页一起关闭。</p>
-
-<h3>Q9：导出的 Word 文件中表格可以编辑吗？</h3>
+<h3>Q7：导出的 Word 文件中表格可以编辑吗？</h3>
 <p>可以。导出的 .docx 中 Markdown 表格已渲染为真正的 Word 表格，支持直接编辑单元格、调整列宽、修改样式。</p>
 
-<h3>Q10：PDF 标注会保存吗？</h3>
+<h3>Q8：PDF 标注会保存吗？</h3>
 <p>标注数据临时保存在当前会话中。请在关闭阅读器前点击"导出标注后文档"按钮，将标注叠加到 PDF 上永久保存。</p>
 
-<h3>Q11：历史记录支持搜索吗？</h3>
-<p>支持。V0.7.0 版本在历史记录侧边栏顶部增加了搜索框，可按专利号、标题、申请人关键词快速过滤历史记录。</p>
+<h3>Q9：右侧悬浮弹窗支持同时打开多少个专利？</h3>
+<p>支持在弹窗内打开多个标签页快速切换，关闭弹窗时所有标签页一起关闭。如需同时对比多份专利，建议使用全屏详情页分别查看。</p>
 
-<h3>Q12：历史记录和配置保存在哪里？会上传吗？</h3>
+<h3>Q10：历史记录保存在哪里？会上传吗？</h3>
 <p>所有配置（API Key、历史记录、自定义提示词等）都保存在本地浏览器存储中，不会上传到任何服务器。</p>
-
-<h3>Q13：支持韩国专利吗？</h3>
-<p>V0.7.0 版本新增韩国 KIPO 专利局支持，可查询韩国专利的审查历史文档和同族信息。</p>
-
-<h3>Q14：专利详情页如何快速查找关键词？</h3>
-<p>在专利原文详情页按 Ctrl+F 即可打开页内查找栏，输入关键词快速定位，支持上一个/下一个匹配跳转。</p>
 
 <!-- ==================== 第7章 附录 ==================== -->
 <h1 class="page-break">7 附录</h1>
 
 <h2>7.1 版本更新记录</h2>
 
-<h3>V0.7.0 (2026-07) — 本次更新</h3>
-<table>
-  <tr><th>类型</th><th>说明</th></tr>
-  <tr><td>新增功能</td><td><strong>智能比对模式</strong>：全新锚定模式AI权利要求对比分析，支持手动输入/专利号导入、相似度矩阵预览、并排对照、AI深度保护范围差异分析报告</td></tr>
-  <tr><td>新增功能</td><td><strong>四模式搜索</strong>：审查文档/专利原文/智能抽取/智能比对四种模式切换，搜索栏重构</td></tr>
-  <tr><td>新增功能</td><td><strong>韩国专利支持</strong>：新增KIPO韩国特许厅，支持韩国专利审查历史查询和同族展示</td></tr>
-  <tr><td>新增功能</td><td><strong>历史记录搜索</strong>：侧边栏历史记录支持按专利号、标题、申请人关键词实时搜索过滤</td></tr>
-  <tr><td>新增功能</td><td><strong>页内查找</strong>：专利原文详情页支持Ctrl+F关键词查找定位，上/下匹配跳转</td></tr>
-  <tr><td>新增功能</td><td><strong>看板直接选择</strong>：审查看板顶部按钮支持直接在卡片上勾选文档进行AI梳理或合并导出，支持追加模式</td></tr>
-  <tr><td>体验优化</td><td><strong>弹窗保持开启</strong>：右侧悬浮弹窗不再自动关闭，可同时保持多专利标签页开启</td></tr>
-  <tr><td>体验优化</td><td><strong>列表页状态保持</strong>：批量查询等列表页切换后状态保留，返回无需重新加载</td></tr>
-  <tr><td>性能优化</td><td>整体速度优化，加载和响应速度大幅提升</td></tr>
-  <tr><td>模型更新</td><td>支持最新AI模型：DeepSeek V4系列、智谱GLM-5系列（glm-5.1/5/5-turbo）</td></tr>
-</table>
-
-<h3>V0.6.0 (2026-07)</h3>
+<h3>V0.6.0 (2026-07) — 本次更新</h3>
 <table>
   <tr><th>类型</th><th>说明</th></tr>
   <tr><td>新增功能</td><td><strong>双模式搜索</strong>：审查文档/专利原文模式切换，专利原文模式直接查询 Google Patents 全文</td></tr>
@@ -1245,7 +1066,7 @@
   <tr><td>新增功能</td><td><strong>独立翻译配置</strong>：翻译模型独立配置，全文合并流式翻译，支持选区翻译、网页翻译</td></tr>
   <tr><td>新增功能</td><td><strong>浏览器扩展</strong>：Chrome 扩展支持 J-PlatPat/DPMA 一键跳转 PatentLens</td></tr>
   <tr><td>新增功能</td><td><strong>启动页动画</strong>、<strong>亮色/暗色主题切换</strong></td></tr>
-  <tr><td>模型更新</td><td>支持最新 AI 模型：DeepSeek V4 系列、智谱 GLM-5 系列</td></tr>
+  <tr><td>模型更新</td><td>支持最新 AI 模型：DeepSeek V4 系列（deepseek-v4-pro/flash）、智谱 GLM-5 系列（glm-5.1/5/5-turbo）</td></tr>
   <tr><td>设置增强</td><td>设置面板扩展为 AI 服务/OCR/翻译/提示词/EPO OPS 五个标签页，支持提示词自定义</td></tr>
   <tr><td>阅读器增强</td><td>阅读器新增侧边栏展开收起、文档搜索、AI 对话面板、独立阅读模式</td></tr>
   <tr><td>其他</td><td>品牌定位升级为"多国专利聚合分析工具"，界面交互大幅优化</td></tr>

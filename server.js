@@ -2127,6 +2127,9 @@ async function extractPdfText(req, res) {
   const apiKey = urlObj.searchParams.get("api_key") || "";
   const epoDirect = urlObj.searchParams.get("epoDirect") === "1";
   const epoPdfUrlParam = urlObj.searchParams.get("epoPdfUrl") || null;
+  const paddleUrl = urlObj.searchParams.get("paddleUrl") || "";
+  const paddleToken = urlObj.searchParams.get("paddleToken") || "";
+  const paddleModel = urlObj.searchParams.get("paddleModel") || "";
   const gdUrl = `${GD_API_BASE}/doc-content/svc/doccontent${urlPath}`;
 
   const args = [
@@ -2226,9 +2229,13 @@ async function extractPdfText(req, res) {
 
     const pythonArgs = [path.join(__dirname, "extract_pdf.py"), pdfPath, engine];
     if (apiKey) pythonArgs.push(apiKey);
+    const pythonEnv = { ...process.env };
+    if (paddleUrl) pythonEnv.PADDLE_OCR_V2_URL = paddleUrl;
+    if (paddleToken) pythonEnv.PADDLE_OCR_V2_TOKEN = paddleToken;
+    if (paddleModel) pythonEnv.PADDLE_OCR_V2_MODEL = paddleModel;
 
     const extractResult = await new Promise((resolve) => {
-      execFile("python3", pythonArgs, { maxBuffer: 50 * 1024 * 1024, timeout: 300000 }, (err, stdout, stderr) => {
+      execFile("python3", pythonArgs, { maxBuffer: 50 * 1024 * 1024, timeout: 300000, env: pythonEnv }, (err, stdout, stderr) => {
         if (err) {
           console.error("Python error:", stderr || err.message);
           resolve({ text: "", markdown: "", engine: "none", error: stderr || err.message });

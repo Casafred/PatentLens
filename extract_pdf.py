@@ -4,9 +4,9 @@ import json
 import base64
 import os
 
-PADDLE_OCR_V2_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
-PADDLE_OCR_V2_TOKEN = "70b270c8275606a7a97f8c4e8617cdeb935ed74c"
-PADDLE_OCR_V2_MODEL = "PaddleOCR-VL-1.6"
+PADDLE_OCR_V2_URL = os.environ.get("PADDLE_OCR_V2_URL", "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs")
+PADDLE_OCR_V2_TOKEN = os.environ.get("PADDLE_OCR_V2_TOKEN") or os.environ.get("PADDLE_OCR_TOKEN", "")
+PADDLE_OCR_V2_MODEL = os.environ.get("PADDLE_OCR_V2_MODEL", "PaddleOCR-VL-1.6")
 PADDLE_OCR_V2_POLL_INTERVAL = 5
 PADDLE_OCR_V2_POLL_TIMEOUT = 300
 GLM_OCR_URL = "https://open.bigmodel.cn/api/paas/v4/layout_parsing"
@@ -21,6 +21,10 @@ def ocr_with_paddle_vl(pdf_base64):
     """PaddleOCR V2 async Job API — submit → poll → fetch JSONL result."""
     import requests as req
     import time
+
+    if not PADDLE_OCR_V2_TOKEN:
+        print("[DEBUG] PaddleOCR-V2 token is not configured", file=sys.stderr)
+        return "", "", [], {}
 
     all_markdown = []
     all_text = []
@@ -328,6 +332,8 @@ def main():
         "blocks": blocks,
         "page_dimensions": page_dimensions,
     }
+    if not text and not markdown and not PADDLE_OCR_V2_TOKEN and engine != "glm_ocr":
+        result["error"] = "PaddleOCR Token 未配置，请在 OCR 设置中填写 Token，或设置环境变量 PADDLE_OCR_V2_TOKEN。"
     print(json.dumps(result, ensure_ascii=False))
 
 

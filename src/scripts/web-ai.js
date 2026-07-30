@@ -89,7 +89,7 @@ var AI = (function () {
   // 预置的 PaddleOCR 默认配置（可在设置中覆盖）
   var PADDLE_OCR_DEFAULTS = {
     url: "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs",
-    token: "70b270c8275606a7a97f8c4e8617cdeb935ed74c",
+    token: "",
     model: "PaddleOCR-VL-1.6",
   };
 
@@ -135,7 +135,7 @@ var AI = (function () {
     return config.ocr;
   }
 
-  // 返回 PaddleOCR 有效配置（用户配置优先，为空回退到预置默认值）
+  // 返回 PaddleOCR 有效配置（用户配置优先；Token 不内置，后端可从环境变量读取）
   function getPaddleOcrConfig(config) {
     var ocr = getOCRConfig(config);
     return {

@@ -79,13 +79,17 @@ PatentLens/
 │   ├── background.js                 # 后台脚本
 │   ├── popup/                        # 扩展弹窗
 │   └── content/                      # 内容脚本（J-PlatPat/DPMA）
+├── docs/                             # 项目文档、说明书、参考资料
+│   ├── manual/                       # 当前用户说明书与说明书图片
+│   ├── manual/archive/               # 旧版说明书
+│   ├── reference/                    # API、OCR、打包与实现参考
+│   ├── research/                     # 抓取/调研资料
+│   └── assets/                       # README 或文档截图资源
 ├── electron-main.js                  # Electron 主进程
 ├── extract_pdf.py                    # Python OCR 调用脚本
 ├── server.js                         # 本地开发服务器
 ├── requirements.txt                  # Python 依赖
-├── package.json                      # Node.js 配置
-├── user-manual-new.html              # 用户说明书（HTML）
-└── user-manual-new.pdf               # 用户说明书（PDF）
+└── package.json                      # Node.js 配置
 ```
 
 ---

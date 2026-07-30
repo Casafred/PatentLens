@@ -203,7 +203,7 @@ const response = await fetch(JOB_URL, {
 
 ```javascript
 const PADDLE_OCR_V2_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs";
-const PADDLE_OCR_V2_TOKEN = "70b270c8275606a7a97f8c4e8617cdeb935ed74c";
+const PADDLE_OCR_V2_TOKEN = process.env.PADDLE_OCR_V2_TOKEN || "";
 const PADDLE_OCR_V2_MODEL = "PaddleOCR-VL-1.6";
 const POLL_INTERVAL = 5000;  // 轮询间隔 5 秒
 const POLL_TIMEOUT = 300000; // 总超时 5 分钟
@@ -465,8 +465,8 @@ function fetchAndParseJsonl(jsonlUrl) {
 ### 5.1 认证头变更
 
 ```
-旧: Authorization: token 70b270c8...
-新: Authorization: bearer 70b270c8...
+旧: Authorization: token {PADDLE_OCR_TOKEN}
+新: Authorization: bearer {PADDLE_OCR_TOKEN}
 ```
 
 **注意**：Token 值不变，只是前缀从 `token` 改为 `bearer`。如果遗漏此修改，API 会返回 401。
@@ -573,7 +573,7 @@ if (USE_PADDLE_V2) {
 ```javascript
 // 请求
 POST https://k2neb1qcy1u6g4k5.aistudio-app.com/layout-parsing
-Authorization: token 70b270c8275606a7a97f8c4e8617cdeb935ed74c
+Authorization: token {PADDLE_OCR_TOKEN}
 Content-Type: application/json
 
 {
@@ -603,7 +603,7 @@ Content-Type: application/json
 ```javascript
 // 1. 提交 Job
 POST https://paddleocr.aistudio-app.com/api/v2/ocr/jobs
-Authorization: bearer 70b270c8275606a7a97f8c4e8617cdeb935ed74c
+Authorization: bearer {PADDLE_OCR_TOKEN}
 Content-Type: multipart/form-data
 
 --boundary
@@ -626,7 +626,7 @@ Content-Type: application/pdf
 
 // 2. 轮询状态
 GET https://paddleocr.aistudio-app.com/api/v2/ocr/jobs/abc123
-Authorization: bearer 70b270c8275606a7a97f8c4e8617cdeb935ed74c
+Authorization: bearer {PADDLE_OCR_TOKEN}
 
 // 响应（完成时）
 {

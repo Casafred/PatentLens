@@ -5,9 +5,17 @@ use std::time::Duration;
 const PADDLE_OCR_V2_URL: &str = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs";
 const PADDLE_OCR_V2_MODEL: &str = "PaddleOCR-VL-1.6";
 
-fn get_paddle_ocr_token() -> String {
-    std::env::var("PADDLE_OCR_TOKEN")
-        .unwrap_or_else(|_| "70b270c8275606a7a97f8c4e8617cdeb935ed74c".to_string())
+fn non_empty(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(ToString::to_string)
+}
+
+fn get_paddle_ocr_token(override_token: Option<&str>) -> Option<String> {
+    non_empty(override_token)
+        .or_else(|| std::env::var("PADDLE_OCR_V2_TOKEN").ok().and_then(|v| non_empty(Some(&v))))
+        .or_else(|| std::env::var("PADDLE_OCR_TOKEN").ok().and_then(|v| non_empty(Some(&v))))
 }
 const PADDLE_OCR_V2_POLL_INTERVAL_SECS: u64 = 5;
 const PADDLE_OCR_V2_POLL_TIMEOUT_SECS: u64 = 300;
@@ -67,8 +75,25 @@ impl OcrClient {
         Self { client }
     }
 
-    pub async fn extract_with_paddle_vl(&self, pdf_base64: &str) -> OcrResult {
+    pub async fn extract_with_paddle_vl(
+        &self,
+        pdf_base64: &str,
+        paddle_url: Option<&str>,
+        paddle_token: Option<&str>,
+        paddle_model: Option<&str>,
+    ) -> OcrResult {
         use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+        let token = match get_paddle_ocr_token(paddle_token) {
+            Some(token) => token,
+            None => {
+                return empty_ocr_result(Some(
+                    "PaddleOCR Token 未配置，请在 OCR 设置中填写 Token，或设置环境变量 PADDLE_OCR_V2_TOKEN。".to_string(),
+                ));
+            }
+        };
+        let api_url = non_empty(paddle_url).unwrap_or_else(|| PADDLE_OCR_V2_URL.to_string());
+        let model = non_empty(paddle_model).unwrap_or_else(|| PADDLE_OCR_V2_MODEL.to_string());
 
         // Step 1: Submit Job (multipart upload)
         let pdf_bytes = match BASE64.decode(pdf_base64) {
@@ -86,7 +111,7 @@ impl OcrClient {
         });
 
         let form = reqwest::multipart::Form::new()
-            .text("model", PADDLE_OCR_V2_MODEL.to_string())
+            .text("model", model)
             .text("optionalPayload", optional_payload.to_string())
             .part(
                 "file",
@@ -100,11 +125,8 @@ impl OcrClient {
 
         let submit_resp = match self
             .client
-            .post(PADDLE_OCR_V2_URL)
-            .header(
-                "Authorization",
-                format!("bearer {}", get_paddle_ocr_token()),
-            )
+            .post(&api_url)
+            .header("Authorization", format!("bearer {}", token))
             .multipart(form)
             .timeout(Duration::from_secs(30))
             .send()
@@ -170,11 +192,8 @@ impl OcrClient {
             }
 
             let poll_resp = match poll_client
-                .get(format!("{}/{}", PADDLE_OCR_V2_URL, job_id))
-                .header(
-                    "Authorization",
-                    format!("bearer {}", get_paddle_ocr_token()),
-                )
+                .get(format!("{}/{}", api_url, job_id))
+                .header("Authorization", format!("bearer {}", token))
                 .send()
                 .await
             {
@@ -592,7 +611,15 @@ impl OcrClient {
         }
     }
 
-    pub async fn extract(&self, pdf_base64: &str, engine: &str, api_key: &str) -> OcrResult {
+    pub async fn extract(
+        &self,
+        pdf_base64: &str,
+        engine: &str,
+        api_key: &str,
+        paddle_url: Option<&str>,
+        paddle_token: Option<&str>,
+        paddle_model: Option<&str>,
+    ) -> OcrResult {
         let mut result = OcrResult {
             text: String::new(),
             markdown: String::new(),
@@ -604,7 +631,9 @@ impl OcrClient {
         };
 
         if engine == "paddle_ocr_vl" || engine == "auto" {
-            let paddle_result = self.extract_with_paddle_vl(pdf_base64).await;
+            let paddle_result = self
+                .extract_with_paddle_vl(pdf_base64, paddle_url, paddle_token, paddle_model)
+                .await;
             if !paddle_result.text.is_empty() || !paddle_result.markdown.is_empty() {
                 return paddle_result;
             }
@@ -625,7 +654,9 @@ impl OcrClient {
         }
 
         if engine != "paddle_ocr_vl" && result.text.is_empty() && result.markdown.is_empty() {
-            let paddle_result = self.extract_with_paddle_vl(pdf_base64).await;
+            let paddle_result = self
+                .extract_with_paddle_vl(pdf_base64, paddle_url, paddle_token, paddle_model)
+                .await;
             if !paddle_result.text.is_empty() || !paddle_result.markdown.is_empty() {
                 return paddle_result;
             }

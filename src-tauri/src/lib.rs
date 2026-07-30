@@ -374,6 +374,9 @@ async fn extract_text(
     format: String,
     engine: String,
     api_key: String,
+    paddle_url: Option<String>,
+    paddle_token: Option<String>,
+    paddle_model: Option<String>,
     epo_direct: Option<bool>,
     epo_pdf_url: Option<String>,
     state: tauri::State<'_, AppState>,
@@ -440,7 +443,16 @@ async fn extract_text(
     let pdf_base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &pdf_bytes);
 
     let ocr_client = OcrClient::new();
-    let result = ocr_client.extract(&pdf_base64, &engine, &api_key).await;
+    let result = ocr_client
+        .extract(
+            &pdf_base64,
+            &engine,
+            &api_key,
+            paddle_url.as_deref(),
+            paddle_token.as_deref(),
+            paddle_model.as_deref(),
+        )
+        .await;
 
     match serde_json::to_value(&result) {
         Ok(val) => Ok(CommandResult::ok(val)),
