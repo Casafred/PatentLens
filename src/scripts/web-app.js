@@ -398,7 +398,7 @@ function _updateKanbanSelectSummary() {
   } else {
     const names = [..._kanbanSelected].map(idx => {
       const it = (kanbanState.documents || []).find(d => d.idx === idx);
-      return it ? escapeHtml(it.docCode + ' - ' + (it.name || '')) : '';
+      return it ? escapeHtml(it.docCode + ' - ' + (it.exact === false ? '* ' : '') + (it.name || '')) : '';
     }).filter(Boolean);
     summaryEl.innerHTML = '<span class="summary-label">已选 ' + count + ' 份：</span>' + names.join('<span class="summary-sep">、</span>');
   }
@@ -8273,6 +8273,7 @@ function renderKanban(data) {
       name: status.name,
       type: status.type,
       stage: status.stage,
+      exact: status.exact,
     };
   });
 
@@ -8437,8 +8438,8 @@ function renderKanban(data) {
               <span class="kanban-card-code">${escapeHtml(it.docCode)}</span>
               ${it.date ? '<span class="kanban-card-date">' + escapeHtml(it.date) + '</span>' : ''}
             </div>
-            <div class="kanban-card-name">${escapeHtml(it.name)}</div>
-            ${it.desc && it.desc !== it.name ? '<div class="kanban-card-desc">' + escapeHtml(it.desc) + '</div>' : ''}
+            <div class="kanban-card-name">${it.exact === false ? '<span class="name-asterisk" title="本地译名可能与原文有差异，请参考下方原文">*</span>' : ''}${escapeHtml(it.name)}</div>
+            ${it.exact === false && it.desc ? '<div class="kanban-card-desc">' + escapeHtml(it.desc) + '</div>' : ''}
             <div class="kanban-card-stage">阶段: ${escapeHtml(it.stage)}</div>
             <div class="kanban-card-actions">
               ${downloadUrl ? '<button class="btn-small btn-download" data-action="kanban-download" data-url="' + downloadUrl + '" data-filename="' + escapeHtml(it.docCode) + '_' + escapeHtml(it.date.replace(/\//g, '-')) + '.pdf">下载</button>' : ''}
@@ -20608,6 +20609,7 @@ async function seedGroupsFromCache() {
         name: doc.name || status.name,
         type: doc.type || status.type,
         stage: doc.stage || status.stage,
+        exact: status.exact,
         date,
         numberOfPages,
         docFormat,
@@ -20728,7 +20730,7 @@ async function fetchAndAddPatent(input) {
       return {
         idx: i, docId, docCode, desc, date, numberOfPages, docFormat,
         canDownload, extractUrl,
-        name: status.name, type: status.type, stage: status.stage,
+        name: status.name, type: status.type, stage: status.stage, exact: status.exact,
         ocrStatus: prev?.ocrStatus || "pending",
         ocrError: prev?.ocrError || null,
         ocrProgress: prev?.ocrProgress || 0,
@@ -20803,7 +20805,7 @@ async function refreshExtractGroup(pn) {
       return {
         idx: i, docId, docCode, desc, date, numberOfPages, docFormat,
         canDownload, extractUrl,
-        name: status.name, type: status.type, stage: status.stage,
+        name: status.name, type: status.type, stage: status.stage, exact: status.exact,
         ocrStatus: prev?.ocrStatus || "pending",
         ocrError: prev?.ocrError || null,
         ocrProgress: prev?.ocrProgress || 0,
@@ -20935,7 +20937,7 @@ function renderExtractDocList() {
         docContainer.innerHTML = "";
         const kw = (keyword || "").trim().toLowerCase();
         sortedDocs.forEach((d) => {
-          const displayName = d.name || d.desc || d.docCode || "—";
+          const displayName = (d.exact === false ? "* " : "") + (d.name || d.desc || d.docCode || "—");
           const hay = (d.docCode + " " + d.desc + " " + (d.name || "") + " " + d.date).toLowerCase();
           if (kw && !hay.includes(kw)) return;
           const row = document.createElement("div");
@@ -21156,6 +21158,7 @@ async function _syncExtractOcrToCache(pn, docIdx) {
       name: d.name || status.name,
       type: d.type || status.type,
       stage: d.stage || status.stage,
+      exact: status.exact,
     });
   }
 
