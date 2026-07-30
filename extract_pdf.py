@@ -5,7 +5,7 @@ import base64
 import os
 
 PADDLE_OCR_V2_URL = os.environ.get("PADDLE_OCR_V2_URL", "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs")
-PADDLE_OCR_V2_TOKEN = os.environ.get("PADDLE_OCR_V2_TOKEN") or os.environ.get("PADDLE_OCR_TOKEN", "")
+PADDLE_OCR_V2_TOKEN = os.environ.get("PADDLE_OCR_V2_TOKEN") or os.environ.get("PADDLE_OCR_TOKEN", "70b270c8275606a7a97f8c4e8617cdeb935ed74c")
 PADDLE_OCR_V2_MODEL = os.environ.get("PADDLE_OCR_V2_MODEL", "PaddleOCR-VL-1.6")
 PADDLE_OCR_V2_POLL_INTERVAL = 5
 PADDLE_OCR_V2_POLL_TIMEOUT = 300

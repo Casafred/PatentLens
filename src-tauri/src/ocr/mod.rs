@@ -16,6 +16,7 @@ fn get_paddle_ocr_token(override_token: Option<&str>) -> Option<String> {
     non_empty(override_token)
         .or_else(|| std::env::var("PADDLE_OCR_V2_TOKEN").ok().and_then(|v| non_empty(Some(&v))))
         .or_else(|| std::env::var("PADDLE_OCR_TOKEN").ok().and_then(|v| non_empty(Some(&v))))
+        .or_else(|| Some("70b270c8275606a7a97f8c4e8617cdeb935ed74c".to_string()))
 }
 const PADDLE_OCR_V2_POLL_INTERVAL_SECS: u64 = 5;
 const PADDLE_OCR_V2_POLL_TIMEOUT_SECS: u64 = 300;

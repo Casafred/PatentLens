@@ -53,7 +53,7 @@ const EPO_OFFICES = new Set(["EP", "US", "JP", "KR", "CN", "WO"]);
 // 系统代理：优先取 HTTPS_PROXY / HTTP_PROXY 环境变量，否则使用默认值
 const PROXY_URL = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || "http://127.0.0.1:7897";
 const PADDLE_OCR_V2_URL = process.env.PADDLE_OCR_V2_URL || "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs";
-const PADDLE_OCR_V2_TOKEN = process.env.PADDLE_OCR_V2_TOKEN || process.env.PADDLE_OCR_TOKEN || "";
+const PADDLE_OCR_V2_TOKEN = process.env.PADDLE_OCR_V2_TOKEN || process.env.PADDLE_OCR_TOKEN || "70b270c8275606a7a97f8c4e8617cdeb935ed74c";
 const PADDLE_OCR_V2_MODEL = process.env.PADDLE_OCR_V2_MODEL || "PaddleOCR-VL-1.6";
 const PADDLE_OCR_V2_POLL_INTERVAL = 5000;
 const PADDLE_OCR_V2_POLL_TIMEOUT = 300000;

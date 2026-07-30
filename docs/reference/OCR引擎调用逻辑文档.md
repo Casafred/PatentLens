@@ -623,7 +623,7 @@ def _transform_pp_ocrv5_response(response: dict) -> List[Dict]:
 | 依赖包 | `requests` |
 | 是否需要 Token | 否（预置 Token） |
 | API 地址 | `https://k2neb1qcy1u6g4k5.aistudio-app.com/layout-parsing` |
-| 预置 Token | 不内置；从 OCR 设置或 `PADDLE_OCR_V2_TOKEN` 环境变量读取 |
+| 预置 Token | 内置默认 Token；可通过 OCR 设置或 `PADDLE_OCR_V2_TOKEN` 环境变量覆盖 |
 | 超时时间 | 180 秒 |
 | 核心文件 | `backend/utils/paddle_ocr_vl_utils.py` |
 | 精度 | 94.5%（OmniDocBench v1.5） |
