@@ -20522,7 +20522,11 @@ function _openPdPatent(pn, options) {
       epOpenBtn.addEventListener('click', function() {
         var espacenetUrl = 'https://worldwide.espacenet.com/patent/search?q=' + encodeURIComponent(raw);
         // 用系统默认浏览器打开（Chrome 扩展需要在真实浏览器中运行）
-        window.open(espacenetUrl, '_blank');
+        if (window.electronAPI && window.electronAPI.openExternal) {
+          window.electronAPI.openExternal(espacenetUrl);
+        } else {
+          window.open(espacenetUrl, '_blank');
+        }
         var waiting = document.getElementById('ep-test-waiting');
         if (waiting) waiting.style.display = '';
         if (epOpenBtn) epOpenBtn.textContent = '已打开浏览器，等待数据...';

@@ -13,7 +13,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     console.log('[专利审查文档助手] 扩展已安装');
     chrome.storage.local.set({
       settings: {
-        tauriEndpoint: 'http://localhost:8080',
+        tauriEndpoint: 'http://localhost:7865',
         autoExtract: false,
       },
     });
