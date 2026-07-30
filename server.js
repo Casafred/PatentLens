@@ -1963,6 +1963,70 @@ function scrapeGooglePatentDebug(patentNumber, res, useProxy, proxyUrl) {
   })();
 }
 
+// ============ 浏览器扩展通信 ============
+// 扩展通过 HTTP POST 发送数据，前端通过轮询获取
+const _extensionDataQueue = [];
+
+function handleExtensionApi(req, res) {
+  const urlObj = new URL(req.url, "http://localhost");
+  const pathname = urlObj.pathname;
+
+  // 端口自检
+  if (pathname === "/api/extension/port" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({ port: PORT, status: "ok" }));
+    return true;
+  }
+
+  // 接收扩展数据
+  if (pathname === "/api/extension/import" && req.method === "POST") {
+    let body = "";
+    req.on("data", chunk => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const parsed = JSON.parse(body);
+        const data = parsed.data || parsed;
+        _extensionDataQueue.push({ type: "extension-data", payload: data, timestamp: Date.now() });
+        console.log(`[Extension] 收到数据: office=${data.office}, type=${data.type}`);
+        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ success: true }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return true;
+  }
+
+  // 接收分析请求
+  if (pathname === "/api/extension/analyze" && req.method === "POST") {
+    let body = "";
+    req.on("data", chunk => { body += chunk; });
+    req.on("end", () => {
+      try {
+        const parsed = JSON.parse(body);
+        _extensionDataQueue.push({ type: "extension-analyze", payload: parsed, timestamp: Date.now() });
+        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ success: true }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return true;
+  }
+
+  // 前端轮询获取数据
+  if (pathname === "/api/extension/poll" && req.method === "GET") {
+    const items = _extensionDataQueue.splice(0); // 取出并清空
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({ items }));
+    return true;
+  }
+
+  return false;
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
@@ -1971,6 +2035,12 @@ const server = http.createServer((req, res) => {
       "Access-Control-Allow-Headers": "Content-Type, user-type",
     });
     res.end();
+    return;
+  }
+
+  // 浏览器扩展 API
+  if (req.url.startsWith("/api/extension/")) {
+    handleExtensionApi(req, res);
     return;
   }
 

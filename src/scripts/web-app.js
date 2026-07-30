@@ -17987,6 +17987,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // ── 轮询本地服务器获取浏览器扩展数据（非 Electron 环境） ──
+  if (!window.electronAPI) {
+    setInterval(async () => {
+      try {
+        const resp = await fetch("/api/extension/poll", { method: "GET" });
+        if (!resp.ok) return;
+        const result = await resp.json();
+        if (result.items && result.items.length > 0) {
+          for (const item of result.items) {
+            console.log("[Extension] 轮询收到:", item.type);
+            const appEl = document.getElementById("app");
+            if (appEl) appEl.classList.remove("home-mode");
+            if (item.type === "extension-data") {
+              handleExtensionData(item.payload);
+            } else if (item.type === "extension-analyze") {
+              handleExtensionAnalyze(item.payload);
+            }
+          }
+        }
+      } catch (e) {
+        // 服务器不可用，静默忽略
+      }
+    }, 1500); // 每 1.5 秒轮询一次
+  }
+
   const documentsContent = document.getElementById("documents-content");
   if (documentsContent) {
     documentsContent.addEventListener("click", (e) => {
@@ -19759,6 +19784,26 @@ const gpProxyCheckbox = document.getElementById("gp-proxy-checkbox");
 const gpProxyUrlGroup = document.getElementById("gp-proxy-url-group");
 const gpProxyUrlInput = document.getElementById("gp-proxy-url-input");
 const networkSaveBtn = document.getElementById("network-save-btn");
+const espacenetTestModeCheckbox = document.getElementById("espacenet-test-mode-checkbox");
+
+// ── Espacenet 测试模式 ──
+function getEspacenetTestMode() {
+  return localStorage.getItem("espacenet_test_mode") === "true";
+}
+function setEspacenetTestMode(enabled) {
+  localStorage.setItem("espacenet_test_mode", enabled ? "true" : "false");
+}
+
+if (espacenetTestModeCheckbox) {
+  espacenetTestModeCheckbox.checked = getEspacenetTestMode();
+  espacenetTestModeCheckbox.addEventListener("change", () => {
+    setEspacenetTestMode(espacenetTestModeCheckbox.checked);
+    const msg = espacenetTestModeCheckbox.checked
+      ? "已开启 Espacenet 测试模式：专利原文查询将通过 Espacenet 浏览器扩展抓取"
+      : "已关闭 Espacenet 测试模式：恢复 Google Patents 正常查询";
+    showToast(msg, 3500);
+  });
+}
 
 if (gpProxyCheckbox) {
   // Load saved settings
@@ -20019,6 +20064,12 @@ if (batchBackBtn) {
 // ── 带重试的 GP API 抓取（共享） ──
 async function fetchPatentWithRetry(patentNumber, maxRetries = 2) {
   const raw = patentNumber.trim().toUpperCase().replace(/[\s\/]/g, "");
+
+  // ── Espacenet 测试模式：屏蔽 GP 查询 ──
+  if (getEspacenetTestMode()) {
+    throw new Error("Espacenet 测试模式已开启，GP 查询已被屏蔽。请通过 Espacenet 浏览器扩展抓取数据。");
+  }
+
   let lastErr = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -20442,6 +20493,60 @@ function _openPdPatent(pn, options) {
 
   _pdOpenPatents.push(raw);
   _pdActivePatent = raw;
+
+  // ── Espacenet 测试模式：屏蔽 GP 查询，引导用户通过扩展抓取 ──
+  if (getEspacenetTestMode()) {
+    patentDetailContent.innerHTML = '<div style="padding:40px;text-align:center;">' +
+      '<div style="font-size:48px;margin-bottom:16px;">🔬</div>' +
+      '<div style="font-size:16px;font-weight:600;color:#af52de;margin-bottom:8px;">Espacenet 测试模式</div>' +
+      '<div style="color:var(--text-secondary);margin-bottom:24px;">专利号: <strong>' + escapeHtml(raw) + '</strong></div>' +
+      '<div style="background:var(--bg-secondary);padding:16px 20px;border-radius:10px;max-width:420px;margin:0 auto;text-align:left;font-size:13px;line-height:1.8;color:var(--text-secondary);">' +
+      '<div style="font-weight:600;color:var(--text-primary);margin-bottom:8px;">📋 操作步骤：</div>' +
+      '<div>1. 点击下方「打开 Espacenet」按钮</div>' +
+      '<div>2. 在打开的 Espacenet 页面中，点击浏览器扩展图标</div>' +
+      '<div>3. 点击「一键提取专利全文（发送到应用）」</div>' +
+      '<div>4. 数据将自动回传到此界面</div>' +
+      '</div>' +
+      '<div style="margin-top:24px;display:flex;gap:8px;justify-content:center;">' +
+      '<button class="btn-primary" id="ep-test-open-btn" style="padding:10px 24px;font-size:14px;background:#af52de;border:none;border-radius:8px;color:#fff;cursor:pointer;">打开 Espacenet</button>' +
+      '<button class="btn-secondary" id="ep-test-cancel-btn" style="padding:10px 16px;font-size:14px;border:1px solid var(--border-color);border-radius:8px;background:transparent;color:var(--text-primary);cursor:pointer;">取消</button>' +
+      '</div>' +
+      '<div id="ep-test-waiting" style="margin-top:20px;color:var(--text-secondary);font-size:12px;display:none;">' +
+      '<div style="display:inline-block;width:14px;height:14px;border:2px solid var(--border-color);border-top-color:#af52de;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:6px;"></div>' +
+      '等待扩展回传数据...（请在 Espacenet 页面操作）' +
+      '</div>' +
+      '</div>';
+
+    var epOpenBtn = document.getElementById('ep-test-open-btn');
+    if (epOpenBtn) {
+      epOpenBtn.addEventListener('click', function() {
+        var espacenetUrl = 'https://worldwide.espacenet.com/patent/search?q=' + encodeURIComponent(raw);
+        // 用系统默认浏览器打开（Chrome 扩展需要在真实浏览器中运行）
+        window.open(espacenetUrl, '_blank');
+        var waiting = document.getElementById('ep-test-waiting');
+        if (waiting) waiting.style.display = '';
+        if (epOpenBtn) epOpenBtn.textContent = '已打开浏览器，等待数据...';
+      });
+    }
+    var epCancelBtn = document.getElementById('ep-test-cancel-btn');
+    if (epCancelBtn) {
+      epCancelBtn.addEventListener('click', function() {
+        var idx = _pdOpenPatents.indexOf(raw);
+        if (idx !== -1) _pdOpenPatents.splice(idx, 1);
+        delete _pdPatentCache[raw];
+        _pdActivePatent = null;
+        window._currentPatentData = null;
+        patentDetailContent.innerHTML = '<p class="placeholder">请输入专利号查询</p>';
+        if (patentInput) patentInput.value = "";
+        _renderPdTabs();
+        patentDetailSection.classList.add("hidden");
+      });
+    }
+    _renderPdTabs();
+    showDataSourceBadge("Espacenet 测试模式", "请在 Espacenet 页面用浏览器扩展提取数据");
+    return; // 不走 GP 查询
+  }
+
   patentDetailContent.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">' +
     '<div style="display:inline-block;width:32px;height:32px;border:3px solid var(--border-color);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px"></div>' +
     '<div>正在加载 ' + escapeHtml(raw) + ' ...</div>' +
