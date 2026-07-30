@@ -17362,6 +17362,58 @@ function handleExtensionData(data) {
     }
     normalized.inventors = toArray(normalized.inventors);
     normalized.assignees = toArray(normalized.assignees);
+    // claims: 字符串 → {num, text} 对象数组
+    if (typeof normalized.claims === 'string') {
+      var claimsText = normalized.claims.trim();
+      var claimItems = [];
+      // 优先按 "1. " / "2. " 编号分割（支持跨行）
+      var numRe = /(?:^|\n)\s*(\d+)\s*[.、)]\s+/g;
+      var match;
+      var matches = [];
+      while ((match = numRe.exec(claimsText)) !== null) {
+        // match.index 是整个匹配的起始（含 \n），match[0].length 是整个匹配长度
+        matches.push({
+          num: match[1],
+          textStart: match.index + match[0].length, // 权利要求文本起始位置
+          matchStart: match.index                    // 整个匹配起始（含 \n）
+        });
+      }
+      for (var mi = 0; mi < matches.length; mi++) {
+        // 文本结束位置 = 下一个匹配的 matchStart，否则到字符串末尾
+        var end = (mi + 1 < matches.length) ? matches[mi + 1].matchStart : claimsText.length;
+        var cText = claimsText.substring(matches[mi].textStart, end).trim().replace(/\s+/g, ' ');
+        if (cText) claimItems.push({ num: matches[mi].num, text: cText });
+      }
+      // 回退：按换行分割，每行一条
+      if (claimItems.length === 0 && claimsText) {
+        var lines = claimsText.split(/\n+/);
+        var idx = 0;
+        for (var li = 0; li < lines.length; li++) {
+          var line = lines[li].trim();
+          if (!line) continue;
+          idx++;
+          // 去除行首 "1." / "1、" / "1)" 等
+          line = line.replace(/^\d+\s*[.、)]\s*/, '');
+          if (line) claimItems.push({ num: String(idx), text: line });
+        }
+      }
+      normalized.claims = claimItems;
+    } else if (!Array.isArray(normalized.claims)) {
+      normalized.claims = [];
+    } else {
+      // 已是数组 — 规范化每个元素为 {num, text} 对象
+      normalized.claims = normalized.claims.map(function(c, i) {
+        if (typeof c === 'string') return { num: String(i + 1), text: c.trim() };
+        if (c && typeof c === 'object') {
+          return {
+            num: c.num || c.number || c.claim_number || String(i + 1),
+            text: (c.text || c.content || c.claim_text || '').trim(),
+            dependent_on: c.dependent_on || c.depends_on || ''
+          };
+        }
+        return { num: String(i + 1), text: '' };
+      }).filter(function(c) { return c.text; });
+    }
     // classifications: 字符串数组 → {code, description} 对象数组
     if (Array.isArray(normalized.classifications)) {
       normalized.classifications = normalized.classifications.map(function(c) {
