@@ -122,8 +122,10 @@ var AgentPatentTools = (function () {
     var tabMap = {
       "overview": "overview",
       "family": "family",
+      "timeline": "timeline",
+      "doclist": "doclist",
       "kanban": "kanban",
-      "documents": "kanban",
+      "documents": "doclist",
       "ai-analysis": "ai-analysis",
       "ai-summary": "ai-analysis",
     };
@@ -236,7 +238,7 @@ var AgentPatentTools = (function () {
 
     AgentTools.register({
       name: "switch_to_tab",
-      description: "切换应用界面的标签页/功能模块。可选值：overview（概览）、family（同族）、kanban（审查看板/文档列表）、ai-analysis（AI分析）、comparison（智能比对）。",
+      description: "切换应用界面的标签页/功能模块。可选值：overview（概览）、family（同族）、timeline（时间轴）、doclist（审查文档列表）、kanban（审查分栏看板）、ai-analysis（AI分析）、comparison（智能比对）。",
       parameters: {
         type: "object",
         properties: {
@@ -643,7 +645,7 @@ var AgentPatentTools = (function () {
         return Promise.resolve({
           ok: true,
           action: "已打开文档阅读器",
-          tip: "已为您切换到审查看板并打开阅读器",
+          tip: "已为您切换到审查分栏看板并打开阅读器",
         });
       },
     });

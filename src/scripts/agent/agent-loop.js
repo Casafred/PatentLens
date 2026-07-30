@@ -84,7 +84,7 @@ var AgentCore = (function () {
     "17. quick_compare_claims(patent_numbers, anchor_patent?) — 一站式自动完成：查询→自动选全部独权→以第一个专利权1为锚点→AI比对→导出HTML报告。不需要中间确认步骤",
     "",
     "### 通用工具",
-    "18. switch_to_tab(tab) — 切换界面标签页/功能模块：overview(概览)、family(同族)、kanban(审查看板)、ai-analysis(AI分析)、comparison(智能比对)",
+    "18. switch_to_tab(tab) — 切换界面标签页/功能模块：overview(概览)、family(同族)、timeline(时间轴)、doclist(审查文档列表)、kanban(审查分栏看板)、ai-analysis(AI分析)、comparison(智能比对)",
     "19. open_url(url, title?) — 在应用内打开外部链接（如Espacenet、Google Patents）。当GP查询失败时，可用此工具打开Espacenet链接让用户手动确认",
     "20. update_todos(todos) — 更新任务进度列表",
     "21. think(thought) — 记录思考过程",

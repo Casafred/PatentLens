@@ -307,6 +307,14 @@ function exitKanbanSelectMode() {
   const hintEl = document.getElementById("kanban-select-append-hint");
   if (hintEl) hintEl.classList.add("hidden");
   document.querySelectorAll(".kanban-card.selected").forEach(c => c.classList.remove("selected"));
+  // 同时清理审查文档列表的选择模式状态
+  const dlBoard = document.getElementById("doclist-board");
+  if (dlBoard) dlBoard.classList.remove("select-mode");
+  const dlSelectBar = document.getElementById("doclist-select-bar");
+  if (dlSelectBar) dlSelectBar.classList.add("hidden");
+  const dlHintEl = document.getElementById("doclist-select-append-hint");
+  if (dlHintEl) dlHintEl.classList.add("hidden");
+  document.querySelectorAll(".doclist-item.selected").forEach(c => c.classList.remove("selected"));
 }
 
 function enterKanbanSelectMode(mode, options) {
@@ -340,6 +348,24 @@ function enterKanbanSelectMode(mode, options) {
     else confirmBtn.textContent = opts.append ? "确认追加并重新梳理" : "确认并梳理审查意见";
   }
 
+  // 同步设置审查文档列表的选择模式
+  const dlBoard = document.getElementById("doclist-board");
+  if (dlBoard) dlBoard.classList.add("select-mode");
+  const dlSelectBar = document.getElementById("doclist-select-bar");
+  if (dlSelectBar) dlSelectBar.classList.remove("hidden");
+  const dlModeLabel = document.getElementById("doclist-select-mode-label");
+  if (dlModeLabel) {
+    if (mode === "citedRefs") dlModeLabel.textContent = "选择引用文献文件";
+    else if (mode === "mergeExport") dlModeLabel.textContent = "选择要合并导出的文档";
+    else dlModeLabel.textContent = opts.append ? "追加文件后重新梳理审查意见" : "选择审查意见文件";
+  }
+  const dlConfirmBtn = document.getElementById("doclist-select-confirm-btn");
+  if (dlConfirmBtn) {
+    if (mode === "citedRefs") dlConfirmBtn.textContent = "确认并梳理引用文献";
+    else if (mode === "mergeExport") dlConfirmBtn.textContent = "确认合并导出";
+    else dlConfirmBtn.textContent = opts.append ? "确认追加并重新梳理" : "确认并梳理审查意见";
+  }
+
   // Pre-select documents
   _kanbanSelected.clear();
   if (opts.append && opts.preSelectedIdxs && opts.preSelectedIdxs.length > 0) {
@@ -367,16 +393,16 @@ function enterKanbanSelectMode(mode, options) {
   _updateKanbanSelectSummary();
   // Show hint for special modes
   const hintEl = document.getElementById("kanban-select-append-hint");
-  if (hintEl) {
-    if (opts.append) {
-      hintEl.textContent = "当前为追加模式：已选中的文件会保留OCR结果，新选择的文件将进行OCR后与原有文件一起重新梳理。";
-      hintEl.classList.remove("hidden");
-    } else if (mode === "mergeExport") {
-      hintEl.textContent = "合并导出：选择需要合并的文档，按日期倒序排列，每个文档前将插入封面页作为分隔。";
-      hintEl.classList.remove("hidden");
-    } else {
-      hintEl.classList.add("hidden");
-    }
+  const dlHintEl = document.getElementById("doclist-select-append-hint");
+  if (opts.append) {
+    if (hintEl) { hintEl.textContent = "当前为追加模式：已选中的文件会保留OCR结果，新选择的文件将进行OCR后与原有文件一起重新梳理。"; hintEl.classList.remove("hidden"); }
+    if (dlHintEl) { dlHintEl.textContent = "当前为追加模式：已选中的文件会保留OCR结果，新选择的文件将进行OCR后与原有文件一起重新梳理。"; dlHintEl.classList.remove("hidden"); }
+  } else if (mode === "mergeExport") {
+    if (hintEl) { hintEl.textContent = "合并导出：选择需要合并的文档，按日期倒序排列，每个文档前将插入封面页作为分隔。"; hintEl.classList.remove("hidden"); }
+    if (dlHintEl) { dlHintEl.textContent = "合并导出：选择需要合并的文档，按日期倒序排列，每个文档前将插入封面页作为分隔。"; dlHintEl.classList.remove("hidden"); }
+  } else {
+    if (hintEl) hintEl.classList.add("hidden");
+    if (dlHintEl) dlHintEl.classList.add("hidden");
   }
 }
 
@@ -389,23 +415,34 @@ function _applyKanbanSelection() {
       card.classList.remove("selected");
     }
   });
+  // 同步更新审查文档列表的勾选状态
+  document.querySelectorAll(".doclist-item").forEach(item => {
+    const idx = parseInt(item.dataset.idx);
+    if (_kanbanSelected.has(idx)) {
+      item.classList.add("selected");
+    } else {
+      item.classList.remove("selected");
+    }
+  });
 }
 
 function _updateKanbanSelectSummary() {
-  const summaryEl = document.getElementById("kanban-selected-summary");
-  const confirmBtn = document.getElementById("kanban-select-confirm-btn");
-  if (!summaryEl) return;
   const count = _kanbanSelected.size;
-  if (count === 0) {
-    summaryEl.innerHTML = '<span class="summary-empty">未选择任何文档</span>';
-  } else {
-    const names = [..._kanbanSelected].map(idx => {
-      const it = (kanbanState.documents || []).find(d => d.idx === idx);
-      return it ? escapeHtml(it.docCode + ' - ' + (it.exact === false ? '* ' : '') + (it.name || '')) : '';
-    }).filter(Boolean);
-    summaryEl.innerHTML = '<span class="summary-label">已选 ' + count + ' 份：</span>' + names.join('<span class="summary-sep">、</span>');
-  }
+  const names = [..._kanbanSelected].map(idx => {
+    const it = (kanbanState.documents || []).find(d => d.idx === idx);
+    return it ? escapeHtml(it.docCode + ' - ' + (it.exact === false ? '* ' : '') + (it.name || '')) : '';
+  }).filter(Boolean);
+  const summaryHtml = count === 0
+    ? '<span class="summary-empty">未选择任何文档</span>'
+    : '<span class="summary-label">已选 ' + count + ' 份：</span>' + names.join('<span class="summary-sep">、</span>');
+  const summaryEl = document.getElementById("kanban-selected-summary");
+  if (summaryEl) summaryEl.innerHTML = summaryHtml;
+  const dlSummaryEl = document.getElementById("doclist-selected-summary");
+  if (dlSummaryEl) dlSummaryEl.innerHTML = summaryHtml;
+  const confirmBtn = document.getElementById("kanban-select-confirm-btn");
   if (confirmBtn) confirmBtn.disabled = count === 0;
+  const dlConfirmBtn = document.getElementById("doclist-select-confirm-btn");
+  if (dlConfirmBtn) dlConfirmBtn.disabled = count === 0;
 }
 
 function _toggleKanbanCard(idx) {
@@ -428,16 +465,19 @@ function _switchToTab(tabName) {
   if (target) target.classList.add("active");
   const app = document.getElementById("app");
   if (app) {
-    app.classList.toggle("wide-layout", ["kanban", "ai-analysis", "timeline"].includes(tabName));
+    app.classList.toggle("wide-layout", ["kanban", "ai-analysis", "timeline", "doclist"].includes(tabName));
   }
   // Exit select modes when leaving their tabs
-  if (tabName !== "kanban") exitKanbanSelectMode();
+  if (tabName !== "kanban" && tabName !== "doclist") exitKanbanSelectMode();
   if (tabName !== "timeline") exitTimelineSelectMode();
   if (tabName === "ai-analysis") {
     _updateAIAnalysisView();
   }
   if (tabName === "timeline") {
     renderTimeline(currentData);
+  }
+  if (tabName === "doclist") {
+    renderDocList(currentData);
   }
 }
 
@@ -8314,6 +8354,14 @@ function renderKanban(data) {
   if (tlReviewBtn) tlReviewBtn.style.display = canAnalyze ? "" : "none";
   if (tlCitedBtn) tlCitedBtn.style.display = canAnalyze ? "" : "none";
 
+  // Show doclist action buttons as well
+  const dlMergeBtn = document.getElementById("doclist-merge-btn");
+  const dlReviewBtn = document.getElementById("doclist-review-btn");
+  const dlCitedBtn = document.getElementById("doclist-cited-btn");
+  if (dlMergeBtn) dlMergeBtn.style.display = hasDownloadable ? "" : "none";
+  if (dlReviewBtn) dlReviewBtn.style.display = canAnalyze ? "" : "none";
+  if (dlCitedBtn) dlCitedBtn.style.display = canAnalyze ? "" : "none";
+
   // Exit any pending select mode from previous state
   exitKanbanSelectMode();
   analysisChatHistory = [];
@@ -8482,6 +8530,116 @@ function renderKanban(data) {
     const appReqCount = items.filter(it => it.type === "applicant_request").length;
     const notificationCount = items.filter(it => it.type === "notification").length;
     statusEl.textContent = "共 " + items.length + " 份文档（审查意见 " + oaCount + "，答复 " + respCount + "，专利文件 " + patentDocCount + "，引用 " + citationCount + "，授权 " + allowanceCount + "，其他请求 " + appReqCount + "，通知 " + notificationCount + "）";
+  }
+}
+
+// ── 审查文档列表：倒序排列的滚动清单视图，复用 kanbanState.documents 数据 ──
+function renderDocList(data) {
+  const board = document.getElementById("doclist-board");
+  const statusEl = document.getElementById("doclist-status");
+  if (!board) return;
+
+  const items = kanbanState.documents;
+  if (!items || items.length === 0) {
+    board.innerHTML = '<p class="placeholder">请先查询专利，审查文档加载后将按倒序列出</p>';
+    if (statusEl) statusEl.textContent = "";
+    return;
+  }
+
+  // 按日期倒序排列
+  const sortedItems = [...items].sort((a, b) => parseDocDateToTimestamp(b.date) - parseDocDateToTimestamp(a.date));
+
+  const typeNames = {
+    "office_action": "审查意见",
+    "response": "申请人答复",
+    "patent_doc": "专利文件",
+    "citation": "审查员引用与IDS",
+    "allowance": "授权通知",
+    "applicant_request": "申请人其他请求",
+    "notification": "通知",
+    "misc": "其他文件",
+  };
+
+  const isUS = data.office === "US";
+  const isJP = data.office === "JP";
+  const isDE = data.office === "DE";
+  const urlDocNum = isUS ? data.applicationNumber : encodeURIComponent(data.docNumber || data.applicationNumber);
+
+  let html = '<div class="doclist-items">';
+  sortedItems.forEach(it => {
+    const encodedDocId = encodeURIComponent(it.docId);
+    let downloadUrl = null;
+
+    if (it.docId) {
+      if (isJP) {
+        const jpDocType = mapJpDocType(it.docCode, it.type);
+        if (jpDocType) {
+          downloadUrl = `/api/jpo/doc/${jpDocType}/${urlDocNum}`;
+        }
+      } else if (!isDE) {
+        downloadUrl = withEpoDirect(withEpoPdfUrl(`/api/gd/doc-content/svc/doccontent/${data.office}/${urlDocNum}/${encodedDocId}/${it.numberOfPages}/${it.docFormat}`, it));
+      }
+    }
+
+    const typeLabel = typeNames[it.type] || "其他文件";
+    const safeDate = (it.date || "").replace(/\//g, "-");
+
+    html += `
+      <div class="doclist-item" data-idx="${it.idx}">
+        <div class="doclist-item-main">
+          <div class="doclist-item-header">
+            <span class="doclist-item-code">${escapeHtml(it.docCode)}</span>
+            <span class="doclist-item-type">${escapeHtml(typeLabel)}</span>
+            ${it.date ? '<span class="doclist-item-date">' + escapeHtml(it.date) + '</span>' : ''}
+          </div>
+          <div class="doclist-item-name">${it.exact === false ? '<span class="name-asterisk" title="本地译名可能与原文有差异，请参考下方原文">*</span>' : ''}${escapeHtml(it.name)}</div>
+          ${it.desc && it.desc !== it.name ? '<div class="doclist-item-desc">' + escapeHtml(it.desc) + '</div>' : ''}
+          <div class="doclist-item-stage">阶段: ${escapeHtml(it.stage)}</div>
+        </div>
+        <div class="doclist-item-actions">
+          ${downloadUrl ? '<button class="btn-small btn-download" data-action="kanban-download" data-url="' + downloadUrl + '" data-filename="' + escapeHtml(it.docCode) + '_' + escapeHtml(safeDate) + '.pdf">下载</button>' : ''}
+          ${downloadUrl ? '<button class="btn-small btn-view-pdf" data-action="kanban-view-pdf" data-idx="' + it.idx + '">查看PDF</button>' : ''}
+        </div>
+      </div>
+    `;
+  });
+  html += '</div>';
+
+  board.innerHTML = html;
+
+  // 绑定卡片点击事件（选择模式下切换勾选）
+  board.querySelectorAll(".doclist-item").forEach(item => {
+    item.addEventListener("click", (e) => {
+      if (!_kanbanSelectMode) return;
+      if (e.target.closest("button")) return;
+      const idx = parseInt(item.dataset.idx);
+      if (!isNaN(idx)) _toggleKanbanCard(idx);
+    });
+  });
+
+  // 绑定下载/查看PDF按钮事件（与看板共用同一套 data-action，仅绑定一次）
+  if (!board._dlActionBound) {
+    board._dlActionBound = true;
+    board.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-action]");
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === "kanban-download") {
+        downloadDocument(btn.dataset.url, btn.dataset.filename);
+      } else if (action === "kanban-view-pdf") {
+        openReaderForDoc(parseInt(btn.dataset.idx), true);
+      }
+    });
+  }
+
+  // 更新状态栏
+  if (statusEl) {
+    statusEl.textContent = "共 " + items.length + " 份文档";
+  }
+
+  // 如果当前处于选择模式，同步应用选择状态
+  if (_kanbanSelectMode) {
+    _applyKanbanSelection();
   }
 }
 
@@ -10503,14 +10661,14 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.classList.add("active");
     document.getElementById("tab-" + tabName).classList.add("active");
     const app = document.getElementById("app");
-    const wideTabs = ["kanban", "ai-analysis", "timeline"];
+    const wideTabs = ["kanban", "ai-analysis", "timeline", "doclist"];
     if (wideTabs.includes(tabName)) {
       app.classList.add("wide-layout");
     } else {
       app.classList.remove("wide-layout");
     }
-    // Exit kanban select mode when leaving kanban tab
-    if (tabName !== "kanban") {
+    // Exit kanban select mode when leaving kanban/doclist tab
+    if (tabName !== "kanban" && tabName !== "doclist") {
       exitKanbanSelectMode();
     }
     // Exit timeline select mode when leaving timeline tab
@@ -10524,6 +10682,10 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     // Render timeline when entering timeline tab
     if (tabName === "timeline") {
       renderTimeline(currentData);
+    }
+    // Render doclist when entering doclist tab
+    if (tabName === "doclist") {
+      renderDocList(currentData);
     }
   });
 });
@@ -10573,6 +10735,73 @@ if (_sbConfirm) _sbConfirm.addEventListener("click", async () => {
   exitKanbanSelectMode();
   if (mode === "mergeExport") {
     // Direct merge export without switching tab
+    await doMergeExportWithItems(selectedIdxs);
+  } else if (mode === "citedRefs") {
+    _switchToTab("ai-analysis");
+    await runCitedRefsAnalysis(selectedIdxs);
+  } else {
+    _switchToTab("ai-analysis");
+    await startReviewAnalysis(selectedIdxs);
+  }
+});
+
+// ── 审查文档列表：头部按钮和选择栏按钮绑定（复用 kanban 选择状态） ──
+const _dlReviewBtn = document.getElementById("doclist-review-btn");
+if (_dlReviewBtn) _dlReviewBtn.addEventListener("click", () => {
+  enterKanbanSelectMode("review");
+});
+const _dlCitedBtn = document.getElementById("doclist-cited-btn");
+if (_dlCitedBtn) _dlCitedBtn.addEventListener("click", () => {
+  enterKanbanSelectMode("citedRefs");
+});
+const _dlMergeBtn = document.getElementById("doclist-merge-btn");
+if (_dlMergeBtn) _dlMergeBtn.addEventListener("click", () => {
+  enterKanbanSelectMode("mergeExport");
+});
+
+// doclist 选择栏按钮（与 kanban 选择栏共用同一套逻辑）
+const _dlSbAll = document.getElementById("doclist-select-all-btn");
+if (_dlSbAll) _dlSbAll.addEventListener("click", () => {
+  if (!_kanbanSelectMode) return;
+  _kanbanSelected.clear();
+  (kanbanState.documents || []).forEach(it => _kanbanSelected.add(it.idx));
+  _applyKanbanSelection();
+  _updateKanbanSelectSummary();
+});
+const _dlSbNone = document.getElementById("doclist-select-none-btn");
+if (_dlSbNone) _dlSbNone.addEventListener("click", () => {
+  _kanbanSelected.clear();
+  _applyKanbanSelection();
+  _updateKanbanSelectSummary();
+});
+const _dlSbDefault = document.getElementById("doclist-select-default-btn");
+if (_dlSbDefault) _dlSbDefault.addEventListener("click", () => {
+  if (!_kanbanSelectMode) return;
+  _kanbanSelected.clear();
+  (kanbanState.documents || []).forEach(it => {
+    let shouldSelect = false;
+    if (_kanbanSelectMode === "review") {
+      shouldSelect = shouldDefaultSelectForAnalysis(it);
+    } else if (_kanbanSelectMode === "mergeExport") {
+      shouldSelect = shouldDefaultSelectForAnalysis(it) && !!buildMergeDownloadUrl(it);
+    } else {
+      const CITED_DOC_CODES = ["FOR", "892", "1449", "IDS", "SRNT", "SRFW"];
+      shouldSelect = CITED_DOC_CODES.includes(it.docCode);
+    }
+    if (shouldSelect) _kanbanSelected.add(it.idx);
+  });
+  _applyKanbanSelection();
+  _updateKanbanSelectSummary();
+});
+const _dlSbCancel = document.getElementById("doclist-select-cancel-btn");
+if (_dlSbCancel) _dlSbCancel.addEventListener("click", () => exitKanbanSelectMode());
+const _dlSbConfirm = document.getElementById("doclist-select-confirm-btn");
+if (_dlSbConfirm) _dlSbConfirm.addEventListener("click", async () => {
+  if (!_kanbanSelectMode || _kanbanSelected.size === 0) return;
+  const selectedIdxs = [..._kanbanSelected];
+  const mode = _kanbanSelectMode;
+  exitKanbanSelectMode();
+  if (mode === "mergeExport") {
     await doMergeExportWithItems(selectedIdxs);
   } else if (mode === "citedRefs") {
     _switchToTab("ai-analysis");

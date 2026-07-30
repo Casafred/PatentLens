@@ -1202,6 +1202,138 @@ body {
   display: none;
 }
 
+/* ── 审查文档列表（doclist）样式 ── */
+.doclist-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.doclist-title {
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.doclist-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.doclist-board {
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.doclist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.doclist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  transition: border-color 0.2s, background 0.15s;
+}
+.doclist-item:hover {
+  border-color: var(--accent);
+}
+.doclist-item-main {
+  flex: 1;
+  min-width: 0;
+}
+.doclist-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.doclist-item-code {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent, #22c55e);
+}
+.doclist-item-type {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+.doclist-item-date {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+.doclist-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+.doclist-item-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+  word-break: break-word;
+}
+.doclist-item-stage {
+  font-size: 11px;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+.doclist-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* doclist 选择模式：复选框与看板一致的 ::before/::after 方案 */
+.doclist-board.select-mode .doclist-item {
+  position: relative;
+  cursor: pointer;
+  padding-left: 40px;
+}
+.doclist-board.select-mode .doclist-item::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border, #2a2d3a);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  transition: all 0.15s ease;
+}
+.doclist-board.select-mode .doclist-item:hover::before {
+  border-color: var(--accent, #22c55e);
+}
+.doclist-board.select-mode .doclist-item.selected::before {
+  background: var(--accent, #22c55e);
+  border-color: var(--accent, #22c55e);
+}
+.doclist-board.select-mode .doclist-item.selected::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+}
+.doclist-board.select-mode .doclist-item.selected {
+  border-color: var(--accent, #22c55e);
+  background: rgba(34,197,94,0.06);
+}
+
 /* ── AI Analysis empty state ── */
 .ai-empty-state {
   display: flex;
