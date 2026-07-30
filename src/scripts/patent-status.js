@@ -835,54 +835,71 @@ function _classifyEpoDescStage(key) {
 function getStatusInfo(office, code, desc) {
   const officeMap = PATENT_STATUS[office];
   const upperCode = (code || "").toUpperCase();
+  let result = null;
 
   // 1) 优先用 office codeMap 精确匹配（GD 正常源返回的 docCode）
-  //    exact=true：本地标题为权威翻译，无需对照原文
   if (officeMap && officeMap.codeMap[upperCode]) {
     const info = officeMap.codeMap[upperCode];
-    return { name: info.name, type: info.type, stage: info.stage, exact: true };
+    result = { name: info.name, type: info.type, stage: info.stage, exact: true };
   }
 
   // 2) office codeMap 未命中：先用 office descMap 模糊匹配（常规 GD 兜底）
   //    命中即返回，避免被 EPO_DESC_MAP 的短键（如 "amendment"）截胡更精确的 descMap 条目
-  //    exact=false：includes 子串匹配可能截断复合标题，需打 * 星号并显示原文
-  if (officeMap && officeMap.descMap && desc) {
+  if (!result && officeMap && officeMap.descMap && desc) {
     const descLower = desc.toLowerCase();
     const sortedKeys = Object.keys(officeMap.descMap).sort((a, b) => b.length - a.length);
     for (const key of sortedKeys) {
       if (descLower.includes(key)) {
         let type = classifyDocCode(code, desc);
         if (type === "misc") type = "notification";
-        return { name: officeMap.descMap[key], type, stage: "审查中", exact: false };
+        result = { name: officeMap.descMap[key], type, stage: "审查中", exact: false };
+        break;
       }
     }
   }
 
-  if (!officeMap) return { name: desc || code || "未知文件", type: "notification", stage: "未知", exact: true };
+  if (!result && !officeMap) {
+    result = { name: desc || code || "未知文件", type: "notification", stage: "未知", exact: true };
+  }
 
   // 3) office codeMap + descMap 均未命中：尝试 EPO 描述映射（EPO 降级源返回的英文标题）
   //    epoClassifyDoc 返回的 FREC/PUB/POA/TRANS/DWG 等码不在任何 office codeMap 中，
   //    会走到这里；用 EPO_DESC_MAP 把英文标题翻译成中文
-  //    exact=false：同 descMap，includes 子串匹配可能截断
-  if (desc) {
+  if (!result && officeMap && desc) {
     const descLower = desc.toLowerCase();
     for (const key of _epoDescMapSortedKeys) {
       if (descLower.includes(key)) {
         const epoType = _classifyEpoDescType(key);
-        return { name: EPO_DESC_MAP[key], type: epoType, stage: _classifyEpoDescStage(key), exact: false };
+        result = { name: EPO_DESC_MAP[key], type: epoType, stage: _classifyEpoDescStage(key), exact: false };
+        break;
       }
     }
   }
 
   // 4) 最终兜底：返回原始描述/代码
-  //    exact=true：name 即原文 desc，不存在"本地翻译与原文不一致"问题
-  const type = classifyDocCode(code, desc);
-  const typeName = officeMap.typeNames[type] || "通知";
-  let result = { name: desc || code || typeName, type, stage: "审查中", exact: true };
-  if (result.type === "misc") {
-    const fallbackType = classifyDocCode(code, desc);
-    result.type = fallbackType === "misc" ? "notification" : fallbackType;
+  if (!result) {
+    const type = classifyDocCode(code, desc);
+    const typeName = officeMap.typeNames[type] || "通知";
+    result = { name: desc || code || typeName, type, stage: "审查中", exact: true };
+    if (result.type === "misc") {
+      const fallbackType = classifyDocCode(code, desc);
+      result.type = fallbackType === "misc" ? "notification" : fallbackType;
+    }
   }
+
+  // 5) 二次校验：从 name 提取末尾括号内英文部分，与原文 desc 精确比对。
+  //    若英文部分与 desc 完全一致 → exact=true（即使走的是 descMap/EPO_DESC_MAP）；
+  //    若英文部分是 desc 的子串或 desc 更长 → exact=false，提示用户参考原文。
+  //    纯中文 name（无英文括号）无法比对，保持按匹配路径判定的 exact 值。
+  if (desc && result.name) {
+    var enMatch = String(result.name).match(/\(([^)]+)\)\s*$/);
+    if (enMatch) {
+      var enPart = enMatch[1].trim().toLowerCase();
+      var descNorm = String(desc).trim().toLowerCase();
+      result.exact = (enPart === descNorm);
+    }
+  }
+
   return result;
 }
 
