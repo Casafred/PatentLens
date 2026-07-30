@@ -508,6 +508,20 @@ function _updateAIAnalysisView() {
   }
 }
 
+// Position the AI analysis chapter navigation (.analysis-module-tabs) right below
+// the frozen TAB bar (dossier-tabs-bar + tabs-wrapper) so the sticky chapter jump
+// buttons are not covered by the frozen overview/timeline/... TAB bar.
+function _updateAnalysisStickyOffset() {
+  const amTabs = document.querySelector('#kanban-analysis-content .analysis-module-tabs');
+  if (!amTabs) return;
+  const tw = document.querySelector('.tabs-wrapper');
+  const dtb = document.getElementById('dossier-tabs-bar');
+  let offset = 0;
+  if (tw) offset += tw.offsetHeight;
+  if (dtb && !dtb.classList.contains('hidden')) offset += dtb.offsetHeight;
+  if (offset > 0) amTabs.style.top = offset + 'px';
+}
+
 // Save/load manual selection state
 function getManualSelectKey(prefix) {
   if (!currentData) return null;
@@ -885,6 +899,7 @@ function _dossierRenderTabs() {
   if (searchMode !== "dossier" || _dossierTabs.length === 0) {
     bar.classList.add("hidden");
     bar.innerHTML = "";
+    _updateAnalysisStickyOffset();
     return;
   }
   bar.classList.remove("hidden");
@@ -914,6 +929,7 @@ function _dossierRenderTabs() {
     hint.textContent = "（已达 3 个标签上限，请先关闭一个再查询新专利）";
     bar.appendChild(hint);
   }
+  _updateAnalysisStickyOffset();
 }
 
 function _dossierSwitchTo(key) {
@@ -10678,6 +10694,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     // Update AI analysis view when entering that tab
     if (tabName === "ai-analysis") {
       _updateAIAnalysisView();
+      _updateAnalysisStickyOffset();
     }
     // Render timeline when entering timeline tab
     if (tabName === "timeline") {
@@ -12298,6 +12315,7 @@ function renderAnalysisModules(text) {
         window._analysisScrollObserver.observe(mod);
       });
     }
+    _updateAnalysisStickyOffset();
   });
 
   return html;
@@ -15938,6 +15956,7 @@ window.addEventListener("resize", () => {
   if (typeof currentData !== "undefined" && currentData && document.getElementById("tab-timeline")?.classList.contains("active")) {
     try { renderTimeline(currentData); } catch (e) { /* ignore */ }
   }
+  _updateAnalysisStickyOffset();
 });
 
 // ===== PDF keyword search =====
