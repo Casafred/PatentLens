@@ -128,6 +128,9 @@ const __PATENTLENS_COPYRIGHT__ = "PatentLens (c) 2026 Alfred Shi - All Rights Re
       if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
       console.log('[FOCUS] keydown detected:', { tag: t.tagName, id: t.id, key: e.key, keyLen: e.key.length, defaultPrevented: e.defaultPrevented, isComposing: e.isComposing, keyCode: e.keyCode });
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+      // 跳过组合键（Ctrl+C/V/X/A 等复制粘贴剪贴操作，以及 Ctrl/Alt/Meta 修饰键）
+      // 否则 Ctrl+C 复制时 value 不变，会被误判为 desync 并把 "c" 注入到输入框
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key.length !== 1) return; // only printable keys for re-injection
       var prevValue = t.value;
       var prevStart = t.selectionStart;
@@ -8439,7 +8442,7 @@ function renderKanban(data) {
               ${it.date ? '<span class="kanban-card-date">' + escapeHtml(it.date) + '</span>' : ''}
             </div>
             <div class="kanban-card-name">${it.exact === false ? '<span class="name-asterisk" title="本地译名可能与原文有差异，请参考下方原文">*</span>' : ''}${escapeHtml(it.name)}</div>
-            ${it.exact === false && it.desc ? '<div class="kanban-card-desc">' + escapeHtml(it.desc) + '</div>' : ''}
+            ${it.desc && it.desc !== it.name ? '<div class="kanban-card-desc">' + escapeHtml(it.desc) + '</div>' : ''}
             <div class="kanban-card-stage">阶段: ${escapeHtml(it.stage)}</div>
             <div class="kanban-card-actions">
               ${downloadUrl ? '<button class="btn-small btn-download" data-action="kanban-download" data-url="' + downloadUrl + '" data-filename="' + escapeHtml(it.docCode) + '_' + escapeHtml(it.date.replace(/\//g, '-')) + '.pdf">下载</button>' : ''}
