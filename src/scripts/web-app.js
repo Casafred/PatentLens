@@ -10832,6 +10832,10 @@ if (_dlSbConfirm) _dlSbConfirm.addEventListener("click", async () => {
 // ── AI analysis tab buttons ──
 const _gotoKanbanBtn = document.getElementById("ai-goto-kanban-btn");
 if (_gotoKanbanBtn) _gotoKanbanBtn.addEventListener("click", () => _switchToTab("kanban"));
+const _gotoTimelineBtn = document.getElementById("ai-goto-timeline-btn");
+if (_gotoTimelineBtn) _gotoTimelineBtn.addEventListener("click", () => _switchToTab("timeline"));
+const _gotoDoclistBtn = document.getElementById("ai-goto-doclist-btn");
+if (_gotoDoclistBtn) _gotoDoclistBtn.addEventListener("click", () => _switchToTab("doclist"));
 const _newAnalysisBtn = document.getElementById("new-analysis-btn");
 if (_newAnalysisBtn) _newAnalysisBtn.addEventListener("click", () => {
   // Return to kanban to let user choose files (fresh selection)

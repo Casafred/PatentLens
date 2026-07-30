@@ -1373,6 +1373,13 @@ body {
   max-width: 400px;
   line-height: 1.6;
 }
+.ai-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 8px;
+}
 
 .kanban-board {
   padding: 0;

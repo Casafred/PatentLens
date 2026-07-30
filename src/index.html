@@ -293,8 +293,12 @@
             <div id="ai-empty-state" class="ai-empty-state">
               <div class="ai-empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 017 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 01-2 2h-4a2 2 0 01-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 017-7z"/><line x1="9" y1="21" x2="15" y2="21"/></svg></div>
               <p class="ai-empty-text">暂无AI梳理结果</p>
-              <p class="ai-empty-hint">请在审查分栏看板或审查文档列表中选择要分析的文档，然后点击"梳理审查意见"或"梳理引用文献"</p>
-              <button id="ai-goto-kanban-btn" class="btn-primary"><svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y1="13"/><line x1="16" y1="17" x2="8" y1="17"/></svg> 转到审查分栏看板选取文件并开始AI梳理</button>
+              <p class="ai-empty-hint">请选择一个界面勾选要分析的文档，然后点击"梳理审查意见"或"梳理引用文献"</p>
+              <div class="ai-empty-actions">
+                <button id="ai-goto-timeline-btn" class="btn-secondary"><svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> 转到时间轴</button>
+                <button id="ai-goto-doclist-btn" class="btn-secondary"><svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> 转到审查文档列表</button>
+                <button id="ai-goto-kanban-btn" class="btn-primary"><svg class="svg-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> 转到审查分栏看板</button>
+              </div>
             </div>
             <div id="kanban-analysis" class="kanban-analysis hidden">
               <div class="kanban-section-header">
