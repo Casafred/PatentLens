@@ -17328,6 +17328,66 @@ function handleExtensionData(data) {
     showDocumentContent(lines.join("\n"), `DE 注册信息: ${info.akz || "未知"}`);
     showNotification("已导入 DE 注册信息（来自浏览器插件）");
   }
+
+  // Espacenet 专利全文 — 显示在专利详情界面（与 GP 查询一致）
+  if (data.office === "EP" && data.type === "patent_full" && !data.error) {
+    const pn = (data.patent_number || "").trim().toUpperCase().replace(/[\s\/]/g, "");
+    if (!pn) {
+      showNotification("无法识别专利号");
+      return;
+    }
+
+    // 切换到专利详情视图
+    const appEl = document.getElementById("app");
+    if (appEl && appEl.classList.contains("home-mode")) appEl.classList.remove("home-mode");
+    if (patentDetailSection) patentDetailSection.classList.remove("hidden");
+    if (resultSection) resultSection.classList.add("hidden");
+    if (batchResultsSection) batchResultsSection.classList.add("hidden");
+    updateFloatingBallsVisibility();
+
+    if (searchMode !== "patent") {
+      searchMode = "patent";
+      document.querySelectorAll(".search-mode-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.mode === "patent");
+      });
+      if (patentInput) {
+        patentInput.placeholder = "输入专利号查询原文信息（如 US12030161B2, EP4252965A3）";
+        patentInput.value = pn;
+      }
+      if (batchSearchToggleBtn) batchSearchToggleBtn.style.display = "";
+    } else if (patentInput) {
+      patentInput.value = pn;
+    }
+
+    // 缓存数据
+    _pdPatentCache[pn] = data;
+    GPCache.setEntry(pn, data);
+    if (!_pdOpenPatents.includes(pn)) {
+      _pdOpenPatents.push(pn);
+    }
+    _pdActivePatent = pn;
+    window._currentPatentData = data;
+
+    // 渲染专利详情
+    renderPatentDetail(data);
+    _renderPdTabs();
+    _switchPdTab(pn);
+    showDataSourceBadge("Espacenet 浏览器提取", "通过浏览器扩展从 Espacenet 页面一键导入");
+    showNotification(`已从 Espacenet 导入专利: ${pn}`);
+    return;
+  }
+
+  // Espacenet 当前标签页内容
+  if (data.office === "EP" && data.type === "current_tab" && data.content) {
+    const tabName = data.active_tab || "当前标签";
+    showDocumentContent(data.content, `Espacenet - ${data.patent_number || ""} (${tabName})`);
+    showNotification(`已导入 Espacenet ${tabName} 内容`);
+  }
+
+  // Espacenet 提取错误
+  if (data.office === "EP" && data.error) {
+    showNotification(`Espacenet 提取失败: ${data.error}`);
+  }
 }
 
 function handleExtensionAnalyze(data) {

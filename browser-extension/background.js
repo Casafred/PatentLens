@@ -27,9 +27,26 @@ chrome.runtime.onInstalled.addListener((details) => {
     title: '专利审查文档助手 - 提取当前页面',
     contexts: ['page'],
     documentUrlPatterns: [
+      'https://worldwide.espacenet.com/*',
       'https://www.j-platpat.inpit.go.jp/*',
       'https://register.dpma.de/*',
     ],
+  });
+
+  // Espacenet 子菜单
+  chrome.contextMenus.create({
+    id: 'ep-extract-all',
+    parentId: 'patent-extract',
+    title: '提取专利全文（各标签页）',
+    contexts: ['page'],
+    documentUrlPatterns: ['https://worldwide.espacenet.com/*'],
+  });
+  chrome.contextMenus.create({
+    id: 'ep-extract-current',
+    parentId: 'patent-extract',
+    title: '提取当前标签页内容',
+    contexts: ['page'],
+    documentUrlPatterns: ['https://worldwide.espacenet.com/*'],
   });
 
   // J-PlatPat 子菜单
@@ -70,6 +87,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab || !tab.id) return;
 
   const actionMap = {
+    'ep-extract-all': 'extractPatent',
+    'ep-extract-current': 'extractCurrent',
     'jp-extract-keika': 'extractKeika',
     'jp-extract-document': 'extractDocument',
     'jp-extract-bibliography': 'extractBibliography',
@@ -79,7 +98,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const action = actionMap[info.menuItemId];
   if (!action) return;
 
-  const target = info.menuItemId.startsWith('jp-') ? 'jplatpat' : 'dpma';
+  let target;
+  if (info.menuItemId.startsWith('ep-')) target = 'espacenet';
+  else if (info.menuItemId.startsWith('jp-')) target = 'jplatpat';
+  else target = 'dpma';
 
   try {
     // 方法1：尝试通过 content script 消息通信
@@ -103,7 +125,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     // 方法2：Content script 未加载，使用 scripting API 动态注入
     console.log('[右键菜单] Content script 未响应，尝试动态注入...');
     try {
-      const file = target === 'jplatpat' ? 'content/jplatpat.js' : 'content/dpma.js';
+      let file;
+      if (target === 'espacenet') file = 'content/espacenet.js';
+      else if (target === 'jplatpat') file = 'content/jplatpat.js';
+      else file = 'content/dpma.js';
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         files: [file],
@@ -259,7 +284,7 @@ async function handleExtractAllDocuments(message, sender) {
 // ============ 标签页更新监听 ============
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
-    if (tab.url.includes('j-platpat.inpit.go.jp') || tab.url.includes('register.dpma.de')) {
+    if (tab.url.includes('worldwide.espacenet.com') || tab.url.includes('j-platpat.inpit.go.jp') || tab.url.includes('register.dpma.de')) {
       chrome.action.setBadgeText({ text: '', tabId });
     }
   }

@@ -120,7 +120,23 @@ async function detectCurrentPage() {
 
     const url = tab.url;
 
-    if (url.includes('j-platpat.inpit.go.jp')) {
+    if (url.includes('worldwide.espacenet.com')) {
+      // Espacenet 页面检测
+      try {
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          target: 'espacenet',
+          action: 'detectPage',
+        });
+        currentPage = { office: 'EP', pageType: response.pageType };
+        setPageInfo('EP', response.pageType);
+      } catch {
+        let pageType = 'unknown';
+        if (url.includes('/publication/')) pageType = 'patent_detail';
+        else if (url.includes('/search')) pageType = 'search_results';
+        currentPage = { office: 'EP', pageType };
+        setPageInfo('EP', pageType);
+      }
+    } else if (url.includes('j-platpat.inpit.go.jp')) {
       // 先尝试通过 content script 检测，失败则通过 URL 判断
       try {
         const response = await chrome.tabs.sendMessage(tab.id, {
@@ -163,16 +179,19 @@ async function detectCurrentPage() {
  */
 function setPageInfo(office, pageType) {
   statusDot.className = 'status-dot';
-  if (office === 'JP') statusDot.classList.add('jp');
+  if (office === 'EP') statusDot.classList.add('ep');
+  else if (office === 'JP') statusDot.classList.add('jp');
   else if (office === 'DE') statusDot.classList.add('de');
   else statusDot.classList.add('unsupported');
 
   const labels = {
+    patent_detail: 'Espacenet - 专利详情页面',
+    search_results: 'Espacenet - 搜索结果页面',
     keika: 'J-PlatPat - 审查经纬页面',
     document: 'J-PlatPat - 文档内容页面',
     bibliography: 'J-PlatPat - 文献表示页面',
     register: 'DPMAregister - 注册信息页面',
-    unknown: office === 'JP' ? 'J-PlatPat - 未知页面' : 'DPMAregister - 未知页面',
+    unknown: office === 'EP' ? 'Espacenet - 未知页面' : (office === 'JP' ? 'J-PlatPat - 未知页面' : 'DPMAregister - 未知页面'),
     unsupported: '当前页面不受支持',
     error: '检测失败',
   };
@@ -187,14 +206,27 @@ function renderActions() {
   if (!currentPage || !currentPage.office) {
     const hint = document.createElement('div');
     hint.style.cssText = 'padding: 8px; text-align: center; color: var(--text-secondary); font-size: 12px;';
-    hint.textContent = '请打开 J-PlatPat 或 DPMAregister 页面后使用';
+    hint.textContent = '请打开 Espacenet、J-PlatPat 或 DPMAregister 页面后使用';
     actionsSection.appendChild(hint);
     return;
   }
 
   const { office, pageType } = currentPage;
 
-  if (office === 'JP') {
+  if (office === 'EP') {
+    switch (pageType) {
+      case 'patent_detail':
+        addButton('一键提取专利全文（发送到应用）', () => extractData('extractPatent'), 'btn-primary');
+        addButton('提取当前标签页内容', () => extractData('extractCurrent'), 'btn-secondary');
+        break;
+      case 'search_results':
+        addHint('请点击进入具体专利详情页后提取');
+        break;
+      default:
+        addHint('请导航到专利详情页面');
+        break;
+    }
+  } else if (office === 'JP') {
     switch (pageType) {
       case 'keika':
         addButton('提取审查经纬列表', () => extractData('extractKeika'), 'btn-primary');
@@ -306,12 +338,36 @@ async function extractData(action) {
  * 通过 chrome.scripting.executeScript 直接在页面中执行提取逻辑（最终回退方案）
  */
 async function extractViaScripting(tabId, target, action) {
-  if (target === 'jplatpat') {
-    return extractJpViaScripting(tabId, action);
-  } else if (target === 'dpma') {
-    return extractDeViaScripting(tabId, action);
+  // 对于复杂的提取逻辑，直接注入对应的 content script 文件
+  let file;
+  if (target === 'espacenet') file = 'content/espacenet.js';
+  else if (target === 'jplatpat') file = 'content/jplatpat.js';
+  else if (target === 'dpma') file = 'content/dpma.js';
+  else throw new Error('未知的目标类型');
+
+  try {
+    // 先尝试注入文件
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: [file],
+    });
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // 然后发送消息
+    return await chrome.runtime.sendMessage({
+      action: 'forwardToContent',
+      tabId,
+      payload: { target, action },
+    });
+  } catch {
+    // 如果文件注入失败，jplatpat 和 dpma 可以用内联函数
+    if (target === 'jplatpat') {
+      return extractJpViaScripting(tabId, action);
+    } else if (target === 'dpma') {
+      return extractDeViaScripting(tabId, action);
+    }
+    throw new Error('注入脚本失败');
   }
-  throw new Error('未知的目标类型');
 }
 
 /**

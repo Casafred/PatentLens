@@ -1,15 +1,21 @@
 {
   "manifest_version": 3,
   "name": "专利审查文档助手",
-  "version": "1.0.0",
-  "description": "抓取日本 J-PlatPat 和德国 DPMAregister 的专利审查文档",
+  "version": "1.1.0",
+  "description": "抓取 Espacenet、日本 J-PlatPat 和德国 DPMAregister 的专利审查文档",
   "permissions": ["activeTab", "tabs", "storage", "contextMenus", "scripting"],
   "host_permissions": [
+    "https://worldwide.espacenet.com/*",
     "https://www.j-platpat.inpit.go.jp/*",
     "https://register.dpma.de/*",
     "http://localhost:*/"
   ],
   "content_scripts": [
+    {
+      "matches": ["https://worldwide.espacenet.com/*"],
+      "js": ["content/espacenet.js"],
+      "run_at": "document_idle"
+    },
     {
       "matches": ["https://www.j-platpat.inpit.go.jp/*"],
       "js": ["content/jplatpat.js"],

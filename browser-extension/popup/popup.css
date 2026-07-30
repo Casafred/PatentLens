@@ -114,6 +114,10 @@ body {
   background: var(--accent-blue);
 }
 
+.status-dot.ep {
+  background: #af52de;
+}
+
 .status-dot.de {
   background: var(--accent-orange);
 }
