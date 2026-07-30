@@ -17365,7 +17365,7 @@ function handleExtensionData(data) {
 
     // 缓存数据
     _pdPatentCache[pn] = data;
-    GPCache.setEntry(pn, data);
+    GPCache.set(pn, data);
     if (!_pdOpenPatents.includes(pn)) {
       _pdOpenPatents.push(pn);
     }
