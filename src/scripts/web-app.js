@@ -13000,16 +13000,9 @@ function renderTimeline(data) {
     return;
   }
 
-  const excludeDocCodes = ["N417", "N417.PYMT", "APP.FILE.REC", "WFEE", "PTO.FEE", "IFEE", "RCFR", "RECEIPT-OLF", "FEES-RO", "PAYREJ"];
-  const excludeNamePatterns = /回执|缴费|receipt|payment|fee worksheet/i;
-  const timelineItems = items.filter(it => {
-    if (excludeDocCodes.includes(it.docCode)) return false;
-    if (excludeNamePatterns.test(it.name || "")) return false;
-    return true;
-  });
-
+  // 显示全部文档，与概要/审查文档列表/审查分栏看板保持数量一致
   // ── 时间倒序：最新文档在前 ──
-  const sorted = [...timelineItems].sort((a, b) => {
+  const sorted = [...items].sort((a, b) => {
     const da = parseDate(a.date);
     const db = parseDate(b.date);
     return db - da;
