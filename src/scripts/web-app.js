@@ -17339,11 +17339,65 @@ function handleExtensionData(data) {
 
   // Espacenet 专利全文 — 显示在专利详情界面（与 GP 查询一致）
   if (data.office === "EP" && data.type === "patent_full" && !data.error) {
-    const pn = (data.patent_number || "").trim().toUpperCase().replace(/[\s\/]/g, "");
+    const pn = (data.patent_number || "").trim().toUpperCase().replace(/[\s\/;]/g, "");
     if (!pn) {
       showNotification("无法识别专利号");
       return;
     }
+
+    // 规范化数据，确保与 renderPatentDetail 期望的格式一致
+    var normalized = JSON.parse(JSON.stringify(data));
+    normalized.patent_number = pn;
+    // 修正标题（Espacenet 页面的 h1 可能是"Espacenet"品牌名，不是专利标题）
+    if (normalized.title && (normalized.title === 'Espacenet' || normalized.title.length < 3)) {
+      normalized.title = pn;
+    }
+    // inventors / assignees: 字符串 → 数组
+    function toArray(v) {
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') {
+        return v.split(/[;,]\s*/).map(function(s){return s.trim();}).filter(Boolean);
+      }
+      return [];
+    }
+    normalized.inventors = toArray(normalized.inventors);
+    normalized.assignees = toArray(normalized.assignees);
+    // classifications: 字符串数组 → {code, description} 对象数组
+    if (Array.isArray(normalized.classifications)) {
+      normalized.classifications = normalized.classifications.map(function(c) {
+        if (typeof c === 'string') return { code: c, description: '' };
+        return c;
+      });
+    } else if (typeof normalized.classifications === 'string') {
+      normalized.classifications = normalized.classifications.split(/[;,]\s*/).map(function(c){return {code:c.trim(), description:''};}).filter(function(c){return c.code;});
+    } else {
+      normalized.classifications = [];
+    }
+    // cpc 字符串 → 也填入 classifications
+    if (normalized.cpc && !normalized.classifications.length) {
+      normalized.classifications = normalized.cpc.split(/[;,]\s*/).map(function(c){return {code:c.trim(), description:''};}).filter(function(c){return c.code;});
+    }
+    // legal_events: 字符串数组 → {date, code, description} 对象数组
+    if (Array.isArray(normalized.legal_events)) {
+      normalized.legal_events = normalized.legal_events.map(function(le) {
+        if (typeof le === 'string') return { date: '', code: '', description: le };
+        return le;
+      });
+    } else {
+      normalized.legal_events = [];
+    }
+    // family_applications: 确保是对象数组
+    if (Array.isArray(normalized.family)) {
+      normalized.family_applications = normalized.family.map(function(f) {
+        if (typeof f === 'string') return { publication_number: f, title: '', status: '' };
+        return f;
+      });
+      delete normalized.family;
+    } else if (!normalized.family_applications) {
+      normalized.family_applications = [];
+    }
+    // drawings: 确保是字符串数组
+    if (!Array.isArray(normalized.drawings)) normalized.drawings = [];
 
     // 切换到专利详情视图
     const appEl = document.getElementById("app");
@@ -17368,19 +17422,19 @@ function handleExtensionData(data) {
     }
 
     // 缓存数据
-    _pdPatentCache[pn] = data;
-    GPCache.set(pn, data);
+    _pdPatentCache[pn] = normalized;
+    GPCache.set(pn, normalized);
     if (!_pdOpenPatents.includes(pn)) {
       _pdOpenPatents.push(pn);
     }
     _pdActivePatent = pn;
-    window._currentPatentData = data;
+    window._currentPatentData = normalized;
 
     // 渲染专利详情
-    renderPatentDetail(data);
+    renderPatentDetail(normalized);
     _renderPdTabs();
     _switchPdTab(pn);
-    showDataSourceBadge("Espacenet 浏览器提取", "通过浏览器扩展从 Espacenet 页面一键导入");
+    showDataSourceBadge("Espacenet 浏览器提取", "通过 Espacenet 页面一键导入");
     showNotification(`已从 Espacenet 导入专利: ${pn}`);
     return;
   }
