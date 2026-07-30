@@ -4564,6 +4564,16 @@ app.whenReady().then(async () => {
 
   // IPC: 渲染进程请求下载文件（避免 window.open 被 setWindowOpenHandler 拦截成弹窗）
   let _pendingDownloadFilename = null;
+
+  // IPC: popout 窗口向主窗口转发数据（Espacenet 提取等）
+  ipcMain.on("popout-to-main", (_event, data) => {
+    if (!mainWindow || !data) return;
+    const safe = JSON.stringify(data).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+    mainWindow.webContents.executeJavaScript(
+      `window.postMessage({type:'extension-data',payload:${safe}},'*');`
+    ).catch(() => {});
+  });
+
   ipcMain.on("download-file", (_event, url, filename) => {
     if (!mainWindow || typeof url !== "string") return;
     _pendingDownloadFilename = filename || null;

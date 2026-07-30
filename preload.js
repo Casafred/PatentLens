@@ -33,4 +33,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onForceClose: (callback) => ipcRenderer.on("force-close-app", () => callback()),
   forceRefocus: () => ipcRenderer.send("force-refocus"),
   resetFocusKick: () => ipcRenderer.send("reset-focus-kick"),
+  sendToMain: (data) => ipcRenderer.send("popout-to-main", data),
 });

@@ -19799,38 +19799,36 @@ function setEspacenetTestMode(enabled) {
 }
 
 /**
- * 测试模式下打开 Espacenet：用系统浏览器打开 + 显示抓取提示
+ * 测试模式下打开 Espacenet：在应用内弹出窗口打开 + 显示抓取提示
+ * 弹出窗口的 smart-bar 会显示「提取专利全文到主应用」按钮
  * 返回 true 表示已处理（测试模式），false 表示非测试模式需走原有逻辑
  */
 function openEspacenetWithTestMode(patentNumber) {
   if (!getEspacenetTestMode()) return false;
   var espacenetUrl = 'https://worldwide.espacenet.com/patent/search?q=' + encodeURIComponent(patentNumber);
-  // 用系统浏览器打开（Chrome 扩展需要在真实浏览器中运行）
-  if (window.electronAPI && window.electronAPI.openExternal) {
-    window.electronAPI.openExternal(espacenetUrl);
+  // 用应用内弹出窗口打开（popout window）
+  if (window.electronAPI && window.electronAPI.openPopoutWindow) {
+    window.electronAPI.openPopoutWindow(espacenetUrl, 'Espacenet: ' + patentNumber);
   } else {
-    window.open(espacenetUrl, '_blank');
+    openInAppWebview(espacenetUrl, 'Espacenet: ' + patentNumber);
   }
   // 显示提示
-  showToast('已打开 Espacenet，请在页面中用浏览器扩展提取数据', 5000);
-  // 在专利详情区显示等待提示（如果可见）
-  var detailContent = document.getElementById('patent-detail-content');
-  if (detailContent) {
-    var existing = document.getElementById('ep-waiting-banner');
-    if (!existing) {
-      var banner = document.createElement('div');
-      banner.id = 'ep-waiting-banner';
-      banner.style.cssText = 'position:fixed;top:60px;right:20px;background:#af52de;color:#fff;padding:12px 20px;border-radius:10px;box-shadow:0 4px 12px rgba(175,82,222,0.4);z-index:100001;font-size:13px;max-width:320px;';
-      banner.innerHTML = '<div style="font-weight:600;margin-bottom:6px;">🔬 Espacenet 测试模式</div>' +
-        '<div style="opacity:0.9;">已在系统浏览器打开 Espacenet，请在页面中点击浏览器扩展图标提取数据，提取后数据将自动回传。</div>' +
-        '<div style="margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px;opacity:0.8;">' +
-        '<div style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>' +
-        '等待数据回传...' +
-        '</div>';
-      document.body.appendChild(banner);
-      // 30 秒后自动消失
-      setTimeout(function() { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 30000);
-    }
+  showToast('已打开 Espacenet，请在弹出窗口顶部点击「提取专利全文到主应用」', 5000);
+  // 显示等待 banner
+  var existing = document.getElementById('ep-waiting-banner');
+  if (!existing) {
+    var banner = document.createElement('div');
+    banner.id = 'ep-waiting-banner';
+    banner.style.cssText = 'position:fixed;top:60px;right:20px;background:#af52de;color:#fff;padding:12px 20px;border-radius:10px;box-shadow:0 4px 12px rgba(175,82,222,0.4);z-index:100001;font-size:13px;max-width:340px;';
+    banner.innerHTML = '<div style="font-weight:600;margin-bottom:6px;">🔬 Espacenet 测试模式</div>' +
+      '<div style="opacity:0.9;">已在弹出窗口打开 Espacenet，请点击窗口顶部智能识别栏的「提取专利全文到主应用」按钮</div>' +
+      '<div style="margin-top:8px;display:flex;align-items:center;gap:6px;font-size:12px;opacity:0.8;">' +
+      '<div style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;"></div>' +
+      '等待数据回传...' +
+      '</div>';
+    document.body.appendChild(banner);
+    // 60 秒后自动消失
+    setTimeout(function() { if (banner.parentNode) banner.parentNode.removeChild(banner); }, 60000);
   }
   return true;
 }
@@ -20562,15 +20560,15 @@ function _openPdPatent(pn, options) {
     if (epOpenBtn) {
       epOpenBtn.addEventListener('click', function() {
         var espacenetUrl = 'https://worldwide.espacenet.com/patent/search?q=' + encodeURIComponent(raw);
-        // 用系统默认浏览器打开（Chrome 扩展需要在真实浏览器中运行）
-        if (window.electronAPI && window.electronAPI.openExternal) {
-          window.electronAPI.openExternal(espacenetUrl);
+        // 用应用内弹出窗口打开（popout window，内含提取按钮）
+        if (window.electronAPI && window.electronAPI.openPopoutWindow) {
+          window.electronAPI.openPopoutWindow(espacenetUrl, 'Espacenet: ' + raw);
         } else {
-          window.open(espacenetUrl, '_blank');
+          openInAppWebview(espacenetUrl, 'Espacenet: ' + raw);
         }
         var waiting = document.getElementById('ep-test-waiting');
         if (waiting) waiting.style.display = '';
-        if (epOpenBtn) epOpenBtn.textContent = '已打开浏览器，等待数据...';
+        if (epOpenBtn) epOpenBtn.textContent = '已打开，等待提取...';
       });
     }
     var epCancelBtn = document.getElementById('ep-test-cancel-btn');
