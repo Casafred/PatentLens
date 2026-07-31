@@ -17408,6 +17408,7 @@ function handleExtensionData(data) {
           return {
             num: c.num || c.number || c.claim_number || String(i + 1),
             text: (c.text || c.content || c.claim_text || '').trim(),
+            type: c.type || '',
             dependent_on: c.dependent_on || c.depends_on || ''
           };
         }
@@ -17458,11 +17459,19 @@ function handleExtensionData(data) {
       normalized.patent_citations = normalized.patent_citations.map(function(c) {
         if (typeof c === 'string') return { patent_number: c.trim() };
         if (c && typeof c === 'object') {
-          return {
+          var entry = {
             patent_number: (c.patent_number || c.number || c.publication_number || '').toString().trim(),
             applicant: c.applicant || c.applicants || '',
             publication_date: c.publication_date || c.date || ''
           };
+          // origin: SEA=审查员引用(examiner), APP=申请人引用(applicant)
+          if (c.origin || c.citation_type) {
+            var orig = (c.origin || c.citation_type || '').toUpperCase();
+            if (orig === 'SEA') entry.citation_type = 'examiner';
+            else if (orig === 'APP') entry.citation_type = 'applicant';
+            else if (orig === 'EXAMINER' || orig === 'APPLICANT') entry.citation_type = orig.toLowerCase();
+          }
+          return entry;
         }
         return { patent_number: '' };
       }).filter(function(c) { return c.patent_number; });
