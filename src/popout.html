@@ -185,35 +185,57 @@
           return null;
         }
 
-        // 获取当前激活的 tab 面板（内容区域）
+        // 获取下拉菜单触发按钮（显示当前section名称的按钮）
+        function getDropdownBtn() {
+          var btn = document.querySelector('[class*="tabs__list--dropdown-panel"] > button');
+          if (btn) return btn;
+          var known = ['Bibliographic data','Claims','Description','Drawings','Citations','Original document','Legal events','Patent family'];
+          var allBtns = document.querySelectorAll('button');
+          for (var i = 0; i < allBtns.length; i++) {
+            var b = allBtns[i];
+            var rect = b.getBoundingClientRect();
+            var t = b.textContent.trim();
+            if (rect.top > 50 && rect.top < 200 && known.indexOf(t) !== -1) return b;
+          }
+          return null;
+        }
+
+        // 获取当前内容面板（Espacenet只有一个可见panel，内容通过React复用同一DOM节点）
         function getActivePanel() {
-          // 方法1: 找带 active/selected 类名的 tabs__panel
           var panels = document.querySelectorAll('[class*="tabs__panel"]');
           for (var i = 0; i < panels.length; i++) {
             var p = panels[i];
-            var cls = (typeof p.className === 'string') ? p.className : '';
-            // 检查是否为激活面板
-            var isActive = cls.indexOf('active') !== -1 || cls.indexOf('selected') !== -1;
-            if (!isActive) {
-              // 某些框架用 aria-selected/aria-expanded
-              isActive = p.getAttribute('aria-selected') === 'true' || p.getAttribute('aria-expanded') === 'true';
-            }
-            if (!isActive) {
-              // 通过可见性判断
-              var rect = p.getBoundingClientRect();
-              isActive = rect.width > 10 && rect.height > 10 && getComputedStyle(p).display !== 'none' && getComputedStyle(p).visibility !== 'hidden';
-            }
-            if (isActive) return p;
-          }
-          // 方法2: 找包含 text-block__content 且可见的 panel
-          for (var j = 0; j < panels.length; j++) {
-            var pr = panels[j].getBoundingClientRect();
-            if (pr.width > 50 && pr.height > 50) {
-              var hasContent = panels[j].querySelector('[class*="text-block__content"]');
-              if (hasContent && hasContent.textContent.trim().length > 10) return panels[j];
+            var rect = p.getBoundingClientRect();
+            if (rect.width > 50 && rect.height > 50 &&
+                getComputedStyle(p).display !== 'none' &&
+                getComputedStyle(p).visibility !== 'hidden') {
+              return p;
             }
           }
           return null;
+        }
+
+        // 获取内容签名（用于检测内容变化）
+        function getContentSignature() {
+          var panel = getActivePanel();
+          if (!panel) return { textLen: 0, imgCount: 0 };
+          var tbc = panel.querySelector('[class*="text-block__content"]');
+          var text = tbc ? tbc.textContent.trim() : panel.textContent.trim();
+          var imgs = panel.querySelectorAll('img');
+          var largeImgCount = 0;
+          for (var i = 0; i < imgs.length; i++) {
+            var src = imgs[i].src || '';
+            if (src.indexOf('http') === 0 && src.indexOf('data:') !== 0) {
+              var w = imgs[i].naturalWidth || imgs[i].width || 0;
+              var h = imgs[i].naturalHeight || imgs[i].height || 0;
+              if (w > 100 || h > 100 || src.indexOf('/images/') !== -1 || src.indexOf('drawing') !== -1) largeImgCount++;
+            }
+          }
+          return {
+            textLen: text.length,
+            imgCount: largeImgCount,
+            textStart: text.substring(0, 80)
+          };
         }
 
         // 在激活面板中获取内容元素
@@ -222,107 +244,47 @@
           if (panel) {
             var c = panel.querySelector('[class*="text-block__content"]');
             if (c && c.textContent.trim().length > 5) return c;
-            // 也可能直接是内容
             if (panel.textContent.trim().length > 20) return panel;
           }
-          // 回退: 全局搜索可见的 text-block__content
           var els = document.querySelectorAll('[class*="text-block__content"]');
-          var best = null;
-          var bestLen = 0;
+          var best = null, bestLen = 0;
           for (var i = 0; i < els.length; i++) {
             var rect = els[i].getBoundingClientRect();
             var t = els[i].textContent.trim();
-            if (rect.width > 0 && rect.height > 0 && t.length > bestLen) {
-              best = els[i];
-              bestLen = t.length;
-            }
+            if (rect.width > 0 && rect.height > 0 && t.length > bestLen) { best = els[i]; bestLen = t.length; }
           }
           return best;
         }
 
-        // 点击横向tab或下拉menu切换section
+        // 切换到指定section（Claims / Description / Drawings 等）
         async function switchSection(name) {
-          // 记录当前激活面板引用，切换后等待其变化
-          var oldPanel = getActivePanel();
+          var btn = getDropdownBtn();
+          if (!btn) return false;
 
-          // ── 方法1: 尝试直接点击横向 tab（宽屏模式） ──
-          var tabClicked = await tryClickHorizontalTab(name);
-          if (tabClicked) {
-            return await waitForPanelChange(oldPanel, name, 8000);
-          }
-
-          // ── 方法2: 下拉菜单模式（窄屏/移动端） ──
-          return await switchViaDropdown(name, oldPanel);
-        }
-
-        // 尝试点击横向排列的tab
-        async function tryClickHorizontalTab(name) {
-          // 查找所有可能是tab的元素（非dropdown内的）
-          var allTabs = document.querySelectorAll('[role="tab"], button, a');
-          for (var i = 0; i < allTabs.length; i++) {
-            var t = allTabs[i];
-            var tt = txt(t);
-            if (tt !== name) continue;
-            var rect = t.getBoundingClientRect();
-            if (rect.width < 20 || rect.height < 10) continue;
-            if (rect.top < 50 || rect.top > 200) continue;
-            // 排除dropdown面板内的（隐藏的）
-            var inDropdown = false;
-            var p = t.parentElement;
-            while (p) {
-              var pcls = (typeof p.className === 'string') ? p.className : '';
-              if (pcls.indexOf('dropdown') !== -1 && pcls.indexOf('panel') !== -1) {
-                // 检查是否可见
-                var pr = p.getBoundingClientRect();
-                if (pr.width === 0 || pr.height === 0 || getComputedStyle(p).display === 'none') {
-                  inDropdown = true;
-                  break;
-                }
-              }
-              p = p.parentElement;
-            }
-            if (inDropdown) continue;
-            // 已经是当前激活的tab
-            var cls = (typeof t.className === 'string') ? t.className : '';
-            if (cls.indexOf('active') !== -1 || t.getAttribute('aria-selected') === 'true') {
-              return true; // 已经在这个tab
-            }
-            t.click();
-            await sleep(300);
+          // 已经在目标section
+          if (btn.textContent.trim() === name) {
+            await waitForContentReady(name, 5000);
             return true;
           }
-          return false;
-        }
 
-        // 通过下拉菜单切换
-        async function switchViaDropdown(name, oldPanel) {
-          // 找到下拉触发按钮
-          var trigger = document.querySelector('[class*="tabs__list--dropdown-panel"] > button');
-          if (!trigger) {
-            // 回退: 找顶部区域显示当前section名的按钮
-            var known = ['Bibliographic data','Claims','Description','Drawings','Citations','Original document','Legal events','Patent family'];
-            var allBtns = document.querySelectorAll('button');
-            for (var i = 0; i < allBtns.length; i++) {
-              var b = allBtns[i];
-              var rect = b.getBoundingClientRect();
-              var t = b.textContent.trim();
-              if (rect.top > 50 && rect.top < 160 && known.indexOf(t) !== -1) { trigger = b; break; }
-            }
+          // 记录切换前内容签名
+          var oldSig = getContentSignature();
+
+          // 尝试横向tab（宽屏模式，某些布局下tab是横向排列的）
+          if (await tryClickHorizontalTab(name)) {
+            return await waitForSectionReady(name, oldSig, 10000);
           }
-          if (!trigger) return false;
 
-          // 点击打开下拉
-          trigger.click();
-          await sleep(500);
+          // 下拉菜单模式
+          btn.click();
+          await sleep(400);
 
-          // 在下拉菜单项中找到目标
           var items = document.querySelectorAll('li, [role="menuitem"], [role="option"]');
           var found = null;
           for (var j = 0; j < items.length; j++) {
             if (items[j].textContent.trim() === name) {
               var r = items[j].getBoundingClientRect();
               if (r.width > 0 && r.height > 0 && r.top > 50 && r.top < 700) {
-                // 排除子tab（Original claims / Claims tree等）
                 var inSubTab = false;
                 var p = items[j].parentElement;
                 while (p) {
@@ -334,70 +296,103 @@
               }
             }
           }
+
           if (found) {
             found.click();
-            await sleep(300);
-            return await waitForPanelChange(oldPanel, name, 10000);
+            return await waitForSectionReady(name, oldSig, 12000);
           }
           // 关闭菜单
           document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
           return false;
         }
 
-        // 等待面板切换完成（新面板出现并有内容或加载中）
-        async function waitForPanelChange(oldPanel, sectionName, timeout) {
-          timeout = timeout || 8000;
+        // 尝试点击横向排列的tab（非dropdown模式）
+        async function tryClickHorizontalTab(name) {
+          var tablist = document.querySelector('[role="tablist"]');
+          if (!tablist) return false;
+          var tabs = tablist.querySelectorAll('[role="tab"]');
+          for (var i = 0; i < tabs.length; i++) {
+            var tt = tabs[i].textContent.trim();
+            if (tt !== name) continue;
+            var cls = (typeof tabs[i].className === 'string') ? tabs[i].className : '';
+            if (cls.indexOf('active') !== -1 || tabs[i].getAttribute('aria-selected') === 'true') return true;
+            var rect = tabs[i].getBoundingClientRect();
+            if (rect.width < 20 || rect.height < 10) continue;
+            tabs[i].click();
+            await sleep(300);
+            return true;
+          }
+          return false;
+        }
+
+        // 等待section切换完成：下拉按钮文字匹配 + 内容加载完成
+        async function waitForSectionReady(sectionName, oldSig, timeout) {
+          timeout = timeout || 10000;
+          // 第一步：等待下拉按钮文字变为目标section
+          var btnOk = await waitFor(function() {
+            var b = getDropdownBtn();
+            return b && b.textContent.trim() === sectionName;
+          }, Math.min(timeout, 5000), 150);
+
+          if (!btnOk) {
+            // 按钮文字没变化，可能是横向tab模式或切换失败，再等等
+            await sleep(1000);
+          }
+
+          // 第二步：等待loading/spinner消失
+          await waitFor(function() {
+            var panel = getActivePanel();
+            if (!panel) return false;
+            var sp = panel.querySelector('[class*="loading"], [class*="spinner"], [class*="progress"], [class*="skeleton"]');
+            return !sp;
+          }, 8000, 200);
+
+          // 第三步：等待内容就绪（文字或图片）
+          await waitForContentReady(sectionName, Math.max(timeout - 5000, 3000));
+          return true;
+        }
+
+        // 等待内容就绪（针对不同section类型）
+        async function waitForContentReady(sectionName, timeout) {
+          timeout = timeout || 5000;
           var start = Date.now();
-          var newPanel = null;
           while (Date.now() - start < timeout) {
-            // 检查面板是否变化
-            var cur = getActivePanel();
-            if (cur && cur !== oldPanel) {
-              newPanel = cur;
-              break;
-            }
-            // 即使同一面板引用，检查内容是否在更新
-            if (cur) {
-              var hasSpinner = cur.querySelector('[class*="loading"], [class*="spinner"], [class*="skeleton"]');
-              var content = cur.querySelector('[class*="text-block__content"]');
-              if (content && content.textContent.trim().length > 5 && !hasSpinner) {
-                newPanel = cur;
-                break;
-              }
+            var sig = getContentSignature();
+            var panel = getActivePanel();
+            if (!panel) { await sleep(200); continue; }
+
+            if (sectionName === 'Drawings' || sectionName === 'Original document') {
+              // 图片类section：等待大图片出现
+              if (sig.imgCount > 0) break;
+            } else if (sectionName === 'Citations' || sectionName === 'Patent family' || sectionName === 'Legal events') {
+              // 数据类section：有任何文本内容就算（可能没有text-block__content）
+              if (sig.textLen > 10) break;
+            } else {
+              // 文本类section（Bibliographic data, Claims, Description）：等待足够文本
+              var tbc = panel.querySelector('[class*="text-block__content"]');
+              if (tbc && tbc.textContent.trim().length > 20) break;
+              if (!tbc && sig.textLen > 50) break;
             }
             await sleep(200);
           }
-          if (newPanel) {
-            // 额外等待内容渲染
-            await sleep(800);
-            // 检查是否有loading spinner，如果有再等
-            var spinner = newPanel.querySelector('[class*="loading"], [class*="spinner"], [class*="progress"]');
-            if (spinner) {
-              await waitFor(function() {
-                var s = newPanel.querySelector('[class*="loading"], [class*="spinner"], [class*="progress"]');
-                return !s;
-              }, 8000, 300);
-              await sleep(500);
-            }
-            return true;
-          }
-          // 即使没检测到面板变化，也给些时间让内容加载
-          await sleep(1000);
-          return true;
+          // 额外等待渲染完成
+          await sleep(500);
         }
 
         // 确保在正确的子tab（Claims下的"Original claims"）
         async function ensureSubTab(name) {
-          var subTabs = document.querySelectorAll('[role="tablist"] [role="tab"]');
+          var tablist = document.querySelector('[role="tablist"]');
+          if (!tablist) return false;
+          var subTabs = tablist.querySelectorAll('[role="tab"]');
           for (var i = 0; i < subTabs.length; i++) {
             if (subTabs[i].textContent.trim() === name) {
               var cls = (typeof subTabs[i].className === 'string') ? subTabs[i].className : '';
               var isActive = cls.indexOf('active') !== -1 || cls.indexOf('selected') !== -1 || subTabs[i].getAttribute('aria-selected') === 'true';
               if (!isActive) {
-                var oldP = getActivePanel();
+                var oldSig = getContentSignature();
                 subTabs[i].click();
                 await sleep(300);
-                await waitForPanelChange(oldP, name, 5000);
+                await waitForContentReady('Claims', 5000);
               }
               return true;
             }
@@ -405,7 +400,7 @@
           return false;
         }
 
-        // 获取当前tab激活面板内的图片
+        // 获取当前激活面板内的图片URL
         function getPanelImages() {
           var panel = getActivePanel();
           if (!panel) return [];
@@ -413,13 +408,13 @@
           var srcs = [];
           for (var i = 0; i < imgs.length; i++) {
             var src = imgs[i].src || imgs[i].getAttribute('data-src') || imgs[i].getAttribute('data-lazy-src') || '';
-            if (src && src.indexOf('http') === 0 && src.indexOf('data:') !== 0 && srcs.indexOf(src) === -1) {
-              // 过滤掉小图标
-              var w = imgs[i].naturalWidth || imgs[i].width || 0;
-              var h = imgs[i].naturalHeight || imgs[i].height || 0;
-              if ((w > 50 || h > 50) || src.indexOf('drawing') !== -1 || src.indexOf('image') !== -1) {
-                srcs.push(src);
-              }
+            if (!src || src.indexOf('http') !== 0 || src.indexOf('data:') === 0) continue;
+            if (srcs.indexOf(src) !== -1) continue;
+            var w = imgs[i].naturalWidth || imgs[i].width || 0;
+            var h = imgs[i].naturalHeight || imgs[i].height || 0;
+            // 过滤小图标和logo
+            if ((w > 100 && h > 100) || src.indexOf('/images/') !== -1 || src.indexOf('/pages/') !== -1) {
+              srcs.push(src);
             }
           }
           return srcs;
