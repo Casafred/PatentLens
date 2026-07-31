@@ -808,9 +808,9 @@
 
                 // 方式2: 正则从文本提取（精确匹配专利号格式）
                 if (citations.length === 0) {
-                  // 专利号格式: 2字母国家代码 + 7位以上数字 + 1-2位kind code
-                  // 使用正向断言确保kind code后不是数字或大写字母（避免贪婪匹配标题文本）
-                  var pnRe = /([A-Z]{2})(\d{7,})([A-Z]\d?)(?![A-Z\d])/g;
+                  // 专利号格式: 2字母国家代码 + 7位以上数字 + kind code(1字母+可选1数字)
+                  // 注意: 不能用负向断言(?![A-Z\d])，因为专利号后紧跟标题大写字母
+                  var pnRe = /([A-Z]{2})(\d{7,})([A-Z]\d?)/g;
                   var pm;
                   while ((pm = pnRe.exec(citeText)) !== null) {
                     var pn2 = (pm[1] + pm[2] + pm[3]).toUpperCase();
