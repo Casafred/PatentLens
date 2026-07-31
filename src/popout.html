@@ -462,6 +462,30 @@
           return srcs;
         }
 
+        // 将图片URL转为base64 data URL（解决CORS和URL过期问题）
+        async function imagesToBase64(urls) {
+          var result = [];
+          for (var i = 0; i < urls.length; i++) {
+            try {
+              var resp = await fetch(urls[i], { credentials: 'include' });
+              if (!resp.ok) { result.push(urls[i]); continue; }
+              var blob = await resp.blob();
+              var dataUrl = await new Promise(function(resolve, reject) {
+                var reader = new FileReader();
+                reader.onload = function() { resolve(reader.result); };
+                reader.onerror = function() { reject(new Error('read failed')); };
+                reader.readAsDataURL(blob);
+              });
+              result.push(dataUrl);
+            } catch(e) {
+              // 如果转base64失败，保留原始URL作为回退
+              console.warn('[extract] image to base64 failed:', urls[i], e.message);
+              result.push(urls[i]);
+            }
+          }
+          return result;
+        }
+
         return (async function() {
           var result = { office: 'EP', type: 'patent_full', source: 'Espacenet' };
 
@@ -478,12 +502,48 @@
           await sleep(1500);
 
           // ── 专利号 ──
-          var pnEl = document.querySelector('[class*="publication-number"], [data-qa="publication-number"]');
-          if (pnEl) {
-            result.patent_number = txt(pnEl).replace(/\s+/g, '');
-          } else {
-            var m = location.pathname.match(/publication\/([A-Z0-9]+)/i);
-            if (m) result.patent_number = m[1];
+          // 优先从URL获取（最可靠，不会取到同族）：
+          // 1. /publication/XXX 路径段
+          // 2. ?q=XXX 查询参数
+          var urlPn = null;
+          var pathMatch = location.pathname.match(/publication\/([A-Z]{2}\d+[A-Z0-9]*)/i);
+          if (pathMatch) urlPn = pathMatch[1].toUpperCase();
+          if (!urlPn) {
+            var qMatch = location.search.match(/[?&]q=([A-Z0-9]+)/i);
+            if (qMatch) urlPn = qMatch[1].toUpperCase();
+          }
+          // 从DOM获取：限定在页面顶部header区域，避免取到同族列表
+          var domPn = null;
+          var hdrPnEl = document.querySelector('header [class*="publication-number"], header [data-qa="publication-number"], [class*="header"] [class*="publication-number"]');
+          if (!hdrPnEl) {
+            // 回退：查找当前激活面板中的publication-number（Bibliographic data面板）
+            var activePanel = getActivePanel();
+            if (activePanel) {
+              hdrPnEl = activePanel.querySelector('[class*="publication-number"], [data-qa="publication-number"]');
+            }
+          }
+          if (!hdrPnEl) {
+            hdrPnEl = document.querySelector('[class*="publication-number"], [data-qa="publication-number"]');
+          }
+          if (hdrPnEl) {
+            var domText = txt(hdrPnEl).replace(/\s+/g, '').toUpperCase();
+            // 验证DOM提取的号码看起来像专利号（2字母+数字+可选kind code）
+            if (/^[A-Z]{2}\d+[A-Z0-9]*$/.test(domText)) {
+              domPn = domText;
+            }
+          }
+          // 优先使用URL中的专利号；DOM作为补充验证
+          result.patent_number = urlPn || domPn;
+          if (!result.patent_number) {
+            // 最终回退：从页面所有publication-number元素中找第一个看起来像当前页面的
+            var allPnEls = document.querySelectorAll('[class*="publication-number"], [data-qa="publication-number"]');
+            for (var pi = 0; pi < allPnEls.length; pi++) {
+              var t = txt(allPnEls[pi]).replace(/\s+/g, '').toUpperCase();
+              if (/^[A-Z]{2}\d+[A-Z0-9]*$/.test(t) && t.length >= 8) {
+                result.patent_number = t;
+                break;
+              }
+            }
           }
 
           // ── 先切回 Bibliographic data 以提取标题、摘要和著录数据 ──
@@ -772,6 +832,24 @@
             var drawOk = await switchSection('Drawings');
             if (drawOk) {
               await sleep(1000);
+              // 滚动面板以触发懒加载图片
+              var drawPanel = getActivePanel();
+              if (drawPanel) {
+                var scrollContainer = drawPanel.querySelector('[class*="scroll"], [class*="drawings"], [class*="figures"]') || drawPanel;
+                var prevScrollTop = -1;
+                for (var si = 0; si < 10; si++) {
+                  var curScroll = scrollContainer.scrollTop || window.scrollY || 0;
+                  if (curScroll === prevScrollTop && si > 0) break;
+                  prevScrollTop = curScroll;
+                  scrollContainer.scrollTop = (scrollContainer.scrollHeight || document.body.scrollHeight);
+                  window.scrollTo(0, document.body.scrollHeight);
+                  await sleep(400);
+                }
+                // 滚回顶部
+                scrollContainer.scrollTop = 0;
+                window.scrollTo(0, 0);
+                await sleep(500);
+              }
               var drawings = getPanelImages();
               // 也全局搜索drawing相关图片
               if (drawings.length === 0) {
@@ -783,7 +861,10 @@
                   }
                 }
               }
-              if (drawings.length > 0) result.drawings = drawings;
+              // 将图片转为base64 data URL，避免CORS问题和URL过期
+              if (drawings.length > 0) {
+                result.drawings = await imagesToBase64(drawings);
+              }
             }
           } catch(e) { console.warn('[extract] drawings error:', e); }
 
@@ -2030,11 +2111,19 @@
           smartInfo.textContent = '切换标签页抓取数据中，请稍候（约10-20秒）';
           wv.executeJavaScript("(" + espacenetExtractScript.toString() + ")()").then(function(result) {
             _extractingEspacenet = false;
-            if (extractBtn) { extractBtn.disabled = false; extractBtn.innerHTML = '✅ 已提取'; }
+            if (result && result.error) {
+              if (extractBtn) { extractBtn.disabled = false; extractBtn.innerHTML = '❌ 失败，重试'; }
+              console.error('[Espacenet] extract error:', result.error);
+              return;
+            }
+            if (extractBtn) { extractBtn.disabled = false; extractBtn.innerHTML = '✅ 已提取，窗口即将关闭...'; }
+            smartLabel.innerHTML = 'Espacenet: 提取完成';
+            smartInfo.textContent = '数据已发送到主应用，窗口即将关闭';
             if (result && window.electronAPI && window.electronAPI.sendToMain) {
               window.electronAPI.sendToMain(result);
-              if (extractBtn) { setTimeout(function(){ extractBtn.innerHTML = act.label; }, 2000); }
             }
+            // 1.5秒后自动关闭窗口
+            setTimeout(function() { window.close(); }, 1500);
           }).catch(function(err) {
             _extractingEspacenet = false;
             if (extractBtn) { extractBtn.disabled = false; extractBtn.innerHTML = '❌ 失败，重试'; }

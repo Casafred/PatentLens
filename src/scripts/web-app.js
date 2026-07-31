@@ -2467,6 +2467,14 @@ function openInAppWebview(url, title, opts) {
   const isElectron = !!(window.electronAPI);
   opts = opts || null;
 
+  // 如果是Espacenet搜索URL，记录期望的专利号（用于防止提取到同族专利导致重复标签页）
+  if (url && url.indexOf('worldwide.espacenet.com') !== -1) {
+    var qMatch = url.match(/[?&]q=([A-Z0-9]+)/i);
+    if (qMatch) {
+      window._espacenetExpectedPatent = qMatch[1].toUpperCase().replace(/[\s\/]/g, '');
+    }
+  }
+
   // Electron 环境：直接打开独立弹出窗口（popout），支持拖拽到外部、翻译、刷新、外部浏览器打开
   if (isElectron && window.electronAPI && typeof window.electronAPI.openPopoutWindow === "function") {
     window.electronAPI.openPopoutWindow(url, title, opts);
@@ -17306,7 +17314,16 @@ function handleExtensionData(data) {
 
   // Espacenet 专利全文 — 显示在专利详情界面（与 GP 查询一致）
   if (data.office === "EP" && data.type === "patent_full" && !data.error) {
-    const pn = (data.patent_number || "").trim().toUpperCase().replace(/[\s\/;]/g, "");
+    var pn = (data.patent_number || "").trim().toUpperCase().replace(/[\s\/;]/g, "");
+    // 如果设置了期望的专利号（打开弹窗时记录的），优先使用期望的专利号
+    // 防止提取到同族专利号导致重复标签页
+    var expectedPn = window._espacenetExpectedPatent;
+    if (expectedPn && expectedPn !== pn) {
+      console.log('[Espacenet] 提取专利号 ' + pn + ' 与期望 ' + expectedPn + ' 不一致，使用期望专利号');
+      pn = expectedPn;
+    }
+    // 清除期望专利号标记
+    window._espacenetExpectedPatent = null;
     if (!pn) {
       showNotification("无法识别专利号");
       return;
@@ -19948,6 +19965,8 @@ function setEspacenetTestMode(enabled) {
 function openEspacenetWithTestMode(patentNumber) {
   if (!getEspacenetTestMode()) return false;
   var espacenetUrl = 'https://worldwide.espacenet.com/patent/search?q=' + encodeURIComponent(patentNumber);
+  // 记录期望的专利号（防止提取到同族专利导致重复标签页）
+  window._espacenetExpectedPatent = patentNumber.trim().toUpperCase().replace(/[\s\/]/g, '');
   // 用应用内弹出窗口打开（popout window）
   if (window.electronAPI && window.electronAPI.openPopoutWindow) {
     window.electronAPI.openPopoutWindow(espacenetUrl, 'Espacenet: ' + patentNumber);
