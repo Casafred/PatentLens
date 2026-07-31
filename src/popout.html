@@ -402,23 +402,37 @@
           await sleep(500);
         }
 
-        // 确保在正确的子tab（Claims下的"Original claims"）
+        // 确保在正确的子tab（如Claims下的"Original claims"或"Claims tree"）
         async function ensureSubTab(name) {
-          var tablist = document.querySelector('[role="tablist"]');
-          if (!tablist) return false;
-          var subTabs = tablist.querySelectorAll('[role="tab"]');
-          for (var i = 0; i < subTabs.length; i++) {
-            if (subTabs[i].textContent.trim() === name) {
-              var cls = (typeof subTabs[i].className === 'string') ? subTabs[i].className : '';
-              var isActive = cls.indexOf('active') !== -1 || cls.indexOf('selected') !== -1 || subTabs[i].getAttribute('aria-selected') === 'true';
-              if (!isActive) {
-                var oldSig = getContentSignature();
-                subTabs[i].click();
-                await sleep(300);
-                await waitForContentReady('Claims', 5000);
-              }
-              return true;
+          // 子tab在 tabs__panel 内，直接找所有 role=tab
+          var allTabs = document.querySelectorAll('[role="tab"]');
+          for (var i = 0; i < allTabs.length; i++) {
+            if (allTabs[i].textContent.trim() !== name) continue;
+            // 确认是子tab（在tabs__panel内）
+            var parent = allTabs[i].parentElement;
+            var inPanel = false;
+            while (parent) {
+              var pcls = (typeof parent.className === 'string') ? parent.className : '';
+              if (pcls.indexOf('tabs__panel') !== -1) { inPanel = true; break; }
+              parent = parent.parentElement;
             }
+            if (!inPanel) continue;
+
+            var cls = (typeof allTabs[i].className === 'string') ? allTabs[i].className : '';
+            var isActive = cls.indexOf('active') !== -1 || cls.indexOf('selected') !== -1 || allTabs[i].getAttribute('aria-selected') === 'true';
+            if (!isActive) {
+              allTabs[i].click();
+              await sleep(500);
+              // 等待内容加载
+              await waitFor(function() {
+                var panel = getActivePanel();
+                if (!panel) return false;
+                var sp = panel.querySelector('[class*="loading"], [class*="spinner"], [class*="progress"]');
+                return !sp;
+              }, 5000, 200);
+              await sleep(500);
+            }
+            return true;
           }
           return false;
         }
@@ -623,37 +637,101 @@
             if (classes.length) { result.classifications = classes; result.cpc = classes.join('; '); }
           } catch(e) { console.warn('[extract] biblio error:', e); }
 
-          // ── 权利要求 ──
+          // ── 权利要求 ── 优先用 Claims tree 区分独权/从权
           try {
             var claimsOk = await switchSection('Claims');
             if (claimsOk) {
-              await ensureSubTab('Original claims');
-              await sleep(500);
-              var claimsContent = getContentEl();
-              if (claimsContent) {
-                var claimParas = claimsContent.querySelectorAll('p');
-                var claimItems = [];
-                var currentClaim = null;
-                for (var cp = 0; cp < claimParas.length; cp++) {
-                  var ct = claimParas[cp].textContent.trim();
-                  if (!ct) continue;
-                  var numMatch = ct.match(/^(\d+)\s*[.、)]\s*(.*)/s);
-                  if (numMatch) {
-                    if (currentClaim) claimItems.push(currentClaim);
-                    currentClaim = { num: numMatch[1], text: numMatch[2].replace(/\s+/g, ' ').trim() };
-                  } else if (currentClaim) {
-                    currentClaim.text += ' ' + ct.replace(/\s+/g, ' ').trim();
-                  } else {
-                    claimItems.push({ num: String(claimItems.length + 1), text: ct.replace(/\s+/g, ' ').trim() });
+              // 先尝试 Claims tree 子标签（有树形结构可区分独权从权）
+              var treeOk = await ensureSubTab('Claims tree');
+              await sleep(800);
+              var claimItems = [];
+
+              // 方式1: 从 claims-node DOM结构提取（区分独权/从权）
+              var panel = getActivePanel();
+              if (panel) {
+                var claimNodes = panel.querySelectorAll('[class*="claims-node"]');
+                if (claimNodes.length > 0) {
+                  // 构建节点映射: 每个claims-node → 其children-container
+                  for (var cn = 0; cn < claimNodes.length; cn++) {
+                    var node = claimNodes[cn];
+                    var nodeText = node.querySelector('[class*="node-text"]');
+                    var fullText = nodeText ? nodeText.textContent.trim() : node.textContent.trim();
+                    // 提取权利要求编号
+                    var cNumMatch = fullText.match(/^(\d+)\s*[.、)]\s*(.*)/s);
+                    var cNum = cNumMatch ? cNumMatch[1] : String(cn + 1);
+                    var cText = cNumMatch ? cNumMatch[2].replace(/\s+/g, ' ').trim() : fullText.replace(/\s+/g, ' ').trim();
+
+                    // 判断独权/从权: 父元素是 text-block__content → 独权; children-container → 从权
+                    var parentCls = (typeof node.parentElement.className === 'string') ? node.parentElement.className : '';
+                    var isIndependent = parentCls.indexOf('text-block__content') !== -1;
+                    var dependentOn = null;
+                    if (!isIndependent) {
+                      // 从属权利要求: 找到包含此children-container的claims-node（即父权）
+                      var container = node.parentElement;
+                      var parentNode = container ? container.parentElement : null;
+                      if (parentNode) {
+                        // parentNode应该是一个claims-node，找它的node-text中的编号
+                        var parentText = parentNode.querySelector('[class*="node-text"]');
+                        if (parentText) {
+                          var pNumMatch = parentText.textContent.trim().match(/^(\d+)/);
+                          if (pNumMatch) dependentOn = pNumMatch[1];
+                        }
+                      }
+                    }
+                    // 回退: 从文本中检测 "according to claim X" / "of claim X"
+                    if (!isIndependent) {
+                      var depMatch = cText.match(/according to claim\s*(\d+)/i) || cText.match(/of claim\s*(\d+)/i);
+                      if (depMatch) dependentOn = depMatch[1];
+                    } else {
+                      // 如果文本中包含 "according to claim" 则改为从属
+                      var depCheck = cText.match(/according to claim\s*(\d+)/i) || cText.match(/of claim\s*(\d+)/i);
+                      if (depCheck) { isIndependent = false; dependentOn = depCheck[1]; }
+                    }
+
+                    claimItems.push({
+                      num: cNum,
+                      text: cText,
+                      type: isIndependent ? 'independent' : 'dependent',
+                      dependent_on: dependentOn
+                    });
                   }
                 }
-                if (currentClaim) claimItems.push(currentClaim);
-                if (claimItems.length > 0) {
-                  result.claims = claimItems;
-                } else {
-                  var claimsText = txt(claimsContent);
-                  if (claimsText) result.claims = claimsText;
+              }
+
+              // 方式2: 回退到 Original claims 纯文本提取
+              if (claimItems.length === 0) {
+                await ensureSubTab('Original claims');
+                await sleep(500);
+                var claimsContent = getContentEl();
+                if (claimsContent) {
+                  var claimParas = claimsContent.querySelectorAll('p');
+                  var currentClaim = null;
+                  for (var cp = 0; cp < claimParas.length; cp++) {
+                    var ct = claimParas[cp].textContent.trim();
+                    if (!ct) continue;
+                    var numMatch = ct.match(/^(\d+)\s*[.、)]\s*(.*)/s);
+                    if (numMatch) {
+                      if (currentClaim) claimItems.push(currentClaim);
+                      var cText2 = numMatch[2].replace(/\s+/g, ' ').trim();
+                      var depMatch2 = cText2.match(/according to claim\s*(\d+)/i) || cText2.match(/of claim\s*(\d+)/i);
+                      currentClaim = {
+                        num: numMatch[1],
+                        text: cText2,
+                        type: depMatch2 ? 'dependent' : 'independent',
+                        dependent_on: depMatch2 ? depMatch2[1] : null
+                      };
+                    } else if (currentClaim) {
+                      currentClaim.text += ' ' + ct.replace(/\s+/g, ' ').trim();
+                    } else {
+                      claimItems.push({ num: String(claimItems.length + 1), text: ct.replace(/\s+/g, ' ').trim(), type: 'independent', dependent_on: null });
+                    }
+                  }
+                  if (currentClaim) claimItems.push(currentClaim);
                 }
+              }
+
+              if (claimItems.length > 0) {
+                result.claims = claimItems;
               }
             }
           } catch(e) { console.warn('[extract] claims error:', e); }
@@ -704,35 +782,72 @@
           try {
             var citeOk = await switchSection('Citations');
             if (citeOk) {
-              await sleep(1000);
-              var citeContent = getContentEl();
+              await sleep(1500);
+              var citePanel = getActivePanel();
               var citations = [];
               var citeSet = {};
-              if (citeContent) {
-                // 从链接提取
-                var citeLinks = citeContent.querySelectorAll('a');
+              var ownPN = (result.patent_number || '').toUpperCase();
+
+              if (citePanel) {
+                var citeText = citePanel.textContent.trim();
+
+                // 方式1: 从链接提取专利号
+                var citeLinks = citePanel.querySelectorAll('a');
                 for (var cl = 0; cl < citeLinks.length; cl++) {
                   var href = citeLinks[cl].href || '';
                   var ctext = txt(citeLinks[cl]);
-                  var pnMatch = ctext.match(/^([A-Z]{2}\s*\d+[A-Z0-9]*)/) || href.match(/publication\/([A-Z0-9]+)/i);
+                  var pnMatch = ctext.match(/^([A-Z]{2}\s*\d{6,}[A-Z0-9]*)/) || href.match(/publication\/([A-Z0-9]+)/i);
                   if (pnMatch) {
                     var pn = pnMatch[1].replace(/\s+/g, '').toUpperCase();
-                    if (pn && !citeSet[pn] && pn.length >= 5 && pn !== (result.patent_number||'').toUpperCase()) {
+                    if (pn && !citeSet[pn] && pn.length >= 8 && pn !== ownPN) {
                       citeSet[pn] = true;
                       citations.push({ patent_number: pn });
                     }
                   }
                 }
-                // 回退: 正则从文本提取
+
+                // 方式2: 正则从文本提取（精确匹配专利号格式）
                 if (citations.length === 0) {
-                  var ctext2 = citeContent.textContent;
-                  var pnRe = /\b([A-Z]{2}\s*\d{4,}[A-Z0-9]*)\b/g;
+                  // 专利号格式: 2字母国家代码 + 7位以上数字 + 1-2位kind code
+                  // 使用正向断言确保kind code后不是数字或大写字母（避免贪婪匹配标题文本）
+                  var pnRe = /([A-Z]{2})(\d{7,})([A-Z]\d?)(?![A-Z\d])/g;
                   var pm;
-                  while ((pm = pnRe.exec(ctext2)) !== null) {
-                    var pn2 = pm[1].replace(/\s+/g, '').toUpperCase();
-                    if (!citeSet[pn2] && pn2 !== (result.patent_number||'').toUpperCase() && pn2.length >= 6) {
+                  while ((pm = pnRe.exec(citeText)) !== null) {
+                    var pn2 = (pm[1] + pm[2] + pm[3]).toUpperCase();
+                    if (!citeSet[pn2] && pn2 !== ownPN && pn2.length >= 9) {
                       citeSet[pn2] = true;
                       citations.push({ patent_number: pn2 });
+                    }
+                  }
+                }
+
+                // 方式3: 更宽松的正则（兼容6位数字的专利号）
+                if (citations.length === 0) {
+                  var pnRe2 = /\b([A-Z]{2})(\d{6,})([A-Z]\d?)\b/g;
+                  var pm2;
+                  while ((pm2 = pnRe2.exec(citeText)) !== null) {
+                    var pn3 = (pm2[1] + pm2[2] + pm2[3]).toUpperCase();
+                    // 排除明显不是专利号的（如 "OL2016", "LY2019" 等日期片段）
+                    if (pn3.match(/^(OL|LY|AL|UL|IL|EL)/i)) continue;
+                    if (!citeSet[pn3] && pn3 !== ownPN && pn3.length >= 8) {
+                      citeSet[pn3] = true;
+                      citations.push({ patent_number: pn3 });
+                    }
+                  }
+                }
+
+                // 方式4: 从表格行/结构化元素提取
+                if (citations.length === 0) {
+                  var citeRows = citePanel.querySelectorAll('tr, [class*="citation-item"], [class*="result-item"]');
+                  for (var cr = 0; cr < citeRows.length; cr++) {
+                    var rText = txt(citeRows[cr]);
+                    var rMatch = rText.match(/^([A-Z]{2}\s*\d{6,}[A-Z0-9]*)/);
+                    if (rMatch) {
+                      var pn4 = rMatch[1].replace(/\s+/g, '').toUpperCase();
+                      if (!citeSet[pn4] && pn4 !== ownPN) {
+                        citeSet[pn4] = true;
+                        citations.push({ patent_number: pn4 });
+                      }
                     }
                   }
                 }
