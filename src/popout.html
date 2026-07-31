@@ -256,26 +256,40 @@
           return best;
         }
 
+        // 获取当前激活的section名称（从下拉按钮或横向tab的active状态）
+        function getCurrentSection() {
+          // 横向tab模式：找active/selected的tab
+          var tabs = document.querySelectorAll('[role="tab"]');
+          for (var i = 0; i < tabs.length; i++) {
+            var cls = (typeof tabs[i].className === 'string') ? tabs[i].className : '';
+            var isActive = cls.indexOf('active') !== -1 || cls.indexOf('selected') !== -1 ||
+                           tabs[i].getAttribute('aria-selected') === 'true';
+            if (isActive) return tabs[i].textContent.trim();
+          }
+          // 下拉菜单模式：下拉按钮显示当前section名
+          var btn = getDropdownBtn();
+          return btn ? btn.textContent.trim() : '';
+        }
+
         // 切换到指定section（Claims / Description / Drawings 等）
         async function switchSection(name) {
-          var btn = getDropdownBtn();
-          if (!btn) return false;
-
           // 已经在目标section
-          if (btn.textContent.trim() === name) {
+          if (getCurrentSection() === name) {
             await waitForContentReady(name, 5000);
             return true;
           }
 
-          // 记录切换前内容签名
           var oldSig = getContentSignature();
 
-          // 尝试横向tab（宽屏模式，某些布局下tab是横向排列的）
+          // 方法1: 尝试横向tab（宽屏模式）
           if (await tryClickHorizontalTab(name)) {
             return await waitForSectionReady(name, oldSig, 10000);
           }
 
-          // 下拉菜单模式
+          // 方法2: 下拉菜单模式
+          var btn = getDropdownBtn();
+          if (!btn) return false;
+
           btn.click();
           await sleep(400);
 
@@ -301,21 +315,29 @@
             found.click();
             return await waitForSectionReady(name, oldSig, 12000);
           }
-          // 关闭菜单
           document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
           return false;
         }
 
-        // 尝试点击横向排列的tab（非dropdown模式）
+        // 尝试点击横向排列的tab（不要求tablist容器，直接找role=tab）
         async function tryClickHorizontalTab(name) {
-          var tablist = document.querySelector('[role="tablist"]');
-          if (!tablist) return false;
-          var tabs = tablist.querySelectorAll('[role="tab"]');
+          var tabs = document.querySelectorAll('[role="tab"]');
           for (var i = 0; i < tabs.length; i++) {
             var tt = tabs[i].textContent.trim();
             if (tt !== name) continue;
+            // 排除子tab（如Original claims / Claims tree）
+            if (name !== 'Original claims' && name !== 'Claims tree') {
+              var parent = tabs[i].parentElement;
+              var isSubTab = false;
+              while (parent) {
+                    var pcls = (typeof parent.className === 'string') ? parent.className : '';
+                    if (pcls.indexOf('tabs__list__container') !== -1) { isSubTab = true; break; }
+                    parent = parent.parentElement;
+              }
+              if (isSubTab) continue;
+            }
             var cls = (typeof tabs[i].className === 'string') ? tabs[i].className : '';
-            if (cls.indexOf('active') !== -1 || tabs[i].getAttribute('aria-selected') === 'true') return true;
+            if (cls.indexOf('active') !== -1 || cls.indexOf('selected') !== -1 || tabs[i].getAttribute('aria-selected') === 'true') return true;
             var rect = tabs[i].getBoundingClientRect();
             if (rect.width < 20 || rect.height < 10) continue;
             tabs[i].click();
@@ -325,17 +347,15 @@
           return false;
         }
 
-        // 等待section切换完成：下拉按钮文字匹配 + 内容加载完成
+        // 等待section切换完成：当前section匹配 + 内容加载完成
         async function waitForSectionReady(sectionName, oldSig, timeout) {
           timeout = timeout || 10000;
-          // 第一步：等待下拉按钮文字变为目标section
-          var btnOk = await waitFor(function() {
-            var b = getDropdownBtn();
-            return b && b.textContent.trim() === sectionName;
+          // 第一步：等待当前section变为目标名称（横向tab的active状态或下拉按钮文字）
+          var sectionOk = await waitFor(function() {
+            return getCurrentSection() === sectionName;
           }, Math.min(timeout, 5000), 150);
 
-          if (!btnOk) {
-            // 按钮文字没变化，可能是横向tab模式或切换失败，再等等
+          if (!sectionOk) {
             await sleep(1000);
           }
 
@@ -426,7 +446,7 @@
           // ── 等待页面加载就绪（tab导航出现）──
           var navReady = await waitFor(function() {
             return document.querySelector('[class*="tabs__list--dropdown-panel"] > button') ||
-                   document.querySelector('[role="tablist"] [role="tab"]');
+                   document.querySelector('[role="tab"]');
           }, 20000, 500);
 
           if (!navReady) {
@@ -444,86 +464,159 @@
             if (m) result.patent_number = m[1];
           }
 
+          // ── 先切回 Bibliographic data 以提取标题、摘要和著录数据 ──
+          await switchSection('Bibliographic data');
+          await sleep(500);
+
+          var bioPanel = getActivePanel();
+
           // ── 标题 ──
-          var titleSelectors = ['h1', 'h2[class*="title"]', '[class*="header-title"]'];
-          for (var ts = 0; ts < titleSelectors.length; ts++) {
-            var tel = document.querySelector(titleSelectors[ts]);
-            if (tel) {
-              var tt = txt(tel);
-              if (tt && tt !== 'Espacenet' && tt.length > 3 && tt.length < 500 && tt.indexOf('Just a moment') === -1) {
-                result.title = tt;
-                break;
+          // 优先用 #biblio-title-content（ Espacenet 标准标题元素）
+          if (bioPanel) {
+            var titleEl = bioPanel.querySelector('#biblio-title-content');
+            if (titleEl && titleEl.textContent.trim()) {
+              result.title = txt(titleEl);
+            }
+          }
+          // 回退: 找专利号链接旁边的英文标题文本
+          if (!result.title) {
+            var pnLinks = document.querySelectorAll('a');
+            for (var pi = 0; pi < pnLinks.length; pi++) {
+              if (pnLinks[pi].textContent.trim().match(/^[A-Z]{2}\d/)) {
+                var next = pnLinks[pi].nextElementSibling;
+                if (next && next.textContent.trim()) {
+                  var nt = next.textContent.trim();
+                  if (nt.length > 2 && nt.length < 500 && nt !== 'Espacenet') {
+                    result.title = nt;
+                    break;
+                  }
+                }
+                // 也检查父元素的下一个兄弟
+                var parentNext = pnLinks[pi].parentElement?.nextElementSibling;
+                if (parentNext && parentNext.textContent.trim() && parentNext.textContent.trim().length > 2 && parentNext.textContent.trim().length < 500) {
+                  result.title = parentNext.textContent.trim();
+                  break;
+                }
               }
+            }
+          }
+          // 最终回退
+          if (!result.title) {
+            var h1 = document.querySelector('h1');
+            if (h1) {
+              var ht = txt(h1);
+              if (ht && ht !== 'Espacenet' && ht.indexOf('Just a moment') === -1) result.title = ht;
             }
           }
           if (!result.title) result.title = result.patent_number || '';
 
-          // ── 先切回 Bibliographic data 以提取摘要和著录数据 ──
-          await switchSection('Bibliographic data');
-          await sleep(500);
-
           // ── 摘要 ──
-          var absEl = null;
-          // 在激活面板中找摘要
-          var bioPanel = getActivePanel();
+          // 在Bibliographic data面板中，h5 "Abstract" 后跟 abstract__text div
           if (bioPanel) {
-            absEl = bioPanel.querySelector('[class*="abstract"] [class*="text-block__content"], [class*="abstract"] p, [class*="abstract"]');
-            if (!absEl) {
-              var absBlocks = bioPanel.querySelectorAll('[class*="text-block__content"]');
-              for (var ab = 0; ab < absBlocks.length; ab++) {
-                var at = absBlocks[ab].textContent.trim();
-                if (at.length > 80 && at.length < 5000) { absEl = absBlocks[ab]; break; }
-              }
+            var absLabel = null;
+            var h5s = bioPanel.querySelectorAll('h5');
+            for (var hi = 0; hi < h5s.length; hi++) {
+              if (h5s[hi].textContent.trim() === 'Abstract') { absLabel = h5s[hi]; break; }
             }
-          }
-          if (absEl) {
-            result.abstract = txt(absEl);
+            if (absLabel) {
+              // 查找 abstract__text div 或下一个兄弟元素中的文本
+              var absText = null;
+              var sib = absLabel.nextElementSibling;
+              while (sib && sib.tagName !== 'H5') {
+                var scls = (typeof sib.className === 'string') ? sib.className : '';
+                if (scls.indexOf('abstract__text') !== -1) { absText = sib; break; }
+                // fallback: 任何包含较长文本的div
+                if (!absText && sib.textContent.trim().length > 80) absText = sib;
+                sib = sib.nextElementSibling;
+              }
+              if (absText) result.abstract = txt(absText);
+            }
+            // 回退: 用选择器
+            if (!result.abstract) {
+              var absSel = bioPanel.querySelector('[class*="abstract__text"], [class*="abstract"] [class*="text-block__content"]');
+              if (absSel) result.abstract = txt(absSel);
+            }
           }
 
           // ── 著录数据 ──
+          // Espacenet用 h5 标签作为字段名（Applicants, Inventors, Classifications 等）
+          // 值在 h5 的 nextElementSibling 中
           try {
             function extractBiblioField(label) {
-              var labels = null;
-              if (bioPanel) {
-                labels = bioPanel.querySelectorAll('[class*="biblio__label"], [class*="biblio-label"], dt');
-              }
-              if (!labels || labels.length === 0) {
-                labels = document.querySelectorAll('[class*="biblio__label"], [class*="biblio-label"], dt');
-              }
-              for (var i = 0; i < labels.length; i++) {
-                var lt = txt(labels[i]);
-                if (lt && lt.indexOf(label) !== -1) {
-                  var val = labels[i].nextElementSibling;
+              if (!bioPanel) return null;
+              var h5s = bioPanel.querySelectorAll('h5');
+              for (var i = 0; i < h5s.length; i++) {
+                var lt = h5s[i].textContent.trim();
+                if (lt === label || lt.indexOf(label) !== -1) {
+                  var val = h5s[i].nextElementSibling;
                   if (val) return txt(val);
-                  var parent = labels[i].parentElement;
+                  // 也检查父元素中的其他子元素
+                  var parent = h5s[i].parentElement;
                   if (parent) {
                     var val2 = parent.querySelector('[class*="value"], dd, span:last-child, div:last-child');
-                    if (val2 && val2 !== labels[i]) return txt(val2);
+                    if (val2 && val2 !== h5s[i]) return txt(val2);
                   }
+                }
+              }
+              // 回退: 旧式 biblio__label
+              var labels = bioPanel.querySelectorAll('[class*="biblio__label"], [class*="biblio-label"], dt');
+              for (var j = 0; j < labels.length; j++) {
+                var lt2 = txt(labels[j]);
+                if (lt2 && lt2.indexOf(label) !== -1) {
+                  var val3 = labels[j].nextElementSibling;
+                  if (val3) return txt(val3);
                 }
               }
               return null;
             }
             result.inventors = extractBiblioField('Inventor') || '';
             result.assignees = extractBiblioField('Applicant') || extractBiblioField('Assignee') || '';
-            result.application_date = extractBiblioField('Application date') || '';
-            result.publication_date = extractBiblioField('Publication date') || '';
-            result.priority_date = extractBiblioField('Priority date') || '';
-            result.filing_date = extractBiblioField('Filing date') || '';
+            result.application_date = extractBiblioField('Application') || '';
+            result.publication_date = extractBiblioField('Publication') || '';
+            result.priority_date = extractBiblioField('Priority') || '';
+            result.filing_date = extractBiblioField('Filing') || extractBiblioField('Application') || '';
 
-            var ipcVal = extractBiblioField('IPC') || extractBiblioField('International Patent Classification');
-            var cpcVal = extractBiblioField('CPC') || extractBiblioField('Cooperative Patent Classification');
-            var classes = [];
-            if (ipcVal) ipcVal.split(/[;,]\s*/).forEach(function(c){ c = c.trim(); if (c) classes.push(c); });
-            if (cpcVal) cpcVal.split(/[;,]\s*/).forEach(function(c){ c = c.trim(); if (c && classes.indexOf(c) === -1) classes.push(c); });
-            var classEls = document.querySelectorAll('[class*="classification"]');
-            for (var ce = 0; ce < classEls.length; ce++) {
-              var ct = txt(classEls[ce]);
-              if (ct && ct.length < 80 && ct.match(/[A-Z]\d/)) classes.push(ct);
+            // 从 Publication 字段中提取日期 (格式: JP7862993B2·2026-05-20)
+            if (result.publication_date) {
+              var pdMatch = result.publication_date.match(/(\d{4}-\d{2}-\d{2})/);
+              if (pdMatch) result.publication_date = pdMatch[1];
             }
-            // 去重
-            var seen = {};
-            classes = classes.filter(function(c) { if (seen[c]) return false; seen[c] = true; return true; });
+            if (result.application_date) {
+              var adMatch = result.application_date.match(/(\d{4}-\d{2}-\d{2})/);
+              if (adMatch) result.application_date = adMatch[1];
+            }
+            if (result.priority_date) {
+              var prdMatch = result.priority_date.match(/(\d{4}-\d{2}-\d{2})/);
+              if (prdMatch) result.priority_date = prdMatch[1];
+            }
+
+            // 分类号：从 Classifications h5 下方的链接提取
+            var ipcVal = extractBiblioField('IPC') || '';
+            var cpcVal = extractBiblioField('CPC') || '';
+            var classText = extractBiblioField('Classifications') || '';
+            var classes = [];
+            // 从分类文本中提取
+            if (classText) {
+              var classMatches = classText.match(/[A-Z]\d{2}[A-Z]\s*\d+\/\d+/g);
+              if (classMatches) classes = classMatches;
+            }
+            // 也从链接中提取
+            if (bioPanel) {
+              var classLinks = bioPanel.querySelectorAll('a[href*="classification"], a');
+              for (var cl = 0; cl < classLinks.length; cl++) {
+                var ct = txt(classLinks[cl]);
+                if (ct && ct.match(/^[A-Z]\d{2}[A-Z]/) && ct.length < 30) {
+                  ct = ct.replace(/[;,\s]+$/, '').trim();
+                  if (classes.indexOf(ct) === -1) classes.push(ct);
+                }
+              }
+            }
+            if (ipcVal) {
+              ipcVal.split(/[;,]\s*/).forEach(function(c){ c = c.trim(); if (c && c.match(/[A-Z]\d/) && classes.indexOf(c) === -1) classes.push(c); });
+            }
+            if (cpcVal) {
+              cpcVal.split(/[;,]\s*/).forEach(function(c){ c = c.trim(); if (c && c.match(/[A-Z]\d/) && classes.indexOf(c) === -1) classes.push(c); });
+            }
             if (classes.length) { result.classifications = classes; result.cpc = classes.join('; '); }
           } catch(e) { console.warn('[extract] biblio error:', e); }
 
