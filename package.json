@@ -6,6 +6,10 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "test:electron-smoke": "electron tests/electron-smoke-main.cjs",
+    "verify:refactor": "node scripts/verify-refactor.cjs && npm test",
+    "verify:refactor:full": "npm run verify:refactor && npm run test:electron-smoke",
     "pack": "electron-builder --dir",
     "build:electron": "electron-builder",
     "tauri": "tauri",
@@ -55,6 +59,7 @@
           "scripts/fontkit.umd.min.js",
           "scripts/web-ai.js",
           "scripts/patent-status.js",
+          "scripts/app/**",
           "scripts/web-app.js",
           "scripts/image-annotations.js",
           "scripts/agent/**",

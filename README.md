@@ -1,5 +1,7 @@
 # PatentLens - 专利审查文档获取与梳理工具
 
+> **当前桌面架构：Electron。** `electron-main.js`、`preload.js` 和 `src/web.html` 构成正式运行链路。`src-tauri/` 仅为冻结的历史参考代码，不参与当前开发、运行或打包；新功能和缺陷修复不得同步修改 Tauri。详见 [`docs/00-ACTIVE-ARCHITECTURE.md`](docs/00-ACTIVE-ARCHITECTURE.md)。
+
 一款面向专利从业人员的专业工具，支持从 USPTO/EPO/JPO/CNIPA 等专利局自动获取审查历史文档，通过看板式管理和 AI 智能分析，高效梳理审查意见、答复策略及引用文献。
 
 ---
