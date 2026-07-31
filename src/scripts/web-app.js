@@ -17450,6 +17450,62 @@ function handleExtensionData(data) {
     }
     // drawings: 确保是字符串数组
     if (!Array.isArray(normalized.drawings)) normalized.drawings = [];
+    // patent_citations: 确保是 {patent_number} 对象数组；兼容旧 citations 字段
+    if (!normalized.patent_citations && normalized.citations) {
+      normalized.patent_citations = normalized.citations;
+    }
+    if (Array.isArray(normalized.patent_citations)) {
+      normalized.patent_citations = normalized.patent_citations.map(function(c) {
+        if (typeof c === 'string') return { patent_number: c.trim() };
+        if (c && typeof c === 'object') {
+          return {
+            patent_number: (c.patent_number || c.number || c.publication_number || '').toString().trim(),
+            applicant: c.applicant || c.applicants || '',
+            publication_date: c.publication_date || c.date || ''
+          };
+        }
+        return { patent_number: '' };
+      }).filter(function(c) { return c.patent_number; });
+    } else {
+      normalized.patent_citations = [];
+    }
+    delete normalized.citations;
+    // cited_by / similar_documents: 兜底为空数组
+    if (!Array.isArray(normalized.cited_by)) normalized.cited_by = [];
+    if (!Array.isArray(normalized.similar_documents)) normalized.similar_documents = [];
+    // 日期字段规范化（YYYY-MM-DD）
+    function normalizeDate(d) {
+      if (!d || typeof d !== 'string') return '';
+      d = d.trim();
+      // 已符合 YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+      // DD.MM.YYYY → YYYY-MM-DD
+      var m1 = d.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+      if (m1) return m1[3] + '-' + m1[2].padStart(2,'0') + '-' + m1[1].padStart(2,'0');
+      // YYYYMMDD → YYYY-MM-DD
+      var m2 = d.match(/^(\d{4})(\d{2})(\d{2})$/);
+      if (m2) return m2[1] + '-' + m2[2] + '-' + m2[3];
+      return d;
+    }
+    normalized.application_date = normalizeDate(normalized.application_date);
+    normalized.publication_date = normalizeDate(normalized.publication_date);
+    normalized.priority_date = normalizeDate(normalized.priority_date);
+    normalized.filing_date = normalizeDate(normalized.filing_date);
+    // external_links: 确保是 {key: {url, text}} 格式
+    if (normalized.pdf_link) {
+      if (!normalized.external_links || typeof normalized.external_links !== 'object' || Array.isArray(normalized.external_links)) {
+        normalized.external_links = {};
+      }
+      if (!normalized.external_links.pdf) {
+        normalized.external_links.pdf = { url: normalized.pdf_link, text: 'PDF原文' };
+      }
+    } else if (!normalized.external_links) {
+      normalized.external_links = {};
+    }
+    // description: 确保是字符串
+    if (typeof normalized.description !== 'string') normalized.description = '';
+    // abstract: 确保是字符串
+    if (typeof normalized.abstract !== 'string') normalized.abstract = '';
 
     // 切换到专利详情视图
     const appEl = document.getElementById("app");

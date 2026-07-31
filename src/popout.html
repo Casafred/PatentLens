@@ -166,34 +166,144 @@
       function picon(name) { return POPOUT_SVG_ICONS[name] || ''; }
 
       // ── Espacenet 提取脚本：注入 webview 执行，返回专利全文数据 ──
+      // 适配 Espacenet 新版下拉菜单导航界面（2024+）
       function espacenetExtractScript() {
         function sleep(ms) { return new Promise(function(r){ setTimeout(r, ms); }); }
         function txt(el) { return (el && el.textContent) ? el.textContent.trim() : ""; }
-        function findVisible(selector) {
-          var els = document.querySelectorAll(selector);
-          for (var i = 0; i < els.length; i++) {
-            var rect = els[i].getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) return els[i];
+
+        // 等待条件满足（轮询）
+        async function waitFor(checkFn, timeout, interval) {
+          timeout = timeout || 5000;
+          interval = interval || 200;
+          var start = Date.now();
+          while (Date.now() - start < timeout) {
+            var r = checkFn();
+            if (r) return r;
+            await sleep(interval);
           }
           return null;
         }
-        // 通过标签文本点击 tab
-        async function clickTab(label) {
-          var tabs = document.querySelectorAll('[role="tab"], [data-qa*="tab"], a, button');
-          for (var i = 0; i < tabs.length; i++) {
-            if (tabs[i].textContent.trim().indexOf(label) !== -1) {
-              var rect = tabs[i].getBoundingClientRect();
-              if (rect.width > 0) { tabs[i].click(); await sleep(1500); return true; }
+
+        // 通过下拉菜单切换到指定 section（Claims / Description / Citations 等）
+        async function switchSection(name) {
+          // 1) 找到下拉菜单触发按钮
+          var trigger = document.querySelector('[class*="tabs__list--dropdown-panel"] > button');
+          if (!trigger) {
+            // 回退：找页面顶部区域内文本匹配已知 section 名的 button
+            var known = ['Bibliographic data','Claims','Description','Drawings','Citations','Original document','Legal events','Patent family'];
+            var allBtns = document.querySelectorAll('button');
+            for (var i = 0; i < allBtns.length; i++) {
+              var b = allBtns[i];
+              var rect = b.getBoundingClientRect();
+              var t = b.textContent.trim();
+              if (rect.top > 60 && rect.top < 150 && known.indexOf(t) !== -1) { trigger = b; break; }
+            }
+          }
+          if (!trigger) return false;
+
+          // 2) 点击触发按钮打开下拉
+          trigger.click();
+          await sleep(400);
+
+          // 3) 在下拉菜单中找到目标 LI 并点击（排除子 tab 如 Original claims / Claims tree）
+          var items = document.querySelectorAll('li');
+          var found = null;
+          for (var j = 0; j < items.length; j++) {
+            if (items[j].textContent.trim() === name) {
+              var r = items[j].getBoundingClientRect();
+              if (r.width > 0 && r.height > 0 && r.top > 60 && r.top < 600) {
+                // 排除嵌套在 tabs__list__container 内的子 tab
+                var inSubTab = false;
+                var p = items[j].parentElement;
+                while (p) {
+                  var pcls = (typeof p.className === 'string') ? p.className : '';
+                  if (pcls.indexOf('tabs__list__container') !== -1) { inSubTab = true; break; }
+                  p = p.parentElement;
+                }
+                if (!inSubTab) { found = items[j]; break; }
+              }
+            }
+          }
+          if (found) {
+            found.click();
+            await sleep(1500);
+            return true;
+          }
+          // 没找到，按 Escape 关闭菜单
+          document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+          return false;
+        }
+
+        // 获取当前 section 的可见文本内容区
+        function getContentEl() {
+          // 优先找 text-block__content（新版 Espacenet 内容容器）
+          var els = document.querySelectorAll('[class*="text-block__content"]');
+          for (var i = 0; i < els.length; i++) {
+            var rect = els[i].getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0 && els[i].textContent.trim().length > 10) {
+              return els[i];
+            }
+          }
+          // 回退：找 tabs__panel 内可见的、有较多文本的区域
+          var panels = document.querySelectorAll('[class*="tabs__panel"]');
+          for (var j = 0; j < panels.length; j++) {
+            var pr = panels[j].getBoundingClientRect();
+            if (pr.width > 0 && pr.height > 0 && panels[j].textContent.trim().length > 100) {
+              var inner = panels[j].querySelector('[class*="text-block__content"]');
+              if (inner) return inner;
+              return panels[j];
+            }
+          }
+          return null;
+        }
+
+        // 确保在正确的子 tab（Claims 下的 "Original claims"）
+        function ensureSubTab(name) {
+          var subTabs = document.querySelectorAll('[role="tablist"] [role="tab"]');
+          for (var i = 0; i < subTabs.length; i++) {
+            if (subTabs[i].textContent.trim() === name) {
+              var cls = (typeof subTabs[i].className === 'string') ? subTabs[i].className : '';
+              if (cls.indexOf('active') === -1 && cls.indexOf('selected') === -1) {
+                subTabs[i].click();
+              }
+              return true;
             }
           }
           return false;
         }
 
+        // 从内容区提取所有段落文本
+        function extractParagraphs(container) {
+          if (!container) return '';
+          var paras = container.querySelectorAll('p');
+          if (paras.length > 0) {
+            var texts = [];
+            for (var i = 0; i < paras.length; i++) {
+              var t = paras[i].textContent.trim();
+              if (t) texts.push(t);
+            }
+            if (texts.length > 0) return texts.join('\n\n');
+          }
+          return txt(container);
+        }
+
         return (async function() {
           var result = { office: 'EP', type: 'patent_full', source: 'Espacenet' };
 
-          // 提取专利号
-          var pnEl = document.querySelector('[data-qa="publication-number"], [class*="publication-number"]');
+          // ── 等待页面加载就绪（下拉菜单按钮出现，说明在专利详情页）──
+          var dropdownReady = await waitFor(function() {
+            return document.querySelector('[class*="tabs__list--dropdown-panel"] > button');
+          }, 15000, 300);
+
+          if (!dropdownReady) {
+            // 未找到下拉菜单，可能在搜索结果页或页面未完全加载
+            result.error = '未检测到专利详情页面，请先点击搜索结果中的专利进入详情页';
+            return result;
+          }
+          await sleep(1000);
+
+          // ── 专利号 ──
+          var pnEl = document.querySelector('[class*="publication-number"], [data-qa="publication-number"]');
           if (pnEl) {
             result.patent_number = txt(pnEl).replace(/\s+/g, '');
           } else {
@@ -201,98 +311,259 @@
             if (m) result.patent_number = m[1];
           }
 
-          // 提取标题
-          var titleEl = document.querySelector('[data-qa="title"], h1, [class*="title"]');
-          if (titleEl) result.title = txt(titleEl);
+          // ── 标题 ──
+          // 优先从页面中找专利标题（不是面包屑/导航中的）
+          var titleSelectors = [
+            'h1[class*="title"]',
+            '[class*="header-title"]',
+            '[class*="patent-title"]'
+          ];
+          for (var ts = 0; ts < titleSelectors.length; ts++) {
+            var tel = document.querySelector(titleSelectors[ts]);
+            if (tel) {
+              var tt = txt(tel);
+              if (tt && tt !== 'Espacenet' && tt.length > 3 && tt.length < 500) {
+                result.title = tt;
+                break;
+              }
+            }
+          }
+          // 回退：从URL中取专利号作为标题
+          if (!result.title) {
+            result.title = result.patent_number || '';
+          }
 
-          // 提取摘要
-          var absEl = document.querySelector('[data-qa="abstract"], [class*="abstract"]');
-          if (absEl) result.abstract = txt(absEl);
+          // ── 摘要 ──
+          var absEl = document.querySelector('[class*="abstract"] [class*="text-block__content"], [class*="abstract"] p, [data-qa="abstract"]');
+          if (absEl) {
+            result.abstract = txt(absEl);
+          } else {
+            // 回退：在 Bibliographic data 内容区中找 abstract 相关内容
+            var contentEl = getContentEl();
+            if (contentEl) {
+              var absParas = contentEl.querySelectorAll('p');
+              for (var ap = 0; ap < absParas.length; ap++) {
+                var ptxt = txt(absParas[ap]);
+                // 摘要通常是第一段长文本
+                if (ptxt.length > 50) { result.abstract = ptxt; break; }
+              }
+            }
+          }
 
-          // ── 著录数据 ──
+          // ── 著录数据（Bibliographic data 页面）──
           try {
-            var bibSection = document.querySelector('[data-qa="biblio-data"], [class*="biblio"]');
-            if (bibSection) {
-              function extractField(label) {
-                var dts = bibSection.querySelectorAll('dt, [class*="label"], [class*="term"]');
-                for (var i = 0; i < dts.length; i++) {
-                  if (txt(dts[i]).indexOf(label) !== -1) {
-                    var dd = dts[i].nextElementSibling;
-                    if (dd) return txt(dd);
+            // 使用 biblio__label 类名（新版 Espacenet）
+            function extractBiblioField(label) {
+              var labels = document.querySelectorAll('[class*="biblio__label"], [class*="biblio-label"], dt, [class*="label"]');
+              for (var i = 0; i < labels.length; i++) {
+                var lt = txt(labels[i]);
+                if (lt && lt.indexOf(label) !== -1) {
+                  // 值在兄弟元素或下一个元素中
+                  var val = labels[i].nextElementSibling;
+                  if (val) return txt(val);
+                  // 也可能在父元素的其余部分
+                  var parent = labels[i].parentElement;
+                  if (parent) {
+                    var val2 = parent.querySelector('[class*="value"], dd, span:last-child');
+                    if (val2 && val2 !== labels[i]) return txt(val2);
                   }
                 }
-                return null;
               }
-              result.inventors = extractField('Inventor') || '';
-              result.assignees = extractField('Applicant') || extractField('Assignee') || '';
-              result.application_date = extractField('Application date') || extractField('申请日') || '';
-              result.publication_date = extractField('Publication date') || extractField('公开日') || '';
-              result.priority_date = extractField('Priority date') || '';
-              result.filing_date = extractField('Filing date') || '';
+              return null;
             }
+            result.inventors = extractBiblioField('Inventor') || '';
+            result.assignees = extractBiblioField('Applicant') || extractBiblioField('Assignee') || '';
+            result.application_date = extractBiblioField('Application date') || '';
+            result.publication_date = extractBiblioField('Publication date') || '';
+            result.priority_date = extractBiblioField('Priority date') || '';
+            result.filing_date = extractBiblioField('Filing date') || '';
+
             // IPC/CPC 分类
-            var classEls = document.querySelectorAll('[class*="classification"], [data-qa*="classification"]');
+            var ipcVal = extractBiblioField('IPC') || extractBiblioField('International Patent Classification');
+            var cpcVal = extractBiblioField('CPC') || extractBiblioField('Cooperative Patent Classification');
             var classes = [];
-            classEls.forEach(function(el) { var t = txt(el); if (t && t.length < 50) classes.push(t); });
+            if (ipcVal) ipcVal.split(/[;,]\s*/).forEach(function(c){ c = c.trim(); if (c) classes.push(c); });
+            if (cpcVal) cpcVal.split(/[;,]\s*/).forEach(function(c){ c = c.trim(); if (c && classes.indexOf(c) === -1) classes.push(c); });
+            // 也从 classification 相关元素中收集
+            var classEls = document.querySelectorAll('[class*="classification"]');
+            for (var ce = 0; ce < classEls.length; ce++) {
+              var ct = txt(classEls[ce]);
+              if (ct && ct.length < 50 && ct.match(/[A-Z]\d/)) classes.push(ct);
+            }
             if (classes.length) { result.classifications = classes; result.cpc = classes.join('; '); }
-          } catch(e) {}
+          } catch(e) { console.warn('[extract] biblio error:', e); }
 
           // ── 权利要求 ──
           try {
-            await clickTab('Claims');
-            await sleep(500);
-            var claimsEl = document.querySelector('[data-qa="claims"], [class*="claims"]');
-            if (claimsEl) {
-              result.claims = txt(claimsEl);
-            } else {
-              // 回退：找包含 "claim" 的 section
-              var sections = document.querySelectorAll('section, [class*="section"]');
-              for (var s = 0; s < sections.length; s++) {
-                if (sections[s].textContent.toLowerCase().indexOf('claim') !== -1 && sections[s].textContent.length > 100) {
-                  result.claims = txt(sections[s]); break;
+            var claimsOk = await switchSection('Claims');
+            if (claimsOk) {
+              await sleep(500);
+              // 确保在 Original claims 子 tab
+              ensureSubTab('Original claims');
+              await sleep(500);
+              var claimsContent = getContentEl();
+              if (claimsContent) {
+                // 按 <p> 标签提取每条权利要求
+                var claimParas = claimsContent.querySelectorAll('p');
+                var claimItems = [];
+                var currentClaim = null;
+                for (var cp = 0; cp < claimParas.length; cp++) {
+                  var ct = claimParas[cp].textContent.trim();
+                  if (!ct) continue;
+                  // 检查是否以编号开头（1. / 2. / 1、/ 1)）
+                  var numMatch = ct.match(/^(\d+)\s*[.、)]\s*(.*)/s);
+                  if (numMatch) {
+                    if (currentClaim) claimItems.push(currentClaim);
+                    currentClaim = { num: numMatch[1], text: numMatch[2].replace(/\s+/g, ' ').trim() };
+                  } else if (currentClaim) {
+                    // 续行（同一条权利要求的多行内容）
+                    currentClaim.text += ' ' + ct.replace(/\s+/g, ' ').trim();
+                  } else {
+                    // 没有编号标记，按段落计数
+                    claimItems.push({ num: String(claimItems.length + 1), text: ct.replace(/\s+/g, ' ').trim() });
+                  }
+                }
+                if (currentClaim) claimItems.push(currentClaim);
+                if (claimItems.length > 0) {
+                  result.claims = claimItems;
+                } else {
+                  // 回退：纯文本
+                  var claimsText = extractParagraphs(claimsContent);
+                  if (claimsText) result.claims = claimsText;
                 }
               }
             }
-          } catch(e) {}
+          } catch(e) { console.warn('[extract] claims error:', e); }
 
-          // ── 说明书 ──
+          // ── 说明书 (Description) ──
           try {
-            await clickTab('Description');
-            await sleep(500);
-            var descEl = document.querySelector('[data-qa="description"], [class*="description"]');
-            if (descEl) {
-              result.description = txt(descEl);
+            var descOk = await switchSection('Description');
+            if (descOk) {
+              await sleep(800);
+              var descContent = getContentEl();
+              if (descContent) {
+                var descParas = descContent.querySelectorAll('p');
+                if (descParas.length > 1) {
+                  var dtexts = [];
+                  for (var dp = 0; dp < descParas.length; dp++) {
+                    var dt2 = descParas[dp].textContent.trim();
+                    if (dt2) dtexts.push(dt2);
+                  }
+                  result.description = dtexts.join('\n\n');
+                } else {
+                  result.description = extractParagraphs(descContent);
+                }
+              }
             }
-          } catch(e) {}
+          } catch(e) { console.warn('[extract] description error:', e); }
 
-          // ── 附图 ──
+          // ── 附图 (Drawings) ──
           try {
-            await clickTab('Drawings');
-            await sleep(500);
-            var imgEls = document.querySelectorAll('[class*="drawing"] img, [data-qa*="drawing"] img, img[src*="drawing"]');
-            var drawings = [];
-            imgEls.forEach(function(img) { if (img.src) drawings.push(img.src); });
-            if (drawings.length) result.drawings = drawings;
-          } catch(e) {}
+            var drawOk = await switchSection('Drawings');
+            if (drawOk) {
+              await sleep(500);
+              var imgEls = document.querySelectorAll('[class*="drawing"] img, img[src*="drawing"], [class*="tabs__panel"] img');
+              var drawings = [];
+              for (var di = 0; di < imgEls.length; di++) {
+                var src = imgEls[di].src || imgEls[di].getAttribute('data-src') || '';
+                if (src && src.indexOf('http') === 0 && drawings.indexOf(src) === -1) {
+                  drawings.push(src);
+                }
+              }
+              if (drawings.length) result.drawings = drawings;
+            }
+          } catch(e) { console.warn('[extract] drawings error:', e); }
 
-          // ── 引用文献 ──
+          // ── 引用文献 (Citations) ──
           try {
-            await clickTab('Citations');
-            await sleep(500);
-            var citeEls = document.querySelectorAll('[class*="citation"], [data-qa*="citation"]');
-            var citations = [];
-            citeEls.forEach(function(el) { var t = txt(el); if (t && t.length > 5 && t.length < 200) citations.push(t); });
-            if (citations.length) result.citations = citations;
-          } catch(e) {}
+            var citeOk = await switchSection('Citations');
+            if (citeOk) {
+              await sleep(1000);
+              var citeContent = getContentEl();
+              var citations = [];
+              if (citeContent) {
+                // 优先从链接中提取专利号
+                var citeLinks = citeContent.querySelectorAll('a');
+                var citeSet = {};
+                for (var cl = 0; cl < citeLinks.length; cl++) {
+                  var href = citeLinks[cl].href || '';
+                  var ctext = txt(citeLinks[cl]);
+                  var pnMatch = ctext.match(/^([A-Z]{2}\s*\d+[A-Z0-9]*)/) || href.match(/publication\/([A-Z0-9]+)/i);
+                  if (pnMatch) {
+                    var pn = pnMatch[1].replace(/\s+/g, '');
+                    if (pn && !citeSet[pn] && pn.length >= 5) {
+                      citeSet[pn] = true;
+                      citations.push({ patent_number: pn });
+                    }
+                  }
+                }
+                // 回退：从文本中用正则提取专利号
+                if (citations.length === 0) {
+                  var ctext2 = citeContent.textContent;
+                  var pnRe = /\b([A-Z]{2}\s*\d{4,}[A-Z0-9]*)\b/g;
+                  var pm;
+                  while ((pm = pnRe.exec(ctext2)) !== null) {
+                    var pn2 = pm[1].replace(/\s+/g, '');
+                    if (!citeSet[pn2] && pn2 !== result.patent_number) {
+                      citeSet[pn2] = true;
+                      citations.push({ patent_number: pn2 });
+                    }
+                  }
+                }
+              }
+              if (citations.length > 0) result.patent_citations = citations;
+            }
+          } catch(e) { console.warn('[extract] citations error:', e); }
 
-          // ── PDF 链接 ──
+          // ── PDF 原文链接 (Original document) ──
           try {
-            var pdfLink = document.querySelector('a[href*=".pdf"], a[download], [data-qa*="pdf"]');
-            if (pdfLink && pdfLink.href) result.pdf_link = pdfLink.href;
-          } catch(e) {}
+            var docOk = await switchSection('Original document');
+            if (docOk) {
+              await sleep(800);
+              // 查找 PDF 下载链接
+              var pdfLinks = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"], button[class*="pdf"]');
+              for (var pl = 0; pl < pdfLinks.length; pl++) {
+                var ph = pdfLinks[pl].href || '';
+                if (ph && ph.indexOf('http') === 0) { result.pdf_link = ph; break; }
+                if (ph) { result.pdf_link = new URL(ph, location.href).href; break; }
+              }
+              // 回退：在内容区中找 iframe（PDF 查看器）
+              if (!result.pdf_link) {
+                var pdfFrame = document.querySelector('iframe[src*="pdf"], iframe[src*="document"]');
+                if (pdfFrame && pdfFrame.src) result.pdf_link = pdfFrame.src;
+              }
+            }
+          } catch(e) { console.warn('[extract] pdf error:', e); }
 
-          // 回到概览
-          try { await clickTab('Bibliographic'); } catch(e) {}
+          // ── 同族专利 (Patent family) ──
+          try {
+            var famOk = await switchSection('Patent family');
+            if (famOk) {
+              await sleep(1000);
+              var famContent = getContentEl();
+              var family = [];
+              if (famContent) {
+                var famLinks = famContent.querySelectorAll('a');
+                var famSet = {};
+                for (var fl = 0; fl < famLinks.length; fl++) {
+                  var fhref = famLinks[fl].href || '';
+                  var ftxt = txt(famLinks[fl]);
+                  var fpnMatch = ftxt.match(/^([A-Z]{2}\s*\d+[A-Z0-9]*)/) || fhref.match(/publication\/([A-Z0-9]+)/i);
+                  if (fpnMatch) {
+                    var fpn = fpnMatch[1].replace(/\s+/g, '');
+                    if (fpn && !famSet[fpn] && fpn.length >= 5) {
+                      famSet[fpn] = true;
+                      family.push({ publication_number: fpn, title: '', status: '' });
+                    }
+                  }
+                }
+              }
+              if (family.length > 0) result.family_applications = family;
+            }
+          } catch(e) { console.warn('[extract] family error:', e); }
+
+          // 回到 Bibliographic data
+          try { await switchSection('Bibliographic data'); } catch(e) {}
 
           if (!result.patent_number) result.patent_number = 'UNKNOWN';
           return result;
@@ -359,6 +630,7 @@
       var findRequestId = 0;
       var jplatpatSearchNum = params.get("jpn") || "";
       var cnipaSearchNum = params.get("cnpn") || "";
+      var _extractingEspacenet = false;
 
       var isJplatpat = currentUrl.indexOf("j-platpat.inpit.go.jp") !== -1;
       if (isJplatpat) {
@@ -925,7 +1197,12 @@
         "    }",
         "    // Espacenet: 提取专利全文到主应用",
         "    if (pageInfo.pageType === 'espacenet') {",
-        "      actions.push({ type: 'espacenet_extract', label: '<svg class=\"svg-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"width:14px;height:14px;vertical-align:middle;margin-right:2px;\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"/></svg> 提取专利全文到主应用', _espacenet: true });",
+        "      var isEpPublication = location.pathname.indexOf('/publication/') !== -1 || !!document.querySelector('[class*=\"tabs__list--dropdown-panel\"] > button');",
+        "      if (isEpPublication) {",
+        "        actions.push({ type: 'espacenet_extract', label: '<svg class=\"svg-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"width:14px;height:14px;vertical-align:middle;margin-right:2px;\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"/></svg> 提取专利全文到主应用', _espacenet: true });",
+        "      } else {",
+        "        actions.push({ type: 'info', label: '💡 请点击搜索结果中的专利进入详情页后提取', passive: true });",
+        "      }",
         "    }",
         "    // Global Dossier actions",
         "    if (pageInfo.pageType === 'global_dossier') {",
@@ -1301,6 +1578,7 @@
       // ── Smart bar rendering ──
       var _currentProbeResult = null;
       function hideSmartBar() {
+        if (_extractingEspacenet) return; // Don't hide during extraction
         smartBar.style.display = "none";
         smartActions.innerHTML = "";
         _currentProbeResult = null;
@@ -1338,6 +1616,10 @@
         if (smartBar.style.display === "flex" && _lastSmartBarSig === newSig) {
           return;
         }
+        // During Espacenet extraction, don't rebuild the smart bar (keep "提取中..." state)
+        if (_extractingEspacenet) {
+          return;
+        }
         _lastSmartBarSig = newSig;
 
         smartLabel.innerHTML = newLabel;
@@ -1366,15 +1648,21 @@
       function handleSmartAction(act) {
         // Espacenet 提取专利全文
         if (act._espacenet && isElectron && wv) {
+          if (_extractingEspacenet) return; // 防止重复点击
+          _extractingEspacenet = true;
           var extractBtn = smartActions.querySelector('button');
           if (extractBtn) { extractBtn.disabled = true; extractBtn.innerHTML = '⏳ 提取中...'; }
+          smartLabel.innerHTML = 'Espacenet: 正在提取';
+          smartInfo.textContent = '切换标签页抓取数据中，请稍候（约10-20秒）';
           wv.executeJavaScript("(" + espacenetExtractScript.toString() + ")()").then(function(result) {
+            _extractingEspacenet = false;
             if (extractBtn) { extractBtn.disabled = false; extractBtn.innerHTML = '✅ 已提取'; }
             if (result && window.electronAPI && window.electronAPI.sendToMain) {
               window.electronAPI.sendToMain(result);
               if (extractBtn) { setTimeout(function(){ extractBtn.innerHTML = act.label; }, 2000); }
             }
           }).catch(function(err) {
+            _extractingEspacenet = false;
             if (extractBtn) { extractBtn.disabled = false; extractBtn.innerHTML = '❌ 失败，重试'; }
             console.error('[Espacenet] extract error:', err);
           });
