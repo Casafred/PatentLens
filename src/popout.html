@@ -299,14 +299,15 @@
             if (items[j].textContent.trim() === name) {
               var r = items[j].getBoundingClientRect();
               if (r.width > 0 && r.height > 0 && r.top > 50 && r.top < 700) {
-                var inSubTab = false;
+                // 排除在 tabs__panel 内的子tab（Original claims / Claims tree等）
                 var p = items[j].parentElement;
+                var inPanel = false;
                 while (p) {
                   var pcls = (typeof p.className === 'string') ? p.className : '';
-                  if (pcls.indexOf('tabs__list__container') !== -1) { inSubTab = true; break; }
+                  if (pcls.indexOf('tabs__panel') !== -1) { inPanel = true; break; }
                   p = p.parentElement;
                 }
-                if (!inSubTab) { found = items[j]; break; }
+                if (!inPanel) { found = items[j]; break; }
               }
             }
           }
@@ -321,20 +322,22 @@
 
         // 尝试点击横向排列的tab（不要求tablist容器，直接找role=tab）
         async function tryClickHorizontalTab(name) {
+          var knownMain = ['Bibliographic data','Claims','Description','Drawings','Citations','Original document','Legal events','Patent family'];
+          var isMainTab = knownMain.indexOf(name) !== -1;
           var tabs = document.querySelectorAll('[role="tab"]');
           for (var i = 0; i < tabs.length; i++) {
             var tt = tabs[i].textContent.trim();
             if (tt !== name) continue;
-            // 排除子tab（如Original claims / Claims tree）
-            if (name !== 'Original claims' && name !== 'Claims tree') {
+            // 主tab: 排除在 tabs__panel 内的（那些是子tab如Original claims）
+            if (isMainTab) {
               var parent = tabs[i].parentElement;
-              var isSubTab = false;
+              var inPanel = false;
               while (parent) {
                     var pcls = (typeof parent.className === 'string') ? parent.className : '';
-                    if (pcls.indexOf('tabs__list__container') !== -1) { isSubTab = true; break; }
+                    if (pcls.indexOf('tabs__panel') !== -1) { inPanel = true; break; }
                     parent = parent.parentElement;
               }
-              if (isSubTab) continue;
+              if (inPanel) continue;
             }
             var cls = (typeof tabs[i].className === 'string') ? tabs[i].className : '';
             if (cls.indexOf('active') !== -1 || cls.indexOf('selected') !== -1 || tabs[i].getAttribute('aria-selected') === 'true') return true;
