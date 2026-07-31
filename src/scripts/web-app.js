@@ -2393,7 +2393,11 @@ async function searchPatentDetail(input) {
   hideError();
 
   try {
-    const resp = await fetch(gpApiUrl(raw));
+    // ── 15 秒超时：超过后自动降级到 Espacenet ──
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => controller.abort(), 15000);
+    const resp = await fetch(gpApiUrl(raw), { signal: controller.signal });
+    clearTimeout(timeoutTimer);
     if (!resp.ok) throw new Error("HTTP " + resp.status);
     const ct = resp.headers.get("content-type") || "";
     if (!ct.includes("application/json")) {
@@ -2481,15 +2485,25 @@ async function searchPatentDetail(input) {
     if (loadingEspacenetLink) loadingEspacenetLink.classList.add("hidden");
     loading.classList.add("hidden");
   } catch (e) {
-    loadingText.textContent = "查询失败: " + e.message;
+    const isTimeout = e.name === 'AbortError';
+    loadingText.textContent = isTimeout ? "GP 查询超时，正在打开 Espacenet..." : ("查询失败: " + e.message);
     const spinner = loading.querySelector(".spinner");
     if (spinner) spinner.style.display = "none";
     if (loadingGpLink) loadingGpLink.classList.add("hidden");
-    if (loadingEspacenetLink) {
-      loadingEspacenetLink.textContent = "在 Espacenet 中手动查找 " + raw + " →";
-      loadingEspacenetLink.classList.remove("hidden");
+    if (loadingEspacenetLink) loadingEspacenetLink.classList.add("hidden");
+    loading.classList.add("hidden");
+
+    if (isTimeout) {
+      // ── GP 15秒超时降级：自动触发 Espacenet 检索弹窗 ──
+      showError("GP 查询超时（15秒未响应），已自动打开 Espacenet");
+      if(!openEspacenetWithTestMode(raw)){ openInAppWebview("https://worldwide.espacenet.com/patent/search?q=" + encodeURIComponent(raw), "Espacenet: " + raw); }
+    } else {
+      if (loadingEspacenetLink) {
+        loadingEspacenetLink.textContent = "在 Espacenet 中手动查找 " + raw + " →";
+        loadingEspacenetLink.classList.remove("hidden");
+      }
+      showError("查询失败: " + e.message + "。您可通过Espacenet链接手动查找。");
     }
-    showError("查询失败: " + e.message + "。您可通过Espacenet链接手动查找。");
   }
 
   searchBtn.disabled = false;
@@ -20276,7 +20290,7 @@ if (batchBackBtn) {
 }
 
 // ── 带重试的 GP API 抓取（共享） ──
-async function fetchPatentWithRetry(patentNumber, maxRetries = 2) {
+async function fetchPatentWithRetry(patentNumber, maxRetries = 2, timeoutMs = 15000) {
   const raw = patentNumber.trim().toUpperCase().replace(/[\s\/]/g, "");
 
   // ── Espacenet 测试模式：屏蔽 GP 查询 ──
@@ -20284,14 +20298,46 @@ async function fetchPatentWithRetry(patentNumber, maxRetries = 2) {
     throw new Error("Espacenet 测试模式已开启，GP 查询已被屏蔽。请通过 Espacenet 浏览器扩展抓取数据。");
   }
 
+  // ── 15 秒总超时：超过后自动降级到 Espacenet ──
+  const startTime = Date.now();
+  function _timeoutErr() {
+    var e = new Error("GP 查询超时（" + Math.floor(timeoutMs / 1000) + "秒未响应）");
+    e.isTimeout = true;
+    return e;
+  }
+
   let lastErr = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // 检查总超时
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= timeoutMs) {
+      lastErr = _timeoutErr();
+      break;
+    }
+    const remaining = timeoutMs - elapsed;
+
     try {
       if (attempt > 0) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 4000);
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 4000, remaining);
+        if (delay <= 0) {
+          lastErr = _timeoutErr();
+          break;
+        }
         await new Promise(r => setTimeout(r, delay));
       }
-      const resp = await fetch(gpApiUrl(raw));
+
+      // 再次检查剩余时间
+      const remainingAfterDelay = timeoutMs - (Date.now() - startTime);
+      if (remainingAfterDelay <= 0) {
+        lastErr = _timeoutErr();
+        break;
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), remainingAfterDelay);
+      const resp = await fetch(gpApiUrl(raw), { signal: controller.signal });
+      clearTimeout(timer);
+
       if (!resp.ok) {
         lastErr = new Error("HTTP " + resp.status);
         continue;
@@ -20308,6 +20354,10 @@ async function fetchPatentWithRetry(patentNumber, maxRetries = 2) {
       }
       lastErr = new Error(json.error || "未找到该专利");
     } catch (e) {
+      if (e.name === 'AbortError') {
+        lastErr = _timeoutErr();
+        break; // 超时直接退出重试循环
+      }
       lastErr = e;
     }
   }
@@ -20418,7 +20468,12 @@ if (batchSearchBtn) {
         succeeded++;
         _updateBatchCardDone(card, pn, json.data);
       } catch (err) {
-        _updateBatchCardError(card, pn, err.message);
+        if (err.isTimeout) {
+          // GP 15秒超时降级：显示 Espacenet 卡片（含「打开查看」按钮触发弹窗）
+          _updateBatchCardDone(card, pn, { data_source: "Espacenet", patent_number: pn });
+        } else {
+          _updateBatchCardError(card, pn, err.message);
+        }
       }
       completed++;
       if (batchProgress) batchProgress.textContent = `进度: ${completed}/${total} 完成 (${succeeded} 成功, ${completed - succeeded} 失败, ${fromCache} 缓存命中)`;
@@ -20517,7 +20572,11 @@ async function _retryBatchCard(pn, btnEl) {
     _pdPatentCache[pn] = json.data;
     _updateBatchCardDone(card, pn, json.data);
   } catch (err) {
-    _updateBatchCardError(card, pn, err.message);
+    if (err.isTimeout) {
+      _updateBatchCardDone(card, pn, { data_source: "Espacenet", patent_number: pn });
+    } else {
+      _updateBatchCardError(card, pn, err.message);
+    }
   }
 }
 
@@ -20824,6 +20883,36 @@ function _openPdPatent(pn, options) {
     const idx = _pdOpenPatents.indexOf(raw);
     if (idx !== -1) _pdOpenPatents.splice(idx, 1);
     delete _pdPatentCache[raw];
+
+    // ── GP 超时降级：15秒未响应，自动触发 Espacenet 检索弹窗 ──
+    if (err.isTimeout) {
+      if (_pdOpenPatents.length > 0) {
+        const newIdx = Math.min(idx, _pdOpenPatents.length - 1);
+        _pdActivePatent = _pdOpenPatents[newIdx];
+        const data = _pdPatentCache[_pdActivePatent];
+        if (data) { renderPatentDetail(data); window._currentPatentData = data; }
+      } else {
+        _pdActivePatent = null;
+        window._currentPatentData = null;
+        patentDetailContent.innerHTML = '<div style="padding:40px;text-align:center;">' +
+          '<div style="color:#f59e0b;margin-bottom:12px;font-weight:600;">GP 查询超时，已自动打开 Espacenet</div>' +
+          '<div style="color:var(--text-secondary);margin-bottom:16px;">请在弹出的 Espacenet 窗口顶部点击「提取专利全文到主应用」</div>' +
+          '<div style="display:inline-flex;gap:8px;flex-wrap:wrap;justify-content:center;">' +
+          '<button class="btn-primary btn-small" data-pd-retry="' + escapeHtml(raw) + '">重试 GP 查询</button>' +
+          '<button class="pd-gp-link pd-ep-link" data-pd-ep="' + escapeHtml(raw) + '">再次打开 Espacenet</button>' +
+          '</div></div>';
+        var retryBtn = patentDetailContent.querySelector('[data-pd-retry]');
+        if (retryBtn) retryBtn.addEventListener('click', function() { _openPdPatent(raw, { skipCachePrompt: true }); });
+        var epBtn = patentDetailContent.querySelector('[data-pd-ep]');
+        if (epBtn) epBtn.addEventListener('click', function() { if(!openEspacenetWithTestMode(raw)){ openInAppWebview('https://worldwide.espacenet.com/patent/search?q=' + encodeURIComponent(raw), 'Espacenet: ' + raw); } });
+      }
+      _renderPdTabs();
+      showError("GP 查询 " + raw + " 超时，已自动打开 Espacenet");
+      // 自动触发 Espacenet 检索弹窗（popout 窗口，含「提取专利全文到主应用」按钮）
+      if(!openEspacenetWithTestMode(raw)){ openInAppWebview('https://worldwide.espacenet.com/patent/search?q=' + encodeURIComponent(raw), 'Espacenet: ' + raw); }
+      return;
+    }
+
     if (_pdOpenPatents.length > 0) {
       const newIdx = Math.min(idx, _pdOpenPatents.length - 1);
       _pdActivePatent = _pdOpenPatents[newIdx];
