@@ -17,8 +17,10 @@
 ## Large renderer refactors
 
 - Treat `src/scripts/web-app.js` as behavior-critical legacy code. Do not combine feature changes with module extraction.
+- `src/scripts/web-app.js` is now frozen against additions. Future features, fixes, helpers, state, event handlers, and UI code must be created under `src/scripts/app/**` (or another explicitly approved feature module), then loaded from the HTML shell in dependency order.
+- During dismantling, changes to `web-app.js` may only delete code that has been fully migrated and verified. If a change needs new glue code, put that glue in a module or platform facade; do not add it back to `web-app.js`.
+- Run `npm run verify:web-app` before every commit. It fails if the working tree or index adds any line to `web-app.js`.
 - Before moving code, update the inventory and verification baseline in `docs/web-app-refactor-plan-2026-07-31.md`.
 - Extract one bounded vertical slice per change. Preserve execution order, global bindings, event-listener ownership, asynchronous cancellation, cache keys, and Electron bridge behavior.
 - `src/web.html` is the Electron shell. Do not assume `src/index.html` is equivalent; verify whether a change must be mirrored.
 - Every extraction must pass syntax checks, automated characterization tests, Electron smoke tests, and the feature-specific manual checklist before proceeding.
-

@@ -167,6 +167,16 @@ Batch 3 完成后，`web-app.js` 为 22,368 行，相比原始基线减少 61 �
 
 Batch 4 完成后，`web-app.js` 为 21,941 行，相比原始基线减少 488 行。
 
+## Web-app 新代码冻结策略
+
+状态：已完成并纳入提交门禁。
+
+从本阶段开始，`src/scripts/web-app.js` 进入“只减不增”阶段：新功能、缺陷修复、状态、事件监听、渲染逻辑、工具函数以及 glue code 均必须新增到 `src/scripts/app/**`，再由 HTML 壳按依赖顺序加载。旧文件只允许删除已经迁移且验证通过的实现。
+
+门禁：`npm run verify:web-app` 调用 `scripts/guard-web-app.cjs`，检查工作树或 CI 基线相对 `web-app.js` 的 diff；发现任何新增行即失败。`npm run verify:refactor` 已串联该检查，GitHub Electron 构建 job 使用完整历史和事件基线执行门禁。
+
+执行要求：每次拆分都必须同时提供新模块、HTML 加载顺序、行为契约测试和 Electron smoke 验证；提交前运行 `npm run verify:refactor:full`，确认 `src-tauri/` 无变化后再提交推送。
+
 ## 下一批候选
 
 Batch 5 只考虑低耦合共享工具，候选顺序：
