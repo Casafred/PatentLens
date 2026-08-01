@@ -49,6 +49,8 @@ function main() {
       `${target} is frozen against new code additions (${mode.label}).`,
       'New features and fixes must be added under src/scripts/app/** and loaded through the HTML shell.',
       'Only deletions are allowed in web-app.js while the legacy file is being dismantled.',
+      'If an existing feature needs a fix: first extract its complete implementation to src/scripts/app/**, add a characterization test, delete the legacy implementation, then apply the fix in the new module.',
+      'Do not retry by adding glue code back to web-app.js; place that glue in a feature or platform facade and load it from the HTML shell.',
       `Detected ${additions.length} added line(s):`,
       preview,
       additions.length > 12 ? '  ...' : '',
@@ -64,4 +66,3 @@ try {
   console.error(error.message || error);
   process.exitCode = 1;
 }
-

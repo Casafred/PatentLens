@@ -50,3 +50,18 @@ src/scripts/app/
 
 如果确实需要修改 `web-app.js` 的现有逻辑，必须先说明为什么无法迁移到模块，并由负责人明确批准。通常应先把相关旧代码整体迁移到模块，再在新模块中修改。
 
+## AI 修复现有功能时的决策流程
+
+门禁失败不代表功能不能修改，而是表示修改位置不正确。AI 或开发者应按以下顺序处理：
+
+1. 定位 `web-app.js` 中承载该功能的完整函数、状态和事件监听。
+2. 在 `src/scripts/app/**` 创建对应的功能模块，先保持原行为不变；需要的 Electron、API 或 DOM 依赖通过模块内部 facade 访问。
+3. 在 HTML 壳中按依赖顺序加载新模块，补充行为契约测试或 Electron smoke 场景。
+4. 从 `web-app.js` 删除已经迁移的旧实现，运行 `npm run verify:refactor:full`。
+5. 在新模块中实施实际 bug 修复并增加回归测试；不要把修复重新写回 `web-app.js`。
+
+如果门禁输出新增行预览，禁止反复重试同一处旧文件修改；应回到第 1 步。只有经过明确批准的兼容性清理才可以走例外流程，并且必须记录原因、验证结果和移除期限。
+
+## 合并保障
+
+`.github/workflows/verify-refactor.yml` 会在面向 `main` 的 pull request 上执行门禁。仓库管理员应将 `Verify Renderer Refactor` 设置为 main 分支的 required status check；这样即使 AI 忘记本地运行验证，也无法将新增代码合入主分支。
