@@ -37,12 +37,15 @@ function checkHtmlShell(file) {
   }
   const constantsIndex = scripts.indexOf('scripts/app/shared/constants.js');
   const iconsIndex = scripts.indexOf('scripts/app/shared/icons.js');
+  const datesIndex = scripts.indexOf('scripts/app/shared/dates.js');
   const appIndex = scripts.indexOf('scripts/web-app.js');
   assert.ok(constantsIndex >= 0, `${file} must load the shared constants module`);
   assert.ok(iconsIndex >= 0, `${file} must load the shared icons module`);
+  assert.ok(datesIndex >= 0, `${file} must load the shared dates module`);
   assert.ok(appIndex >= 0, `${file} must load web-app.js`);
   assert.ok(constantsIndex < appIndex, `${file} must load constants.js before web-app.js`);
   assert.ok(iconsIndex < appIndex, `${file} must load icons.js before web-app.js`);
+  assert.ok(datesIndex < appIndex, `${file} must load dates.js before web-app.js`);
   return scripts.length;
 }
 
@@ -74,6 +77,7 @@ function checkTauriFreeze() {
   }
   assert.doesNotMatch(read('src/scripts/app/shared/icons.js'), /tauri|__TAURI__/i);
   assert.doesNotMatch(read('src/scripts/app/shared/constants.js'), /tauri|__TAURI__/i);
+  assert.doesNotMatch(read('src/scripts/app/shared/dates.js'), /tauri|__TAURI__/i);
 }
 
 const jsCount = checkJavaScriptSyntax();

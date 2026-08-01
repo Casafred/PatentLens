@@ -100,11 +100,45 @@
 
 Batch 2 完成后，`web-app.js` 为 22,382 行，相比原始基线减少 47 行。当前减少量不是主要成功指标；完整测试门禁和可回滚模块边界才是本阶段目标。
 
+## Batch 3：提取文档日期纯函数
+
+状态：已完成
+
+来源：原 `src/scripts/web-app.js` 的 `parseDocDateToTimestamp()`。
+
+目标：`src/scripts/app/shared/dates.js`
+
+风险判断：低。
+
+- 只依赖输入值、字符串转换、正则和 `Date`；
+- 无 DOM、网络、IPC、缓存、timer、observer 或异步状态；
+- 全仓检查确认没有同名重新赋值；
+- 保持 classic script 全局词法绑定和原函数签名。
+
+行为契约：
+
+- 空值/空字符串返回 `0`；
+- 优先保持原生 `Date` 解析；
+- 支持年优先、日优先和点号分隔格式；
+- 非法月份/日期继续按原实现回退到合法默认值；
+- Electron renderer 中后续脚本仍可直接调用 `parseDocDateToTimestamp()`。
+
+验证结果：
+
+- `npm run verify:refactor:full`：通过；
+- 9 个单元测试全部通过；
+- 多格式日期样本和非法值样本通过；
+- Electron renderer 日期调用结果与原实现一致；
+- `src-tauri/` 变更：0。
+
+Batch 3 完成后，`web-app.js` 为 22,368 行，相比原始基线减少 61 行。
+
 ## 下一批候选
 
-Batch 2 只考虑纯常量与纯函数，候选顺序：
+Batch 4 只考虑低耦合共享工具，候选顺序：
 
-1. `escapeHtml`、日期解析等纯工具，但必须先生成调用和输出样本；
-2. 专利链接/号码格式化纯函数。
+1. `parseDate`，先固定时间线排序样本；
+2. `escapeHtml`，需要固定浏览器 HTML 转义样本后再迁移；
+3. 专利链接/号码格式化函数。
 
 暂不允许：PDF、缓存、Dossier 状态、OCR、AI 流式处理、DOMContentLoaded、Tauri 历史分支。

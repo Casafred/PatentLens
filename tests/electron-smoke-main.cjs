@@ -91,6 +91,7 @@ app.whenReady().then(async () => {
         iconOutput: typeof icon === 'function' ? icon('search', 'sm', 'smoke-test') : '',
         gdApiBase: typeof GD_API_BASE === 'string' ? GD_API_BASE : null,
         usOfficeName: typeof OFFICE_NAMES === 'object' ? OFFICE_NAMES.US : null,
+        dateHelperOutput: typeof parseDocDateToTimestamp === 'function' ? parseDocDateToTimestamp('2024/02/29') : null,
       })`);
       if (result.readyState !== 'complete') failures.push(`Unexpected readyState: ${result.readyState}`);
       if (!result.hasPatentInput) failures.push('Renderer is missing #patent-input.');
@@ -99,6 +100,7 @@ app.whenReady().then(async () => {
       if (!/class="svg-icon-sm smoke-test"/.test(result.iconOutput)) failures.push('Extracted icon() returned unexpected markup.');
       if (result.gdApiBase !== '/api/gd') failures.push('Extracted GD_API_BASE is unavailable or changed.');
       if (result.usOfficeName !== '美国 (USPTO)') failures.push('Extracted OFFICE_NAMES is unavailable or changed.');
+      if (result.dateHelperOutput !== new Date('2024/02/29').getTime()) failures.push('Extracted parseDocDateToTimestamp is unavailable or changed.');
     } catch (error) {
       failures.push(`Renderer assertion failed: ${error.stack || error.message}`);
     }
