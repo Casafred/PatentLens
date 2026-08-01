@@ -133,9 +133,43 @@ Batch 2 完成后，`web-app.js` 为 22,382 行，相比原始基线减少 47 �
 
 Batch 3 完成后，`web-app.js` 为 22,368 行，相比原始基线减少 61 行。
 
+## Batch 4：提取浏览器扩展纵切
+
+状态：已完成
+
+来源：原 `src/scripts/web-app.js` 的浏览器插件数据处理区，包含 `handleExtensionData`、`handleExtensionAnalyze`、`showNotification` 和 `showDocumentContent`。
+
+目标：`src/scripts/app/features/browser-extension.js`
+
+风险判断：中低。
+
+- 约 427 行，职责边界完整；
+- 依赖既有 renderer 全局状态、`AI`、`marked`、专利详情渲染和阅读器 DOM；
+- 不拥有新的持久化状态，不新增 timer/observer/IPC；
+- 必须在 `web-app.js` 之后加载，确保 DOMContentLoaded 回调执行时函数已可用；
+- 同时覆盖 JP、DE、Espacenet EP 三类扩展消息协议。
+
+行为契约：
+
+- `handleExtensionData`、`handleExtensionAnalyze` 仍可被页面消息事件调用；
+- JP 文档、DE 注册信息、Espacenet 专利全文/当前标签/错误分支保持不变；
+- `showNotification` 和 `showDocumentContent` 的 DOM 行为保持不变；
+- Electron renderer 中四个处理函数跨脚本可见。
+
+验证结果：
+
+- `npm run verify:refactor:full`：通过；
+- 11 个单元/契约测试全部通过；
+- 47 个 JS/CJS 文件语法检查通过；
+- 两个 HTML 壳均在 `web-app.js` 之后加载扩展模块；
+- Electron renderer 烟测通过，扩展 handler 可见；
+- `src-tauri/` 变更：0。
+
+Batch 4 完成后，`web-app.js` 为 21,941 行，相比原始基线减少 488 行。
+
 ## 下一批候选
 
-Batch 4 只考虑低耦合共享工具，候选顺序：
+Batch 5 只考虑低耦合共享工具，候选顺序：
 
 1. `parseDate`，先固定时间线排序样本；
 2. `escapeHtml`，需要固定浏览器 HTML 转义样本后再迁移；
