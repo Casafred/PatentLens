@@ -36,6 +36,34 @@ test('share project snapshots are isolated and deduplicate patent numbers', () =
   assert.equal(PatentShareStore.getSnapshot().sources.length, 0);
 });
 
+test('manual review values are isolated from imported snapshots', () => {
+  const { PatentShareStore } = loadShareModules();
+  PatentShareStore.addPatent({
+    id: 'patent_1',
+    patentNumber: 'US12030161B2',
+    title: 'Imported title',
+    fields: { title: { value: 'Imported title', source: 'google_patents' } },
+    source: { type: 'google_patents', label: 'Google Patents' },
+  });
+
+  assert.equal(PatentShareStore.updatePatentField('patent_1', 'title', 'Reviewed title'), true);
+  const field = PatentShareStore.getSnapshot().patents[0].fields.title;
+  assert.equal(field.value, 'Reviewed title');
+  assert.equal(field.source, 'manual');
+  assert.equal(PatentShareStore.getSnapshot().patents[0].title, 'Reviewed title');
+  assert.equal(PatentShareStore.updatePatentField('missing', 'title', 'Nope'), false);
+});
+
+test('store degrades to session memory when IndexedDB is unavailable', async () => {
+  const { PatentShareStore } = loadShareModules();
+  const initialized = await PatentShareStore.initialize();
+  assert.equal(initialized, false);
+  assert.deepEqual({ ...PatentShareStore.getPersistenceState() }, {
+    mode: 'memory',
+    error: 'IndexedDB unavailable',
+  });
+});
+
 test('current GP data is copied into a normalized share snapshot', () => {
   const { PatentShareSources } = loadShareModules({
     patent_number: 'EP4252965A3',

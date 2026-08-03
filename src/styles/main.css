@@ -6837,6 +6837,23 @@ body {
   background: var(--accent-hover);
 }
 
+.share-secondary-action {
+  margin-top: 14px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.share-secondary-action:hover,
+.share-field-edit:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .share-overview-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6952,6 +6969,69 @@ body {
   color: var(--danger);
 }
 
+.share-review-card {
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+}
+
+.share-review-card h4 {
+  margin: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.share-review-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.share-review-field {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) 94px auto;
+  gap: 12px;
+  align-items: start;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.share-review-field:last-child {
+  border-bottom: 0;
+}
+
+.share-review-field-label,
+.share-review-field-source {
+  padding-top: 1px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.share-review-field-source {
+  color: var(--accent);
+}
+
+.share-review-field-value {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.share-field-edit {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .share-inline-notice {
   margin: 0 0 16px;
   padding: 10px 12px;
@@ -6987,6 +7067,15 @@ body {
 
   .share-overview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .share-review-field {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .share-review-field-source,
+  .share-field-edit {
+    grid-column: 2;
   }
 }
 

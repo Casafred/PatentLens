@@ -45,7 +45,9 @@
 
   function projectStatusText(project) {
     var count = project && project.patents ? project.patents.length : 0;
-    return "本地草稿 · " + (count ? "已加入 " + count + " 篇专利" : "尚未加入专利");
+    var state = window.PatentShareStore && window.PatentShareStore.getPersistenceState ? window.PatentShareStore.getPersistenceState() : null;
+    var storage = state && state.mode === "indexeddb" ? "已保存到本机" : "临时内存草稿";
+    return storage + " · " + (count ? "已加入 " + count + " 篇专利" : "尚未加入专利");
   }
 
   function updateProjectStatus() {
@@ -95,6 +97,11 @@
     });
     container.appendChild(grid);
 
+    var rename = makeElement("button", "share-secondary-action", "编辑项目名称");
+    rename.type = "button";
+    rename.dataset.shareAction = "rename-project";
+    container.appendChild(rename);
+
     if (project.patents.length === 0) {
       var empty = makeElement("div", "share-empty-panel");
       empty.appendChild(makeElement("h4", "", "从已有查询开始"));
@@ -135,6 +142,65 @@
     container.appendChild(list);
   }
 
+  function readableSource(field) {
+    if (!field || !field.source) return "尚未提供来源";
+    var labels = {
+      manual: "人工确认",
+      excel: "Excel/CSV",
+      google_patents: "Google Patents",
+      dossier: "审查档案",
+      pdf_text: "PDF 文本层",
+      ocr: "OCR",
+    };
+    return labels[field.source] || field.source;
+  }
+
+  function renderReview(container, project) {
+    addHeading(container, viewMeta.review);
+    addNotice(container);
+    if (project.patents.length === 0) {
+      var empty = makeElement("div", "share-empty-panel");
+      empty.appendChild(makeElement("h4", "", "尚无待审核专利"));
+      empty.appendChild(makeElement("p", "", "先在“材料来源”加入专利快照；后续 Excel、PDF 与 OCR 导入也会在这里统一处理字段来源和冲突。"));
+      container.appendChild(empty);
+      return;
+    }
+    var fields = [
+      ["title", "标题"],
+      ["abstract", "摘要"],
+      ["applicationDate", "申请日"],
+      ["publicationDate", "公开日"],
+      ["priorityDate", "优先权日"],
+      ["assignees", "申请人"],
+      ["inventors", "发明人"],
+    ];
+    project.patents.forEach(function (patent) {
+      var card = makeElement("article", "share-review-card");
+      card.appendChild(makeElement("h4", "", patent.patentNumber + " · " + (patent.title || "未提供标题")));
+      var table = makeElement("div", "share-review-fields");
+      fields.forEach(function (definition) {
+        var fieldName = definition[0];
+        var field = patent.fields && patent.fields[fieldName];
+        var row = makeElement("div", "share-review-field");
+        row.appendChild(makeElement("span", "share-review-field-label", definition[1]));
+        var value = makeElement("div", "share-review-field-value", field && field.value ? field.value : "来源未提供");
+        row.appendChild(value);
+        row.appendChild(makeElement("span", "share-review-field-source", readableSource(field)));
+        var edit = makeElement("button", "share-field-edit", "人工确认");
+        edit.type = "button";
+        edit.dataset.shareAction = "edit-field";
+        edit.dataset.patentId = patent.id;
+        edit.dataset.fieldName = fieldName;
+        edit.dataset.fieldLabel = definition[1];
+        edit.dataset.fieldValue = field && field.value ? field.value : "";
+        row.appendChild(edit);
+        table.appendChild(row);
+      });
+      card.appendChild(table);
+      container.appendChild(card);
+    });
+  }
+
   function renderPlaceholder(container, viewId, project) {
     addHeading(container, viewMeta[viewId]);
     var panel = makeElement("div", "share-placeholder-panel");
@@ -152,6 +218,7 @@
     container.textContent = "";
     if (activeView === "overview") renderOverview(container, project);
     else if (activeView === "sources") renderSources(container, project);
+    else if (activeView === "review") renderReview(container, project);
     else renderPlaceholder(container, activeView, project);
 
     var navItems = document.querySelectorAll(".share-workspace-nav-item");
@@ -216,6 +283,11 @@
   function addCurrentPatent() {
     var adapter = window.PatentShareSources;
     var store = window.PatentShareStore;
+    if (store && store.getPersistenceState && store.getPersistenceState().mode === "loading") {
+      setNotice("正在恢复本机分享项目，请稍候再加入材料。", true);
+      render();
+      return;
+    }
     var record = adapter && adapter.currentPatentSnapshot ? adapter.currentPatentSnapshot() : null;
     if (!record) {
       setNotice("未检测到当前专利原文。请先切换到「专利原文」查询并打开一篇专利，再回到分享工作台。", true);
@@ -235,6 +307,11 @@
   }
 
   function newProject() {
+    if (window.PatentShareStore && window.PatentShareStore.getPersistenceState && window.PatentShareStore.getPersistenceState().mode === "loading") {
+      setNotice("正在恢复本机分享项目，请稍候再新建项目。", true);
+      render();
+      return;
+    }
     var project = currentProject();
     if (project && project.patents.length > 0 && !window.confirm("新建项目会清空当前分享工作台中的材料草稿，是否继续？")) return;
     window.PatentShareStore.newProject();
@@ -263,7 +340,41 @@
       var action = event.target.closest ? event.target.closest("[data-share-action]") : null;
       if (!action) return;
       if (action.dataset.shareAction === "add-current") addCurrentPatent();
+      if (action.dataset.shareAction === "rename-project") {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再编辑。", true);
+          render();
+          return;
+        }
+        var current = currentProject();
+        var nextName = window.prompt("请输入分享项目名称", current && current.name ? current.name : "");
+        if (nextName == null) return;
+        if (!window.PatentShareStore.renameProject(nextName)) {
+          setNotice("项目名称不能为空。", true);
+          render();
+        }
+      }
+      if (action.dataset.shareAction === "edit-field" && action.dataset.patentId && action.dataset.fieldName) {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再编辑。", true);
+          render();
+          return;
+        }
+        var nextValue = window.prompt("人工确认：" + (action.dataset.fieldLabel || action.dataset.fieldName), action.dataset.fieldValue || "");
+        if (nextValue == null) return;
+        if (!window.PatentShareStore.updatePatentField(action.dataset.patentId, action.dataset.fieldName, nextValue)) {
+          setNotice("字段值不能为空，请重新输入。", true);
+          render();
+        } else {
+          setNotice("已保存人工确认值，并保留为独立的项目快照。", false);
+        }
+      }
       if (action.dataset.shareAction === "remove-patent" && action.dataset.patentId) {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再编辑。", true);
+          render();
+          return;
+        }
         window.PatentShareStore.removePatent(action.dataset.patentId);
         setNotice("已从当前项目移除该专利快照。", false);
         render();
@@ -281,8 +392,16 @@
 
   function init() {
     if (!window.PatentShareStore || !window.PatentShareSources) return;
-    window.PatentShareStore.ensureProject();
+    // 壳层必须立即可打开；数据写操作在恢复完成前会被明确拦截，避免用户首击竞态。
     bind();
+    updateProjectStatus();
+    window.PatentShareStore.initialize().then(function () {
+      if (window.PatentShareStore.getPersistenceState().mode === "memory") {
+        setNotice("当前环境无法使用 IndexedDB，分享项目仅会保留到本次应用会话结束。", true);
+      }
+      updateProjectStatus();
+      if (workspaceOpen) render();
+    });
   }
 
   window.PatentShareWorkspace = {
