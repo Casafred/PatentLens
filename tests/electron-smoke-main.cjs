@@ -93,6 +93,25 @@ app.whenReady().then(async () => {
         usOfficeName: typeof OFFICE_NAMES === 'object' ? OFFICE_NAMES.US : null,
         dateHelperOutput: typeof parseDocDateToTimestamp === 'function' ? parseDocDateToTimestamp('2024/02/29') : null,
         hasExtensionHandlers: typeof handleExtensionData === 'function' && typeof handleExtensionAnalyze === 'function',
+        shareWorkspace: (function () {
+          var entry = document.getElementById('share-workspace-entry');
+          var section = document.getElementById('share-workspace-section');
+          var hasApi = Boolean(window.PatentShareWorkspace && window.PatentShareStore && window.PatentShareSources);
+          if (!entry || !section || !hasApi) return { entry: Boolean(entry), section: Boolean(section), hasApi: hasApi };
+          window._currentPatentData = {
+            patent_number: 'US12030161B2',
+            title: 'Smoke test patent',
+            abstract: 'Smoke test abstract',
+            claims: [{ num: '1', text: 'A smoke test claim', type: 'independent' }],
+            data_source: 'Google Patents',
+          };
+          entry.click();
+          var opened = window.PatentShareWorkspace.isOpen() && !section.classList.contains('hidden');
+          var result = window.PatentShareStore.addPatent(window.PatentShareSources.currentPatentSnapshot());
+          var count = window.PatentShareStore.getSnapshot().patents.length;
+          window.PatentShareWorkspace.close();
+          return { entry: true, section: true, hasApi: true, opened: opened, addOk: result.ok, count: count, closed: section.classList.contains('hidden') };
+        })(),
       })`);
       if (result.readyState !== 'complete') failures.push(`Unexpected readyState: ${result.readyState}`);
       if (!result.hasPatentInput) failures.push('Renderer is missing #patent-input.');
@@ -103,6 +122,8 @@ app.whenReady().then(async () => {
       if (result.usOfficeName !== '美国 (USPTO)') failures.push('Extracted OFFICE_NAMES is unavailable or changed.');
       if (result.dateHelperOutput !== new Date('2024/02/29').getTime()) failures.push('Extracted parseDocDateToTimestamp is unavailable or changed.');
       if (!result.hasExtensionHandlers) failures.push('Browser-extension handlers are unavailable after extraction.');
+      if (!result.shareWorkspace.entry || !result.shareWorkspace.section || !result.shareWorkspace.hasApi) failures.push('Share workspace resources are unavailable after renderer load.');
+      if (!result.shareWorkspace.opened || !result.shareWorkspace.addOk || result.shareWorkspace.count !== 1 || !result.shareWorkspace.closed) failures.push(`Share workspace lifecycle failed: ${JSON.stringify(result.shareWorkspace)}`);
     } catch (error) {
       failures.push(`Renderer assertion failed: ${error.stack || error.message}`);
     }
