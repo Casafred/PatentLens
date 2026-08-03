@@ -1999,7 +1999,10 @@ async function proxyGdApi(urlPath, res) {
   const _queryParams = new URLSearchParams(_queryString);
   const epoDirect = _queryParams.get("epoDirect") === "1";
   // 前端可传 epoPdfUrl：直接使用从 dossier 页面解析得到的 documentView 链接，跳过构造
-  const epoPdfUrlParam = _queryParams.get("epoPdfUrl");
+  let epoPdfUrlParam = _queryParams.get("epoPdfUrl");
+  if (epoPdfUrlParam && !epoPdfUrlParam.startsWith("http://") && !epoPdfUrlParam.startsWith("https://")) {
+    epoPdfUrlParam = null;
+  }
   // 去掉 query string 后再做路径匹配与 GD 请求
   const urlPathNoQuery = _qIdx !== -1 ? urlPath.substring(0, _qIdx) : urlPath;
   const targetUrl = GD_API_BASE + urlPathNoQuery;
@@ -3595,10 +3598,19 @@ function startServer() {
       if (qIdx !== -1) urlPath = urlPath.substring(0, qIdx);
       // /fonts/* 从 workspace 根目录的 fonts/ 提供（CJK 字体嵌入用）
       let filePath;
+      let rootDir;
       if (urlPath.startsWith("/fonts/")) {
         filePath = path.join(__dirname, urlPath);
+        rootDir = path.resolve(__dirname);
       } else {
         filePath = path.join(getSrcDir(), urlPath);
+        rootDir = path.resolve(getSrcDir());
+      }
+      const resolvedFile = path.resolve(filePath);
+      if (!resolvedFile.startsWith(rootDir + path.sep) && resolvedFile !== rootDir) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
       }
       serveStatic(filePath, res);
     });
