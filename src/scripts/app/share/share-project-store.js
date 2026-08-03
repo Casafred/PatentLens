@@ -121,13 +121,6 @@
     });
   }
 
-  function requestValue(request) {
-    return new Promise(function (resolve, reject) {
-      request.onsuccess = function () { resolve(request.result || null); };
-      request.onerror = function () { reject(request.error || new Error("IndexedDB request failed")); };
-    });
-  }
-
   function readActiveProject(db) {
     return new Promise(function (resolve, reject) {
       var tx = db.transaction([META_STORE, PROJECT_STORE], "readonly");
@@ -244,7 +237,7 @@
     var text = cleanText(value);
     if (!patent || !field || !text) return false;
     if (!patent.fields || typeof patent.fields !== "object") patent.fields = {};
-    patent.fields[field] = {
+    var manualValue = {
       value: text,
       source: "manual",
       sourceRef: "分享工作台人工确认",
@@ -252,6 +245,8 @@
       confidence: "high",
       reviewState: "accepted",
     };
+    var merge = window.PatentShareFieldMerge;
+    patent.fields[field] = merge && merge.mergeField ? merge.mergeField(patent.fields[field], manualValue).field : manualValue;
     if (field === "title") patent.title = text;
     active.updatedAt = now();
     queuePersist();

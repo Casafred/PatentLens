@@ -8,7 +8,7 @@ function loadShareModules(patentData) {
   const root = path.resolve(__dirname, '../src/scripts/app/share');
   const window = { _currentPatentData: patentData || null };
   const context = vm.createContext({ window, Date, Math, JSON });
-  for (const name of ['share-project-store.js', 'share-source-adapters.js']) {
+  for (const name of ['share-field-merge.js', 'share-project-store.js', 'share-source-adapters.js']) {
     const file = path.join(root, name);
     vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
   }
@@ -50,8 +50,38 @@ test('manual review values are isolated from imported snapshots', () => {
   const field = PatentShareStore.getSnapshot().patents[0].fields.title;
   assert.equal(field.value, 'Reviewed title');
   assert.equal(field.source, 'manual');
+  assert.equal(field.candidates.length, 2);
+  assert.equal(field.candidates.some((candidate) => candidate.source === 'google_patents'), true);
   assert.equal(PatentShareStore.getSnapshot().patents[0].title, 'Reviewed title');
   assert.equal(PatentShareStore.updatePatentField('missing', 'title', 'Nope'), false);
+});
+
+test('field merge records conflicts instead of silently overwriting sources', () => {
+  const { PatentShareFieldMerge } = loadShareModules();
+  const first = PatentShareFieldMerge.createCandidate('First title', {
+    source: 'google_patents', sourceRef: 'GP', capturedAt: '2026-08-01T00:00:00.000Z', confidence: 'high', reviewState: 'accepted',
+  });
+  const second = PatentShareFieldMerge.createCandidate('Spreadsheet title', {
+    source: 'excel', sourceRef: 'Sheet1!A2', capturedAt: '2026-08-02T00:00:00.000Z', confidence: 'high', reviewState: 'pending',
+  });
+  const result = PatentShareFieldMerge.mergeField(first, second);
+  assert.equal(result.hasConflict, true);
+  assert.equal(result.field.source, 'excel');
+  assert.equal(result.field.reviewState, 'conflict');
+  assert.equal(result.field.candidates.length, 2);
+});
+
+test('manual candidate resolves a field conflict while retaining alternatives', () => {
+  const { PatentShareFieldMerge } = loadShareModules();
+  const imported = PatentShareFieldMerge.createCandidate('GP title', { source: 'google_patents', sourceRef: 'GP' });
+  const spreadsheet = PatentShareFieldMerge.createCandidate('Excel title', { source: 'excel', sourceRef: 'Sheet1!A2' });
+  const conflict = PatentShareFieldMerge.mergeField(imported, spreadsheet).field;
+  const reviewed = PatentShareFieldMerge.mergeField(conflict, PatentShareFieldMerge.createCandidate('Reviewed title', {
+    source: 'manual', sourceRef: 'review', reviewState: 'accepted',
+  }));
+  assert.equal(reviewed.hasConflict, false);
+  assert.equal(reviewed.field.value, 'Reviewed title');
+  assert.equal(reviewed.field.candidates.length, 3);
 });
 
 test('store degrades to session memory when IndexedDB is unavailable', async () => {
