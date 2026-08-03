@@ -230,6 +230,65 @@
     return { ok: true, record: clone(safeRecord) };
   }
 
+  function addSource(active, record) {
+    active.sources.push({
+      id: makeId("source"),
+      patentId: record.id,
+      type: record.source && record.source.type ? record.source.type : "unknown",
+      label: record.source && record.source.label ? record.source.label : "未命名来源",
+      capturedAt: record.source && record.source.capturedAt ? record.source.capturedAt : now(),
+    });
+  }
+
+  function mergeCustomFields(existing, incoming, merge) {
+    var result = existing && typeof existing === "object" ? clone(existing) : {};
+    Object.keys(incoming && typeof incoming === "object" ? incoming : {}).forEach(function (key) {
+      var incomingItem = incoming[key];
+      if (!incomingItem || !incomingItem.field) return;
+      var existingItem = result[key];
+      var fieldResult = merge && merge.mergeField ? merge.mergeField(existingItem && existingItem.field, incomingItem.field) : { field: clone(incomingItem.field), hasConflict: false };
+      result[key] = { label: cleanText(incomingItem.label) || (existingItem && existingItem.label) || key, field: fieldResult.field };
+    });
+    return result;
+  }
+
+  function importPatents(records) {
+    var active = ensureProject();
+    var summary = { added: 0, merged: 0, skipped: 0, conflicts: 0, results: [] };
+    var merge = window.PatentShareFieldMerge;
+    (Array.isArray(records) ? records : []).forEach(function (record) {
+      if (!record || !cleanText(record.patentNumber)) { summary.skipped++; return; }
+      var number = cleanText(record.patentNumber);
+      var existing = active.patents.find(function (item) { return cleanText(item.patentNumber).toUpperCase() === number.toUpperCase(); });
+      if (!existing) {
+        var safeRecord = clone(record);
+        safeRecord.id = cleanText(safeRecord.id) || makeId("patent");
+        safeRecord.patentNumber = number;
+        safeRecord.fields = safeRecord.fields && typeof safeRecord.fields === "object" ? safeRecord.fields : {};
+        safeRecord.customFields = safeRecord.customFields && typeof safeRecord.customFields === "object" ? safeRecord.customFields : {};
+        active.patents.push(safeRecord);
+        addSource(active, safeRecord);
+        summary.added++;
+        summary.results.push({ patentId: safeRecord.id, patentNumber: number, action: "added", conflicts: [] });
+        return;
+      }
+      var fieldResult = merge && merge.mergeFieldMap ? merge.mergeFieldMap(existing.fields, record.fields) : { fields: existing.fields || {}, conflicts: [] };
+      existing.fields = fieldResult.fields;
+      existing.customFields = mergeCustomFields(existing.customFields, record.customFields, merge);
+      if (existing.fields.title && existing.fields.title.value) existing.title = existing.fields.title.value;
+      addSource(active, record);
+      summary.merged++;
+      summary.conflicts += fieldResult.conflicts.length;
+      summary.results.push({ patentId: existing.id, patentNumber: number, action: "merged", conflicts: fieldResult.conflicts });
+    });
+    if (summary.added || summary.merged) {
+      active.updatedAt = now();
+      queuePersist();
+      notify();
+    }
+    return summary;
+  }
+
   function updatePatentField(patentId, fieldName, value) {
     var active = ensureProject();
     var patent = active.patents.find(function (item) { return item.id === patentId; });
@@ -284,6 +343,7 @@
     newProject: newProject,
     renameProject: renameProject,
     addPatent: addPatent,
+    importPatents: importPatents,
     updatePatentField: updatePatentField,
     removePatent: removePatent,
     flush: flush,

@@ -6689,6 +6689,10 @@ body {
   margin: 0 auto 32px;
 }
 
+.share-file-input {
+  display: none;
+}
+
 #app.share-workspace-active .search-section {
   display: none;
 }

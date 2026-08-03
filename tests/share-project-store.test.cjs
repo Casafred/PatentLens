@@ -8,7 +8,7 @@ function loadShareModules(patentData) {
   const root = path.resolve(__dirname, '../src/scripts/app/share');
   const window = { _currentPatentData: patentData || null };
   const context = vm.createContext({ window, Date, Math, JSON });
-  for (const name of ['share-field-merge.js', 'share-project-store.js', 'share-source-adapters.js']) {
+  for (const name of ['share-field-merge.js', 'share-spreadsheet-import.js', 'share-project-store.js', 'share-source-adapters.js']) {
     const file = path.join(root, name);
     vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
   }
@@ -82,6 +82,38 @@ test('manual candidate resolves a field conflict while retaining alternatives', 
   assert.equal(reviewed.hasConflict, false);
   assert.equal(reviewed.field.value, 'Reviewed title');
   assert.equal(reviewed.field.candidates.length, 3);
+});
+
+test('CSV import maps common fields, retains custom columns and parses quoted cells', () => {
+  const { PatentShareSpreadsheetImport } = loadShareModules();
+  const plan = PatentShareSpreadsheetImport.buildRecords(
+    'Publication Number,Title,Applicant,Lab note\nUS12030161B2,"A title, with comma",Example Corp,Keep this',
+    'patents.csv',
+  );
+  assert.equal(plan.ok, true);
+  assert.equal(plan.records.length, 1);
+  assert.equal(plan.records[0].fields.title.value, 'A title, with comma');
+  assert.equal(plan.records[0].fields.assignees.value, 'Example Corp');
+  assert.equal(plan.records[0].customFields['csv:labnote'].field.value, 'Keep this');
+  assert.deepEqual([...plan.unmappedHeaders], ['Lab note']);
+});
+
+test('CSV records merge with GP snapshots and report field conflicts', () => {
+  const { PatentShareStore, PatentShareSpreadsheetImport } = loadShareModules();
+  PatentShareStore.addPatent({
+    id: 'patent_1', patentNumber: 'US12030161B2', title: 'GP title',
+    fields: { title: { value: 'GP title', source: 'google_patents', sourceRef: 'GP' } },
+    source: { type: 'google_patents', label: 'Google Patents' },
+  });
+  const plan = PatentShareSpreadsheetImport.buildRecords('Patent Number,Title\nUS12030161B2,CSV title', 'patents.csv');
+  const summary = PatentShareStore.importPatents(plan.records);
+  assert.equal(summary.added, 0);
+  assert.equal(summary.merged, 1);
+  assert.equal(summary.conflicts, 1);
+  const snapshot = PatentShareStore.getSnapshot();
+  assert.equal(snapshot.patents.length, 1);
+  assert.equal(snapshot.sources.length, 2);
+  assert.equal(snapshot.patents[0].fields.title.reviewState, 'conflict');
 });
 
 test('store degrades to session memory when IndexedDB is unavailable', async () => {
