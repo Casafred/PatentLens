@@ -146,17 +146,70 @@
     return null;
   }
 
-  // 与 _buildBlockText 一致地取「有内容」的块顺序，用于按索引对齐译文段落
+  // 镜像 web-app.js 的 _buildBlockText 清洗逻辑，保证原文片段与发送给 AI 的文本一致
+  function cleanOcrText(text) {
+    return String(text || "")
+      .replace(/\$\s*\\Box\s*\$/g, "☐")
+      .replace(/\$\s*\\surd\s*\$/g, "☑")
+      .replace(/\$\s*\\§\s*(\d+)\s*\$/g, "§$1")
+      .replace(/\$\s*\\[^$]+\$/g, "")
+      .replace(/\$\{[^}]+\}/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  // 取「有内容」的块及其清洗后文本，保持与 _buildBlockText 一致的顺序
   function nonEmptyBlocksInOrder(blocks) {
     var out = [];
     for (var i = 0; i < blocks.length; i++) {
       var b = blocks[i];
-      if (b && b.content && String(b.content).trim()) out.push(b);
+      if (!b || !b.content || !String(b.content).trim()) continue;
+      var cleaned = cleanOcrText(b.content);
+      if (cleaned) out.push({ block: b, text: cleaned });
     }
     return out;
   }
 
-  // 对照翻译栏：按块在「有内容块」序列中的索引定位译文段落
+  // 在译文段落数组中为指定块原文找最匹配的段落元素。
+  // 优先级：译文段落是块原文的译文时，二者文本通常无直接包含关系，
+  // 因此采用「该块原文在全文中的位置比例」映射到译文段落位置比例，
+  // 并叠加文本相似度微调（数字/标识符重合度），避免多个相邻块挤到同一段。
+  function pickTranslateParagraph(paragraphs, ordered, blockId) {
+    if (!paragraphs || paragraphs.length === 0) return null;
+    var total = ordered.length;
+    var blockIdx = -1;
+    for (var i = 0; i < total; i++) {
+      if (ordered[i].block.block_id === blockId) { blockIdx = i; break; }
+    }
+    if (blockIdx < 0) return null;
+
+    // 按位置比例映射到译文段落索引（线性插值）
+    var ratio = total > 1 ? (blockIdx / (total - 1)) : 0;
+    var pIdx = Math.round(ratio * (paragraphs.length - 1));
+    if (pIdx < 0) pIdx = 0;
+    if (pIdx >= paragraphs.length) pIdx = paragraphs.length - 1;
+
+    // 文本相似度微调：在比例映射点附近 ±2 段范围内，寻找与块原文
+    // 共享数字/标识符最多的段落（用于纠正比例映射的偏差）
+    var blockDigits = (ordered[blockIdx].text.match(/\d+/g) || []);
+    var bestIdx = pIdx;
+    var bestScore = -1;
+    var lo = Math.max(0, pIdx - 2);
+    var hi = Math.min(paragraphs.length - 1, pIdx + 2);
+    for (var j = lo; j <= hi; j++) {
+      var pText = normalizeText(paragraphs[j].textContent);
+      var score = 0;
+      for (var d = 0; d < blockDigits.length; d++) {
+        if (pText.indexOf(blockDigits[d]) >= 0) score++;
+      }
+      // 距离惩罚：离比例映射点越远，分数衰减
+      score -= Math.abs(j - pIdx) * 0.5;
+      if (score > bestScore) { bestScore = score; bestIdx = j; }
+    }
+    return paragraphs[bestIdx];
+  }
+
+  // 对照翻译栏：按块原文位置比例 + 文本相似度定位译文段落
   function syncTranslatePanel(blockId) {
     var ks = getKanbanState();
     var vs = getPdfViewState();
@@ -183,13 +236,8 @@
     if (!paragraphs || paragraphs.length === 0) return true;
 
     var ordered = nonEmptyBlocksInOrder(ext.blocks);
-    var idx = -1;
-    for (var i = 0; i < ordered.length; i++) {
-      if (ordered[i].block_id === blockId) { idx = i; break; }
-    }
-    if (idx < 0) return true;
-    if (idx >= paragraphs.length) idx = paragraphs.length - 1;
-    highlight(paragraphs[idx]);
+    var target = pickTranslateParagraph(paragraphs, ordered, blockId);
+    if (target) highlight(target);
     return true;
   }
 
