@@ -20,7 +20,7 @@
  * @contact Please contact the original author for licensing inquiries.
  * @version 260728
  */
-const { app, BrowserWindow, shell, ipcMain, dialog, session, clipboard } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, dialog, session, clipboard, Menu, MenuItem } = require("electron");
 
 // 全局命令行配置：模拟真实Chrome浏览器环境，用于绕过WAF检测
 const CHROME_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
@@ -3660,6 +3660,26 @@ function createWindow(port) {
     }
     createPopoutWindow(url, "专利原文查看", port);
     return { action: "deny" };
+  });
+  // 主应用输入框右键菜单：Electron 默认不显示输入框的原生右键菜单，
+  // 这里为可编辑元素（如搜索框 #patent-input）接入 剪切/复制/粘贴/全选 等操作。
+  // 仅在 params.isEditable 为 true 时弹出，避免与渲染层自定义的"文本选区翻译菜单"冲突
+  // （后者针对非编辑区的文本选区，见 src/scripts/web-app.js 中的 document contextmenu 监听）。
+  mainWindow.webContents.on("context-menu", (_event, params) => {
+    if (!params.isEditable) return;
+    const flags = params.editFlags || {};
+    const menu = new Menu();
+    if (flags.canUndo) menu.append(new MenuItem({ role: "undo" }));
+    if (flags.canRedo) menu.append(new MenuItem({ role: "redo" }));
+    if (menu.items.length > 0) menu.append(new MenuItem({ type: "separator" }));
+    if (flags.canCut) menu.append(new MenuItem({ role: "cut" }));
+    if (flags.canCopy) menu.append(new MenuItem({ role: "copy" }));
+    if (flags.canPaste) menu.append(new MenuItem({ role: "paste" }));
+    if (flags.canDelete) menu.append(new MenuItem({ role: "delete" }));
+    if (menu.items.length > 0) menu.append(new MenuItem({ type: "separator" }));
+    if (flags.canSelectAll) menu.append(new MenuItem({ role: "selectAll" }));
+    if (menu.items.length === 0) return;
+    menu.popup({ window: mainWindow });
   });
   // 关闭前确认：若存在未导出的 PDF 标注，弹出原生确认框
   mainWindow.on("close", (event) => {
