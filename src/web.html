@@ -156,6 +156,10 @@
             智能比对
           </button>
         </div>
+        <button id="share-workspace-entry" class="share-workspace-entry" type="button" title="创建模块化专利分享项目">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/><path d="M8 12l4 4 4-4"/></svg>
+          <span>分享工作台</span>
+        </button>
         <input type="text" id="patent-input" placeholder="输入专利号（如 US12030161B2, US17204063, EP4252965A3）系统自动识别类型" autocomplete="off">
         <button id="search-btn" class="btn-primary">查询</button>
         <button id="batch-search-toggle-btn" class="btn-icon" title="批量查询（最多10篇）" style="display:none;"><svg class="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></button>
@@ -200,6 +204,35 @@
 
       <!-- 智能比对视图 -->
       <section id="comparison-section" class="comparison-section hidden">
+      </section>
+
+      <!-- 专利分享工作台：项目式功能独立于旧 searchMode，由 app/share 模块维护。 -->
+      <section id="share-workspace-section" class="share-workspace-section hidden" aria-labelledby="share-workspace-title">
+        <div class="share-workspace-shell">
+          <header class="share-workspace-header">
+            <div class="share-workspace-title-group">
+              <span class="share-workspace-kicker">PatentLens Workspace</span>
+              <h2 id="share-workspace-title">专利分享工作台</h2>
+              <p id="share-project-status" class="share-project-status">本地草稿 · 尚未加入专利</p>
+            </div>
+            <div class="share-workspace-header-actions">
+              <button id="share-new-project-btn" class="btn-secondary btn-small" type="button">新建项目</button>
+              <button id="share-close-workspace-btn" class="btn-secondary btn-small" type="button">返回检索</button>
+            </div>
+          </header>
+          <div class="share-workspace-layout">
+            <nav id="share-workspace-nav" class="share-workspace-nav" aria-label="分享工作台导航">
+              <button class="share-workspace-nav-item active" type="button" data-share-view="overview"><span class="share-nav-step">01</span>项目概览</button>
+              <button class="share-workspace-nav-item" type="button" data-share-view="sources"><span class="share-nav-step">02</span>材料来源</button>
+              <button class="share-workspace-nav-item" type="button" data-share-view="review"><span class="share-nav-step">03</span>数据审核</button>
+              <button class="share-workspace-nav-item" type="button" data-share-view="modules"><span class="share-nav-step">04</span>分享模块</button>
+              <button class="share-workspace-nav-item" type="button" data-share-view="insights"><span class="share-nav-step">05</span>研发洞察</button>
+              <button class="share-workspace-nav-item" type="button" data-share-view="preview"><span class="share-nav-step">06</span>预览</button>
+              <button class="share-workspace-nav-item" type="button" data-share-view="export"><span class="share-nav-step">07</span>导出</button>
+            </nav>
+            <div id="share-workspace-view" class="share-workspace-view" aria-live="polite"></div>
+          </div>
+        </div>
       </section>
 
       <!-- 专利原文详情视图（Google Patents） -->
@@ -1229,6 +1262,9 @@
   <script src="scripts/app/shared/icons.js?v=260731a"></script>
   <script src="scripts/app/shared/dates.js?v=260801a"></script>
   <script src="scripts/web-app.js?v=260729b"></script>
+  <script src="scripts/app/share/share-project-store.js?v=260803b"></script>
+  <script src="scripts/app/share/share-source-adapters.js?v=260803b"></script>
+  <script src="scripts/app/share/share-entry.js?v=260803b"></script>
   <script src="scripts/app/features/browser-extension.js?v=260802a"></script>
   <script src="scripts/app/features/reader-doc-list-sort.js?v=260803a"></script>
   <script src="scripts/app/features/reader-ocr-sync.js?v=260803a"></script>
