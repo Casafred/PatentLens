@@ -178,6 +178,10 @@ var PATENT_STATUS = {
       "change of address": "地址变更 (Change of Address)",
       "specification-amendment not entered": "说明书修改未录入 (Specification-Amendment Not Entered)",
       "specification amendment not entered": "说明书修改未录入 (Specification-Amendment Not Entered)",
+      "notice of additional fee due": "补缴费用通知 (Notice of Additional Fee Due)",
+      "notification of loss of entitlement to small entity status via pc": "PC途径小实体资格丧失通知 (Notification of loss of entitlement to small entity status via PC)",
+      "notice of omitted items application": "申请遗漏项目通知 (Notice of Omitted Items Application)",
+      "request for uspto to retrieve priority docs": "USPTO取回优先权文件请求 (Request for USPTO to retrieve priority docs)",
     },
     stageNames: {
       "审查前": "审查前",
