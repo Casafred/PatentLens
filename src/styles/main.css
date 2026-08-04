@@ -7290,6 +7290,70 @@ body {
   white-space: nowrap;
 }
 
+.share-review-processed {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.share-review-processed h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.share-processed-field-row {
+  align-items: center;
+  gap: 8px;
+}
+
+.share-processed-field-row .share-review-field-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.share-processed-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.share-processed-badge.ai {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.share-processed-badge.manual {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.share-processed-preset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+}
+
+.share-processed-preset-bar .share-review-field-label {
+  min-width: auto;
+  margin: 0;
+}
+
+.share-preset-btn {
+  font-size: 12px;
+  padding: 3px 9px;
+}
+
 .share-inline-notice {
   margin: 0 0 16px;
   padding: 10px 12px;

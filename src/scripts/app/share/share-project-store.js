@@ -94,6 +94,24 @@
     return normalized;
   }
 
+  function normalizeProcessedFields(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map(function (f) {
+      if (!f || typeof f !== "object") return null;
+      return {
+        id: cleanText(f.id) || makeId("pf"),
+        label: cleanText(f.label) || "未命名字段",
+        value: cleanText(f.value).slice(0, 200000),
+        type: f.type === "list" ? "list" : "text",
+        source: cleanText(f.source) || "manual",
+        prompt: cleanText(f.prompt),
+        model: cleanText(f.model),
+        generatedAt: cleanText(f.generatedAt),
+        reviewState: f.reviewState === "accepted" ? "accepted" : "pending",
+      };
+    }).filter(function (f) { return f && (f.value || f.prompt); });
+  }
+
   function createProject() {
     var defaultModules = window.PatentShareModules && window.PatentShareModules.defaultConfig ? window.PatentShareModules.defaultConfig() : {};
     return {
@@ -170,7 +188,7 @@
         return f && typeof f === "object" ? {
           id: cleanText(f.id) || makeId("fig"),
           caption: cleanText(f.caption),
-          dataUrl: typeof f.dataUrl === "string" ? f.dataUrl.slice(0, 2000000) : "",
+          dataUrl: typeof f.dataUrl === "string" ? f.dataUrl.slice(0, 3500000) : "",
           width: f.width || 0,
           height: f.height || 0,
           addedAt: cleanText(f.addedAt) || now(),
@@ -178,6 +196,7 @@
       }).filter(function (f) { return f && f.dataUrl; }) : [];
       safeRecord.source = safeRecord.source && typeof safeRecord.source === "object" ? safeRecord.source : {};
       safeRecord.aiAnalysis = normalizeAIAnalysis(safeRecord.aiAnalysis);
+      safeRecord.processedFields = normalizeProcessedFields(safeRecord.processedFields);
       normalized.patents.push(safeRecord);
     });
     (Array.isArray(raw.sources) ? raw.sources : []).forEach(function (source) {
@@ -678,12 +697,12 @@
     var active = ensureProject();
     var patent = active.patents.find(function (item) { return item.id === patentId; });
     if (!patent || typeof dataUrl !== "string" || dataUrl.length < 10) return { ok: false, reason: "invalid-image" };
-    if (dataUrl.length > 2000000) return { ok: false, reason: "too-large" };
+    if (dataUrl.length > 3500000) return { ok: false, reason: "too-large" };
     if (!Array.isArray(patent.figures)) patent.figures = [];
     var figure = {
       id: makeId("fig"),
       caption: cleanText(caption),
-      dataUrl: dataUrl.slice(0, 2000000),
+      dataUrl: dataUrl.slice(0, 3500000),
       width: (dimensions && dimensions.width) || 0,
       height: (dimensions && dimensions.height) || 0,
       addedAt: now(),
@@ -702,6 +721,63 @@
     var before = patent.figures.length;
     patent.figures = patent.figures.filter(function (f) { return f.id !== figureId; });
     if (patent.figures.length === before) return false;
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function addProcessedField(patentId, label, prompt, type) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    var cleanLabel = cleanText(label);
+    if (!patent || !cleanLabel) return { ok: false, reason: "invalid-label" };
+    if (!Array.isArray(patent.processedFields)) patent.processedFields = [];
+    var field = {
+      id: makeId("pf"),
+      label: cleanLabel,
+      value: "",
+      type: type === "list" ? "list" : "text",
+      source: "manual",
+      prompt: cleanText(prompt),
+      model: "",
+      generatedAt: "",
+      reviewState: "pending",
+    };
+    patent.processedFields.push(field);
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return { ok: true, field: clone(field) };
+  }
+
+  function updateProcessedField(patentId, fieldId, updates) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent || !Array.isArray(patent.processedFields) || !updates || typeof updates !== "object") return false;
+    var field = patent.processedFields.find(function (f) { return f.id === fieldId; });
+    if (!field) return false;
+    if (typeof updates.value === "string") field.value = updates.value.slice(0, 200000);
+    if (typeof updates.label === "string") field.label = cleanText(updates.label) || field.label;
+    if (typeof updates.prompt === "string") field.prompt = cleanText(updates.prompt);
+    if (typeof updates.model === "string") field.model = cleanText(updates.model);
+    if (typeof updates.generatedAt === "string") field.generatedAt = cleanText(updates.generatedAt);
+    if (updates.source === "ai" || updates.source === "manual") field.source = updates.source;
+    if (updates.reviewState === "accepted") field.reviewState = "accepted";
+    else if (updates.reviewState) field.reviewState = "pending";
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function removeProcessedField(patentId, fieldId) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent || !Array.isArray(patent.processedFields)) return false;
+    var before = patent.processedFields.length;
+    patent.processedFields = patent.processedFields.filter(function (f) { return f.id !== fieldId; });
+    if (patent.processedFields.length === before) return false;
     active.updatedAt = now();
     queuePersist();
     notify();
@@ -792,6 +868,9 @@
     addOcrSource: addOcrSource,
     addFigure: addFigure,
     removeFigure: removeFigure,
+    addProcessedField: addProcessedField,
+    updateProcessedField: updateProcessedField,
+    removeProcessedField: removeProcessedField,
     setAIAnalysis: setAIAnalysis,
     setProjectAIAnalysis: setProjectAIAnalysis,
     removePatent: removePatent,
