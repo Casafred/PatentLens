@@ -6689,6 +6689,10 @@ body {
   margin: 0 auto 32px;
 }
 
+.share-file-input {
+  display: none;
+}
+
 #app.share-workspace-active .search-section {
   display: none;
 }
@@ -6837,6 +6841,110 @@ body {
   background: var(--accent-hover);
 }
 
+.share-secondary-action {
+  margin-top: 14px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.share-secondary-action:hover,
+.share-field-edit:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.share-module-hint,
+.share-preview-meta {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.share-module-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.share-module-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.share-module-copy {
+  min-width: 0;
+}
+
+.share-module-copy strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.share-module-copy p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.share-module-mode {
+  min-width: 82px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.share-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.share-preview-toolbar .share-secondary-action {
+  margin-top: 0;
+}
+
+.share-preview-frame {
+  display: block;
+  width: 100%;
+  min-height: 680px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f5f7fa;
+}
+
+.share-export-summary {
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.share-export-summary strong {
+  color: var(--text-primary);
+}
+
+.share-export-summary p {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .share-overview-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6891,6 +6999,62 @@ body {
 
 .share-empty-panel .share-primary-action {
   margin-top: 18px;
+}
+
+.share-project-list-section {
+  margin-top: 22px;
+}
+
+.share-project-list-section h4 {
+  margin: 0 0 10px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.share-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-project-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.share-project-list-copy {
+  min-width: 0;
+}
+
+.share-project-list-copy strong,
+.share-project-list-copy span {
+  display: block;
+}
+
+.share-project-list-copy strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-project-list-copy span,
+.share-project-list-loading {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.share-project-list-item .share-secondary-action {
+  flex: 0 0 auto;
+  margin-top: 0;
 }
 
 .share-source-list {
@@ -6952,6 +7116,96 @@ body {
   color: var(--danger);
 }
 
+.share-review-card {
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+}
+
+.share-review-card h4 {
+  margin: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.share-review-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.share-review-field {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) 94px auto;
+  gap: 12px;
+  align-items: start;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.share-review-field:last-child {
+  border-bottom: 0;
+}
+
+.share-review-field-label,
+.share-review-field-source {
+  padding-top: 1px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.share-review-field-source {
+  color: var(--accent);
+}
+
+.share-review-field-value {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.share-review-candidates {
+  display: flex;
+  grid-column: 2 / -1;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.share-candidate-button {
+  max-width: 100%;
+  padding: 4px 7px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.share-candidate-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.share-field-edit {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .share-inline-notice {
   margin: 0 0 16px;
   padding: 10px 12px;
@@ -6987,6 +7241,20 @@ body {
 
   .share-overview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .share-review-field {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .share-review-field-source,
+  .share-field-edit {
+    grid-column: 2;
+  }
+
+  .share-module-card {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

@@ -1,7 +1,8 @@
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, ipcMain } = require('electron');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const XLSX = require('xlsx');
 
 const root = path.resolve(__dirname, '..');
 const srcRoot = path.join(root, 'src');
@@ -49,6 +50,15 @@ function finish(code) {
 }
 
 app.whenReady().then(async () => {
+  // The smoke harness is intentionally a minimal Electron main process. Register the
+  // same narrow RPC contract so preload argument/return-value serialization is covered.
+  ipcMain.handle('parse-share-spreadsheet', async (_event, bytes) => {
+    const workbook = XLSX.read(Buffer.from(bytes), { type: 'buffer', cellFormula: false, cellHTML: false });
+    return { sheets: workbook.SheetNames.map((name) => ({
+      name,
+      rows: XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, defval: '', raw: false }),
+    })) };
+  });
   const port = await startServer();
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['https://cdnjs.cloudflare.com/*'] },
@@ -87,6 +97,9 @@ app.whenReady().then(async () => {
         readyState: document.readyState,
         hasPatentInput: Boolean(document.getElementById('patent-input')),
         hasElectronBridge: Boolean(window.electronAPI && window.electronAPI.openExternal),
+        hasShareSpreadsheetBridge: Boolean(window.electronAPI && typeof window.electronAPI.parseShareSpreadsheet === 'function'),
+        hasShareSaveBridge: Boolean(window.electronAPI && typeof window.electronAPI.saveShareHtml === 'function'),
+        hasShareOcrBridge: Boolean(window.electronAPI && typeof window.electronAPI.ocrSharePdf === 'function'),
         hasIconFunction: typeof icon === 'function',
         iconOutput: typeof icon === 'function' ? icon('search', 'sm', 'smoke-test') : '',
         gdApiBase: typeof GD_API_BASE === 'string' ? GD_API_BASE : null,
@@ -116,6 +129,21 @@ app.whenReady().then(async () => {
       if (result.readyState !== 'complete') failures.push(`Unexpected readyState: ${result.readyState}`);
       if (!result.hasPatentInput) failures.push('Renderer is missing #patent-input.');
       if (!result.hasElectronBridge) failures.push('preload.js did not expose window.electronAPI.');
+      if (!result.hasShareSpreadsheetBridge) failures.push('preload.js did not expose the share spreadsheet parser.');
+      if (!result.hasShareSaveBridge) failures.push('preload.js did not expose the share HTML save bridge.');
+      if (!result.hasShareOcrBridge) failures.push('preload.js did not expose the share PDF OCR bridge.');
+      if (result.hasShareSpreadsheetBridge) {
+        const parsedSheet = await win.webContents.executeJavaScript(`
+          window.electronAPI.parseShareSpreadsheet(
+            new TextEncoder().encode('Patent Number,Title\\nUS12030161B2,Smoke spreadsheet').buffer
+          ).then(function (workbook) {
+            return workbook.sheets && workbook.sheets[0] ? workbook.sheets[0].rows : null;
+          })
+        `);
+        if (!parsedSheet || parsedSheet[1]?.[0] !== 'US12030161B2') {
+          failures.push('Share spreadsheet parser did not return normalized worksheet rows.');
+        }
+      }
       if (!result.hasIconFunction) failures.push('Extracted icon() binding is unavailable to web-app.js.');
       if (!/class="svg-icon-sm smoke-test"/.test(result.iconOutput)) failures.push('Extracted icon() returned unexpected markup.');
       if (result.gdApiBase !== '/api/gd') failures.push('Extracted GD_API_BASE is unavailable or changed.');

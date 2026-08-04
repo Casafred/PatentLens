@@ -24,7 +24,8 @@
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "xlsx": "^0.18.5"
   },
   "build": {
     "appId": "com.patentlens.app",
