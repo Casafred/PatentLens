@@ -24,6 +24,7 @@ const http = require("http");
 const { execFile } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { normalizePatentNumber, extractPatentFromHtml } = require("./patent-parser");
 
 const GD_API_BASE = "https://d1kazzu6rbodne.cloudfront.net";
@@ -88,7 +89,10 @@ function proxyGdApi(urlPath, res) {
     const _queryString = _qIdx !== -1 ? urlPath.substring(_qIdx + 1) : "";
     const _queryParams = new URLSearchParams(_queryString);
     const epoDirect = _queryParams.get("epoDirect") === "1";
-    const epoPdfUrlParam = _queryParams.get("epoPdfUrl") || null;
+    let epoPdfUrlParam = _queryParams.get("epoPdfUrl") || null;
+    if (epoPdfUrlParam && !epoPdfUrlParam.startsWith("http://") && !epoPdfUrlParam.startsWith("https://")) {
+      epoPdfUrlParam = null;
+    }
     // 去掉 query string 后再做路径匹配
     const urlPathNoQuery = _qIdx !== -1 ? urlPath.substring(0, _qIdx) : urlPath;
 
@@ -505,6 +509,11 @@ function proxyDpmaDownload(reqUrl, res) {
   if (!targetUrl) {
     res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
     res.end(JSON.stringify({ error: "Missing uri parameter" }));
+    return;
+  }
+  if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+    res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({ error: "Invalid URI scheme" }));
     return;
   }
 
@@ -2111,10 +2120,19 @@ const server = http.createServer((req, res) => {
   if (qIdx !== -1) urlPath = urlPath.substring(0, qIdx);
   // /fonts/* served from workspace root fonts/ directory (for CJK font embedding in PDF export)
   let filePath;
+  let rootDir;
   if (urlPath.startsWith("/fonts/")) {
     filePath = path.join(__dirname, urlPath);
+    rootDir = path.resolve(__dirname);
   } else {
     filePath = path.join(__dirname, "src", urlPath);
+    rootDir = path.resolve(__dirname, "src");
+  }
+  const resolvedFile = path.resolve(filePath);
+  if (!resolvedFile.startsWith(rootDir + path.sep) && resolvedFile !== rootDir) {
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
   }
   serveStatic(filePath, res);
 });
@@ -2144,7 +2162,7 @@ async function extractPdfText(req, res) {
     gdUrl,
   ];
 
-  const tempDir = "/tmp";
+  const tempDir = os.tmpdir();
   const pdfPath = path.join(tempDir, `patent_${Date.now()}.pdf`);
 
   const epMatch = urlPath.match(/^\/([^/]+)\/([^/]+)\/([^/]+)/);
