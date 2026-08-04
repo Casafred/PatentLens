@@ -290,15 +290,9 @@
       html += renderClaims(record.claims, config);
       html += '</div>';
     }
-    if (moduleEnabled(config, "R1") || moduleEnabled(config, "R6")) {
-      html += moduleHeading("R1", "研发问题-手段-效果");
-      var summary = project.researchSummary || {};
-      if (project.patents.length > 1) {
-        var patentSummary = record.aiAnalysis || {};
-        html += renderAISummary(record, summary, patentSummary, moduleMode(config, "R1"));
-      } else {
-        html += renderAISummary(record, summary, record.aiAnalysis || {}, moduleMode(config, "R1"));
-      }
+    if (moduleEnabled(config, "R1") && record.aiAnalysis && record.aiAnalysis.summary) {
+      html += '<h3>AI 研发摘要</h3>';
+      html += renderAISummary(record, null, record.aiAnalysis || {}, moduleMode(config, "R1"));
     }
     if (moduleEnabled(config, "R2")) {
       html += moduleHeading("R2", "技术要素与系统结构");
@@ -363,6 +357,15 @@
     if (moduleEnabled(config, "R5") && patents.length >= 2) {
       html += moduleHeading("R5", "多专利技术路线对比");
       html += renderMultiPatentComparison(input, input.aiAnalysis, moduleMode(config, "R5"));
+    }
+    if (moduleEnabled(config, "R1")) {
+      var research = input.researchSummary && typeof input.researchSummary === "object" ? input.researchSummary : {};
+      html += moduleHeading("R1", "研发问题-手段-效果");
+      [["技术问题", research.problem], ["技术手段", research.approach], ["技术效果", research.effect], ["待验证问题", research.openQuestions]].forEach(function (item) {
+        var text = cleanText(item[1]);
+        if (text && moduleMode(config, "R1") === "lite" && text.length > 800) text = text.slice(0, 800) + "…";
+        html += '<div class="field"><span class="label">' + escapeHtml(item[0]) + '</span>' + (text ? '<span class="value">' + escapeHtml(text) + '</span>' : '<span class="missing">尚未填写</span>') + '</div>';
+      });
     }
     if (moduleEnabled(config, "R6")) {
       var research = input.researchSummary || {};
