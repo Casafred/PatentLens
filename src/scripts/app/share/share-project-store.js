@@ -37,6 +37,7 @@
   }
 
   function createProject() {
+    var defaultModules = window.PatentShareModules && window.PatentShareModules.defaultConfig ? window.PatentShareModules.defaultConfig() : {};
     return {
       schemaVersion: 1,
       id: makeId("project"),
@@ -45,7 +46,7 @@
       updatedAt: now(),
       patents: [],
       sources: [],
-      moduleConfig: {},
+      moduleConfig: defaultModules,
     };
   }
 
@@ -205,6 +206,24 @@
     return true;
   }
 
+  function setModuleConfig(config) {
+    var active = ensureProject();
+    active.moduleConfig = config && typeof config === "object" ? clone(config) : {};
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return getSnapshot().moduleConfig;
+  }
+
+  function setModuleMode(moduleId, mode) {
+    var modules = window.PatentShareModules;
+    if (!modules || !modules.setModuleMode) return false;
+    var next = modules.setModuleMode(ensureProject().moduleConfig, moduleId, mode);
+    if (!next) return false;
+    setModuleConfig(next);
+    return true;
+  }
+
   function addPatent(record) {
     var active = ensureProject();
     if (!record || !record.id || !cleanText(record.patentNumber)) return { ok: false, reason: "invalid-record" };
@@ -342,6 +361,8 @@
     initialize: initialize,
     newProject: newProject,
     renameProject: renameProject,
+    setModuleConfig: setModuleConfig,
+    setModuleMode: setModuleMode,
     addPatent: addPatent,
     importPatents: importPatents,
     updatePatentField: updatePatentField,

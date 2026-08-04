@@ -4621,6 +4621,18 @@ app.whenReady().then(async () => {
   // 分享工作台只传递用户选择文件的二进制内容；不暴露路径、文件系统读取或 XLSX 库给 renderer。
   ipcMain.handle("parse-share-spreadsheet", async (_event, bytes) => parseShareSpreadsheet(bytes));
 
+  ipcMain.handle("save-share-html", async (_event, html, filename) => {
+    if (typeof html !== "string" || html.length > 20 * 1024 * 1024) throw new Error("分享 HTML 为空或超过 20 MB 限制。");
+    const safeName = typeof filename === "string" && /^[\w\u4e00-\u9fff .-]+\.html$/i.test(filename) ? filename : "patent-share.html";
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: safeName,
+      filters: [{ name: "HTML 文件", extensions: ["html"] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    fs.writeFileSync(result.filePath, html, "utf8");
+    return { canceled: false, filePath: result.filePath };
+  });
+
   // IPC: EPO Cloudflare 验证 - 打开内嵌 BrowserWindow 让用户完成人机验证，
   // 验证通过后把 session 中的 epo.org cookies 写回 EPO_COOKIE_JAR 文件，
   // 这样 server.js 后续的 curl 请求就能用同一个 cookie 通过 Cloudflare 防护。

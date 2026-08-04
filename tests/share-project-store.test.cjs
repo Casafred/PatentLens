@@ -8,7 +8,7 @@ function loadShareModules(patentData) {
   const root = path.resolve(__dirname, '../src/scripts/app/share');
   const window = { _currentPatentData: patentData || null };
   const context = vm.createContext({ window, Date, Math, JSON });
-  for (const name of ['share-field-merge.js', 'share-spreadsheet-import.js', 'share-project-store.js', 'share-source-adapters.js']) {
+  for (const name of ['share-field-merge.js', 'share-spreadsheet-import.js', 'share-module-registry.js', 'share-renderer.js', 'share-project-store.js', 'share-source-adapters.js']) {
     const file = path.join(root, name);
     vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
   }
@@ -128,6 +128,33 @@ test('spreadsheet row input reuses CSV mapping and accepts Excel extensions', ()
   assert.equal(plan.records[0].customFields['csv:研发标签'].field.value, '材料');
   assert.equal(PatentShareSpreadsheetImport.validateFile({ name: 'patents.xlsx', size: 10 }).ok, true);
   assert.equal(PatentShareSpreadsheetImport.validateFile({ name: 'patents.xls', size: 10 }).ok, true);
+});
+
+test('module registry protects required modules and renderer produces escaped offline HTML', () => {
+  const { PatentShareModules, PatentShareRenderer } = loadShareModules();
+  const config = PatentShareModules.defaultConfig();
+  assert.equal(PatentShareModules.setModuleMode(config, 'S1', 'off'), null);
+  assert.equal(PatentShareModules.setModuleMode(config, 'R1', 'full').modules.R1, 'full');
+  const result = PatentShareRenderer.render({
+    name: '研发 <分享>',
+    patents: [{
+      id: 'p1', patentNumber: 'US1', title: '<危险标题>',
+      fields: { abstract: { value: '<script>alert(1)</script>', source: 'manual', reviewState: 'accepted' } },
+      claims: [{ number: '1', text: 'A claim <tag>' }],
+      source: { type: 'google_patents', label: 'GP', capturedAt: '2026-08-04T00:00:00.000Z' },
+    }],
+    moduleConfig: config,
+  });
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.html.includes('<script>alert(1)</script>'), false);
+  assert.equal(result.html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), true);
+  assert.equal(result.html.includes('https://'), false);
+});
+
+test('renderer flags sensitive project material before export', () => {
+  const { PatentShareRenderer } = loadShareModules();
+  const findings = PatentShareRenderer.scanSensitive({ fields: { token: 'token=secret-value' } }, '');
+  assert.equal(findings.length > 0, true);
 });
 
 test('store degrades to session memory when IndexedDB is unavailable', async () => {

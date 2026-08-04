@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openExtensionsFolder: () => ipcRenderer.invoke("open-extensions-folder"),
   triggerImmersiveTranslate: () => ipcRenderer.invoke("trigger-immersive-translate"),
   parseShareSpreadsheet: (bytes) => ipcRenderer.invoke("parse-share-spreadsheet", bytes),
+  saveShareHtml: (html, filename) => ipcRenderer.invoke("save-share-html", html, filename),
   onForceClose: (callback) => ipcRenderer.on("force-close-app", () => callback()),
   forceRefocus: () => ipcRenderer.send("force-refocus"),
   resetFocusKick: () => ipcRenderer.send("reset-focus-kick"),

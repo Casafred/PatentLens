@@ -98,6 +98,7 @@ app.whenReady().then(async () => {
         hasPatentInput: Boolean(document.getElementById('patent-input')),
         hasElectronBridge: Boolean(window.electronAPI && window.electronAPI.openExternal),
         hasShareSpreadsheetBridge: Boolean(window.electronAPI && typeof window.electronAPI.parseShareSpreadsheet === 'function'),
+        hasShareSaveBridge: Boolean(window.electronAPI && typeof window.electronAPI.saveShareHtml === 'function'),
         hasIconFunction: typeof icon === 'function',
         iconOutput: typeof icon === 'function' ? icon('search', 'sm', 'smoke-test') : '',
         gdApiBase: typeof GD_API_BASE === 'string' ? GD_API_BASE : null,
@@ -128,6 +129,7 @@ app.whenReady().then(async () => {
       if (!result.hasPatentInput) failures.push('Renderer is missing #patent-input.');
       if (!result.hasElectronBridge) failures.push('preload.js did not expose window.electronAPI.');
       if (!result.hasShareSpreadsheetBridge) failures.push('preload.js did not expose the share spreadsheet parser.');
+      if (!result.hasShareSaveBridge) failures.push('preload.js did not expose the share HTML save bridge.');
       if (result.hasShareSpreadsheetBridge) {
         const parsedSheet = await win.webContents.executeJavaScript(`
           window.electronAPI.parseShareSpreadsheet(

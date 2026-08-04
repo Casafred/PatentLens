@@ -23,11 +23,11 @@
   var viewMeta = {
     overview: { title: "项目概览", description: "围绕一个可分享的专利项目管理材料、模块和输出。" },
     sources: { title: "材料来源", description: "从当前查询、审查档案、PDF 和表格逐步汇集可追溯的专利材料。" },
-    review: { title: "数据审核", description: "后续在这里确认字段冲突、来源优先级和人工修订。" },
-    modules: { title: "分享模块", description: "后续在这里应用预设、调整模块，并为单篇专利设置覆盖规则。" },
+    review: { title: "数据审核", description: "确认字段冲突、来源优先级和人工修订。" },
+    modules: { title: "分享模块", description: "选择必要模块的完整/精简模式，并为后续研发模块预留扩展位。" },
     insights: { title: "研发洞察", description: "后续在这里生成并审核技术要素、参数、验证证据和待验证问题。" },
-    preview: { title: "预览", description: "后续在隔离 iframe 中预览离线分享页面。" },
-    export: { title: "导出", description: "后续在这里进行敏感信息扫描、资源策略选择和 HTML 保存。" },
+    preview: { title: "预览", description: "在隔离 iframe 中查看将要分享的离线页面。" },
+    export: { title: "导出", description: "完成敏感信息检查后保存单文件 HTML。" },
   };
 
   function byId(id) { return document.getElementById(id); }
@@ -278,6 +278,82 @@
     });
   }
 
+  function modeLabel(mode) { return mode === "full" ? "完整" : mode === "lite" ? "精简" : "关闭"; }
+
+  function renderModules(container, project) {
+    addHeading(container, viewMeta.modules);
+    addNotice(container);
+    var registry = window.PatentShareModules;
+    if (!registry) { renderPlaceholder(container, "modules", project); return; }
+    var config = registry.resolveConfig(project.moduleConfig);
+    var hint = makeElement("p", "share-module-hint", "必要模块不能关闭；配置会自动保存到当前分享项目，并在预览与导出中生效。");
+    container.appendChild(hint);
+    var list = makeElement("div", "share-module-list");
+    registry.list().forEach(function (module) {
+      var card = makeElement("article", "share-module-card");
+      var copy = makeElement("div", "share-module-copy");
+      copy.appendChild(makeElement("strong", "", module.id + " · " + module.label));
+      copy.appendChild(makeElement("p", "", module.description + (module.required ? " 必要模块" : " 可选模块")));
+      card.appendChild(copy);
+      var select = document.createElement("select");
+      select.className = "share-module-mode";
+      select.dataset.shareAction = "module-mode";
+      select.dataset.moduleId = module.id;
+      ["full", "lite", "off"].forEach(function (mode) {
+        if (module.required && mode === "off") return;
+        var option = document.createElement("option");
+        option.value = mode;
+        option.textContent = modeLabel(mode);
+        option.selected = config.modules[module.id] === mode;
+        select.appendChild(option);
+      });
+      card.appendChild(select);
+      list.appendChild(card);
+    });
+    container.appendChild(list);
+  }
+
+  function renderPreview(container, project) {
+    addHeading(container, viewMeta.preview);
+    addNotice(container);
+    var renderer = window.PatentShareRenderer;
+    if (!renderer) { renderPlaceholder(container, "preview", project); return; }
+    var result = renderer.render(project);
+    var toolbar = makeElement("div", "share-preview-toolbar");
+    toolbar.appendChild(makeElement("span", "share-preview-meta", "离线预览 · " + Math.ceil(result.size / 1024) + " KB"));
+    var refresh = makeElement("button", "share-secondary-action", "刷新预览");
+    refresh.type = "button";
+    refresh.dataset.shareAction = "refresh-preview";
+    toolbar.appendChild(refresh);
+    container.appendChild(toolbar);
+    if (result.findings.length) container.appendChild(makeElement("div", "share-inline-notice error", "预览发现：" + result.findings.join("；")));
+    var frame = document.createElement("iframe");
+    frame.className = "share-preview-frame";
+    frame.title = "专利分享离线预览";
+    frame.setAttribute("sandbox", "");
+    frame.srcdoc = result.html;
+    container.appendChild(frame);
+  }
+
+  function renderExport(container, project) {
+    addHeading(container, viewMeta.export);
+    addNotice(container);
+    var renderer = window.PatentShareRenderer;
+    if (!renderer) { renderPlaceholder(container, "export", project); return; }
+    var result = renderer.render(project);
+    var summary = makeElement("div", "share-export-summary");
+    summary.appendChild(makeElement("strong", "", "HTML 导出检查"));
+    summary.appendChild(makeElement("p", "", "" + project.patents.length + " 篇专利 · " + Math.ceil(result.size / 1024) + " KB · 离线 CSS 已内联"));
+    container.appendChild(summary);
+    var action = makeElement("button", "share-primary-action", "保存 HTML");
+    action.type = "button";
+    action.dataset.shareAction = "save-html";
+    action.disabled = result.findings.length > 0 || project.patents.length === 0;
+    container.appendChild(action);
+    if (result.findings.length) container.appendChild(makeElement("div", "share-inline-notice error", "导出前需要处理：" + result.findings.join("；")));
+    else container.appendChild(makeElement("div", "share-inline-notice", "未发现密钥、本机路径或本地代理地址。保存后可在无网络环境打开。"));
+  }
+
   function renderPlaceholder(container, viewId, project) {
     addHeading(container, viewMeta[viewId]);
     var panel = makeElement("div", "share-placeholder-panel");
@@ -296,6 +372,9 @@
     if (activeView === "overview") renderOverview(container, project);
     else if (activeView === "sources") renderSources(container, project);
     else if (activeView === "review") renderReview(container, project);
+    else if (activeView === "modules") renderModules(container, project);
+    else if (activeView === "preview") renderPreview(container, project);
+    else if (activeView === "export") renderExport(container, project);
     else renderPlaceholder(container, activeView, project);
 
     var navItems = document.querySelectorAll(".share-workspace-nav-item");
@@ -397,6 +476,42 @@
     render();
   }
 
+  function saveHtml() {
+    var project = currentProject();
+    var renderer = window.PatentShareRenderer;
+    if (!project || !renderer || !project.patents.length) {
+      setNotice("请先加入至少一篇专利，再导出分享 HTML。", true);
+      render();
+      return;
+    }
+    var result = renderer.render(project);
+    if (result.findings.length) {
+      setNotice("导出已阻止：" + result.findings.join("；"), true);
+      render();
+      return;
+    }
+    var baseName = (project.name || "patent-share").replace(/[<>:"/\\|?*]/g, "-").trim().slice(0, 60) || "patent-share";
+    var bridge = window.electronAPI && window.electronAPI.saveShareHtml;
+    if (bridge) {
+      bridge(result.html, baseName + ".html").then(function (saved) {
+        setNotice(saved && saved.canceled ? "已取消保存。" : "分享 HTML 已保存到本机。", false);
+        render();
+      }).catch(function (error) {
+        setNotice(error && error.message ? error.message : "保存 HTML 失败。", true);
+        render();
+      });
+      return;
+    }
+    var blobUrl = URL.createObjectURL(new Blob([result.html], { type: "text/html;charset=utf-8" }));
+    var link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = baseName + ".html";
+    link.click();
+    setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 1000);
+    setNotice("分享 HTML 已生成并开始下载。", false);
+    render();
+  }
+
   function bind() {
     var entry = byId("share-workspace-entry");
     if (entry) entry.addEventListener("click", openWorkspace);
@@ -422,6 +537,8 @@
       if (!action) return;
       if (action.dataset.shareAction === "add-current") addCurrentPatent();
       if (action.dataset.shareAction === "import-csv") startSpreadsheetImport();
+      if (action.dataset.shareAction === "refresh-preview") render();
+      if (action.dataset.shareAction === "save-html") saveHtml();
       if (action.dataset.shareAction === "rename-project") {
         if (window.PatentShareStore.getPersistenceState().mode === "loading") {
           setNotice("正在恢复本机分享项目，请稍候再编辑。", true);
@@ -459,6 +576,17 @@
         }
         window.PatentShareStore.removePatent(action.dataset.patentId);
         setNotice("已从当前项目移除该专利快照。", false);
+        render();
+      }
+    });
+    if (view) view.addEventListener("change", function (event) {
+      var control = event.target;
+      if (!control || control.dataset.shareAction !== "module-mode") return;
+      if (window.PatentShareStore.setModuleMode(control.dataset.moduleId, control.value)) {
+        setNotice("模块配置已保存。", false);
+        render();
+      } else {
+        setNotice("该模块配置不可用。", true);
         render();
       }
     });
