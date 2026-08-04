@@ -114,6 +114,11 @@ test('CSV records merge with GP snapshots and report field conflicts', () => {
   assert.equal(snapshot.patents.length, 1);
   assert.equal(snapshot.sources.length, 2);
   assert.equal(snapshot.patents[0].fields.title.reviewState, 'conflict');
+  // Regression: each source must be linked to the actual patent id so removePatent cleans up
+  // every tracked source and the UI per-patent count is correct.
+  assert.equal(snapshot.sources.every((s) => s.patentId === snapshot.patents[0].id), true);
+  PatentShareStore.removePatent(snapshot.patents[0].id);
+  assert.equal(PatentShareStore.getSnapshot().sources.length, 0);
 });
 
 test('spreadsheet row input reuses CSV mapping and accepts Excel extensions', () => {

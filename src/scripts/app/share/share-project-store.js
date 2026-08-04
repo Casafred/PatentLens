@@ -448,7 +448,7 @@
         existing.classifications = record.classifications.slice();
       }
       if (existing.fields.title && existing.fields.title.value) existing.title = existing.fields.title.value;
-      addSource(active, record);
+      addSource(active, existing);
       summary.merged++;
       summary.conflicts += fieldResult.conflicts.length;
       summary.results.push({ patentId: existing.id, patentNumber: number, action: "merged", conflicts: fieldResult.conflicts });
