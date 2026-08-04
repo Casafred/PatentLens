@@ -7229,6 +7229,67 @@ body {
   cursor: pointer;
 }
 
+.share-field-remove {
+  padding: 4px 7px;
+  border: 1px solid rgba(239, 68, 68, .3);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--danger);
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.share-field-remove:hover {
+  background: rgba(239, 68, 68, .08);
+}
+
+.share-review-add-custom {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.share-review-figures {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.share-review-figures h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.share-figure-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+}
+
+.share-figure-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.share-figure-caption {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .share-inline-notice {
   margin: 0 0 16px;
   padding: 10px 12px;
@@ -7286,6 +7347,11 @@ body {
   border-radius: 4px;
   font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.share-missing-text {
+  color: #94a3b8;
+  font-size: 13px;
+  font-style: italic;
 }
 .share-description-preview {
   margin: 12px 0;

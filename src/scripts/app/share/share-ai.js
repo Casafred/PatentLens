@@ -12,7 +12,9 @@
 
     technicalElements: '你是一位专利技术要素提取专家。请从提供的专利中提取**结构化技术要素**，输出为JSON格式（不要输出其他说明文字）：\n\n```json\n{\n  "components": [\n    {\n      "name": "部件/模块名称",\n      "role": "在方案中的作用",\n      "keyFeatures": ["关键特征1", "关键特征2"]\n    }\n  ],\n  "steps": [\n    {\n      "order": 1,\n      "action": "步骤描述",\n      "input": "输入",\n      "output": "输出",\n      "keyParams": ["关键参数/条件"]\n    }\n  ],\n  "parameters": [\n    {\n      "name": "参数名称",\n      "range": "数值范围/取值",\n      "unit": "单位",\n      "effect": "该参数的作用/对效果的影响"\n    }\n  ],\n  "interfaces": ["关键接口/连接关系1", "关键接口/连接关系2"],\n  "materials": ["涉及的材料/物质1", "涉及的材料/物质2"]\n}\n```\n\n请只输出符合上述格式的JSON，不要输出Markdown代码块标记以外的任何文字。',
 
-    multiPatentComparison: '你是一位专利组合分析专家。请对以下多篇专利进行**技术路线对比分析**，帮助研发团队理解不同方案的异同和演进方向。\n\n输出Markdown格式，包含：\n\n## 一、专利组合概览\n- 涉及的技术领域\n- 各专利解决的问题侧重\n- 整体技术演进脉络\n\n## 二、技术路线对比矩阵\n以表格形式对比各专利的关键维度：\n| 维度 | 专利1 | 专利2 | ... |\n|------|-------|-------|-----|\n| 核心问题 | | | |\n| 技术路线 | | | |\n| 关键特征 | | | |\n| 主要效果 | | | |\n| 保护范围 | | | |\n\n## 三、核心差异分析\n- 各方案的本质区别是什么\n- 技术路线的演进方向\n- 不同方案的适用场景\n\n## 四、研发启示\n- 技术发展趋势总结\n- 关键技术空白点\n- 值得重点关注的专利\n\n要求：分析客观，基于提供的专利内容，不编造信息；使用中文输出。'
+    multiPatentComparison: '你是一位专利组合分析专家。请对以下多篇专利进行**技术路线对比分析**，帮助研发团队理解不同方案的异同和演进方向。\n\n输出Markdown格式，包含：\n\n## 一、专利组合概览\n- 涉及的技术领域\n- 各专利解决的问题侧重\n- 整体技术演进脉络\n\n## 二、技术路线对比矩阵\n以表格形式对比各专利的关键维度：\n| 维度 | 专利1 | 专利2 | ... |\n|------|-------|-------|-----|\n| 核心问题 | | | |\n| 技术路线 | | | |\n| 关键特征 | | | |\n| 主要效果 | | | |\n| 保护范围 | | | |\n\n## 三、核心差异分析\n- 各方案的本质区别是什么\n- 技术路线的演进方向\n- 不同方案的适用场景\n\n## 四、研发启示\n- 技术发展趋势总结\n- 关键技术空白点\n- 值得重点关注的专利\n\n要求：分析客观，基于提供的专利内容，不编造信息；使用中文输出。',
+
+    embodiments: '你是一位专利技术分析专家。请从提供的专利说明书中提取和归纳**实施例及验证证据**，输出Markdown格式。\n\n## 一、实施例概览\n列出专利中提到的所有实施例/实施方式，简要说明每个实施例的核心内容。\n\n## 二、关键实施方式\n选取最重要的2-3个实施例，详细说明：\n- 实施例的构成和配置\n- 工作原理/流程步骤\n- 与其他实施例的区别\n\n## 三、对比实验与数据\n如果专利中包含对比实验或测试数据：\n- 实验条件是什么\n- 对比对象是什么（现有技术/对照组）\n- 测试结果和性能数据\n- 效果提升幅度\n\n## 四、验证要点\n- 该实施例验证了哪些技术效果\n- 参数选择对效果的影响\n- 可推广性评估\n\n要求：\n- 严格基于说明书内容，不要编造未提及的实验或数据\n- 如果专利未公开具体实验数据，请明确说明"该专利未公开具体对比实验数据"\n- 使用中文输出，保留原始技术术语'
   };
 
   function getActiveAIProvider() {
@@ -156,10 +158,33 @@
     }
   }
 
+  async function generateEmbodiments(patent) {
+    try {
+      if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
+      if (!patent.description) throw new Error("该专利缺少说明书内容，无法提取实施例");
+      var context = buildPatentContext(patent);
+      var messages = [
+        { role: "system", content: SHARE_AI_PROMPTS.embodiments },
+        { role: "user", content: "请从以下专利中提取实施例及验证证据：\n\n" + context }
+      ];
+      var result = await callAI(messages);
+      return {
+        ok: true,
+        content: result.content,
+        reasoning: result.reasoning,
+        model: result.model,
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  }
+
   window.PatentShareAI = {
     getActiveAIProvider: getActiveAIProvider,
     generatePatentSummary: generatePatentSummary,
     generateTechnicalElements: generateTechnicalElements,
+    generateEmbodiments: generateEmbodiments,
     generateMultiPatentComparison: generateMultiPatentComparison,
     buildPatentContext: buildPatentContext,
   };

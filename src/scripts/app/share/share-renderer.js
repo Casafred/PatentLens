@@ -7,7 +7,7 @@
 (function () {
   "use strict";
 
-  var CSS = "body{margin:0;background:#f5f7fa;color:#1f2937;font:15px/1.65 system-ui,-apple-system,Segoe UI,Microsoft YaHei,sans-serif}main{max-width:1040px;margin:0 auto;padding:40px 24px}header{padding:36px 0 24px;border-bottom:1px solid #d8dee8}h1{margin:0 0 8px;font-size:30px;line-height:1.25}h2{margin:34px 0 12px;padding-top:10px;border-top:1px solid #d8dee8;font-size:21px}h3{margin:22px 0 8px;font-size:17px}h4{margin:16px 0 6px;font-size:15px}.meta,.source,.missing,.ai-badge{color:#667085;font-size:13px}.source{margin-top:8px}.patent{margin:22px 0;padding:20px;background:#fff;border:1px solid #d8dee8;border-radius:8px;page-break-inside:avoid}.field{margin:10px 0}.label{display:inline-block;min-width:92px;color:#667085;font-size:13px;vertical-align:top}.value{display:inline;white-space:pre-wrap;overflow-wrap:anywhere}.claim{margin:8px 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #2b7fff;white-space:pre-wrap}.claim.independent{border-left-color:#e53935;background:#fff5f5}.claim.dependent{border-left-color:#fb8c00}.claim-refs{margin-top:4px;font-size:12px;color:#667085}.claim-refs a{color:#1769aa;text-decoration:none}.claim-refs a:hover{text-decoration:underline}.description-block{margin:12px 0;padding:14px 16px;background:#f8fafc;border:1px solid #d8dee8;border-radius:6px;white-space:pre-wrap;line-height:1.7;max-height:600px;overflow:auto;font-size:14px}.ocr-excerpt{max-height:360px;overflow:auto;padding:12px;background:#f8fafc;border:1px solid #d8dee8;white-space:pre-wrap;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}.toc{padding:14px 18px;background:#fff;border:1px solid #d8dee8;border-radius:8px}.toc a{display:block;color:#1769aa;text-decoration:none;margin:4px 0}.toc a:hover{text-decoration:underline}.notice{padding:12px 14px;background:#fff8e6;border-left:3px solid #e5a100}.footer{margin-top:38px;padding-top:16px;border-top:1px solid #d8dee8;color:#667085;font-size:12px}.ai-section{margin:16px 0;padding:16px;background:linear-gradient(135deg,#f0f9ff 0%,#eff6ff 100%);border:1px solid #bfdbfe;border-radius:8px}.ai-badge{display:inline-block;padding:2px 8px;background:#3b82f6;color:#fff;border-radius:4px;font-size:11px;font-weight:500;margin-right:6px}.ai-meta{font-size:12px;color:#64748b;margin-top:8px}.tech-elements{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:12px 0}.tech-card{padding:12px;background:#fff;border:1px solid #e2e8f0;border-radius:6px}.tech-card h5{margin:0 0 8px;font-size:13px;color:#475569}.tech-card ul{margin:0;padding-left:18px;font-size:13px}.param-table,.cite-table,.family-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}.param-table th,.cite-table th,.family-table th{text-align:left;padding:8px 10px;background:#f1f5f9;border-bottom:2px solid #cbd5e1}.param-table td,.cite-table td,.family-table td{padding:8px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top}.compare-matrix{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;overflow-x:auto;display:block}.compare-matrix th,.compare-matrix td{padding:10px 12px;border:1px solid #e2e8f0;text-align:left;min-width:120px}.compare-matrix th{background:#f8fafc;font-weight:600}.back-citation{color:#059669}.forward-citation{color:#dc2626}.classification-tag{display:inline-block;padding:2px 8px;margin:2px;background:#e0e7ff;color:#3730a3;border-radius:4px;font-size:12px}@media(max-width:640px){main{padding:24px 16px}h1{font-size:25px}.label{display:block;margin-bottom:2px}.tech-elements{grid-template-columns:1fr}}";
+  var CSS = "body{margin:0;background:#f5f7fa;color:#1f2937;font:15px/1.65 system-ui,-apple-system,Segoe UI,Microsoft YaHei,sans-serif}main{max-width:1040px;margin:0 auto;padding:40px 24px}header{padding:36px 0 24px;border-bottom:1px solid #d8dee8}h1{margin:0 0 8px;font-size:30px;line-height:1.25}h2{margin:34px 0 12px;padding-top:10px;border-top:1px solid #d8dee8;font-size:21px}h3{margin:22px 0 8px;font-size:17px}h4{margin:16px 0 6px;font-size:15px}.meta,.source,.missing,.ai-badge{color:#667085;font-size:13px}.source{margin-top:8px}.patent{margin:22px 0;padding:20px;background:#fff;border:1px solid #d8dee8;border-radius:8px;page-break-inside:avoid}.field{margin:10px 0}.label{display:inline-block;min-width:92px;color:#667085;font-size:13px;vertical-align:top}.value{display:inline;white-space:pre-wrap;overflow-wrap:anywhere}.claim{margin:8px 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #2b7fff;white-space:pre-wrap}.claim.independent{border-left-color:#e53935;background:#fff5f5}.claim.dependent{border-left-color:#fb8c00}.claim-refs{margin-top:4px;font-size:12px;color:#667085}.claim-refs a{color:#1769aa;text-decoration:none}.claim-refs a:hover{text-decoration:underline}.description-block{margin:12px 0;padding:14px 16px;background:#f8fafc;border:1px solid #d8dee8;border-radius:6px;white-space:pre-wrap;line-height:1.7;max-height:600px;overflow:auto;font-size:14px}.ocr-excerpt{max-height:360px;overflow:auto;padding:12px;background:#f8fafc;border:1px solid #d8dee8;white-space:pre-wrap;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}.toc{padding:14px 18px;background:#fff;border:1px solid #d8dee8;border-radius:8px}.toc a{display:block;color:#1769aa;text-decoration:none;margin:4px 0}.toc a:hover{text-decoration:underline}.notice{padding:12px 14px;background:#fff8e6;border-left:3px solid #e5a100}.footer{margin-top:38px;padding-top:16px;border-top:1px solid #d8dee8;color:#667085;font-size:12px}.ai-section{margin:16px 0;padding:16px;background:linear-gradient(135deg,#f0f9ff 0%,#eff6ff 100%);border:1px solid #bfdbfe;border-radius:8px}.ai-badge{display:inline-block;padding:2px 8px;background:#3b82f6;color:#fff;border-radius:4px;font-size:11px;font-weight:500;margin-right:6px}.ai-meta{font-size:12px;color:#64748b;margin-top:8px}.tech-elements{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:12px 0}.tech-card{padding:12px;background:#fff;border:1px solid #e2e8f0;border-radius:6px}.tech-card h5{margin:0 0 8px;font-size:13px;color:#475569}.tech-card ul{margin:0;padding-left:18px;font-size:13px}.param-table,.cite-table,.family-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}.param-table th,.cite-table th,.family-table th{text-align:left;padding:8px 10px;background:#f1f5f9;border-bottom:2px solid #cbd5e1}.param-table td,.cite-table td,.family-table td{padding:8px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top}.compare-matrix{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;overflow-x:auto;display:block}.compare-matrix th,.compare-matrix td{padding:10px 12px;border:1px solid #e2e8f0;text-align:left;min-width:120px}.compare-matrix th{background:#f8fafc;font-weight:600}.back-citation{color:#059669}.forward-citation{color:#dc2626}.classification-tag{display:inline-block;padding:2px 8px;margin:2px;background:#e0e7ff;color:#3730a3;border-radius:4px;font-size:12px}.figures-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin:12px 0}.patent-figure{margin:0;padding:8px;background:#f8fafc;border:1px solid #d8dee8;border-radius:6px;text-align:center}.patent-figure img{max-width:100%;height:auto;border-radius:4px}.patent-figure figcaption{margin-top:6px;font-size:12px;color:#667085}@media(max-width:640px){main{padding:24px 16px}h1{font-size:25px}.label{display:block;margin-bottom:2px}.tech-elements{grid-template-columns:1fr}.figures-grid{grid-template-columns:1fr}}";
 
   function cleanText(value) { return typeof value === "string" ? value.trim() : ""; }
   function escapeHtml(value) {
@@ -110,6 +110,21 @@
     var text = description;
     if (mode === "lite" && text.length > 3000) text = text.slice(0, 3000) + "\n\n...（内容过长，已截断。完整模式展示全部内容）";
     return '<div class="description-block">' + escapeHtml(text) + '</div>';
+  }
+
+  function renderFigures(figures, mode) {
+    if (!figures || !figures.length) return '<p class="missing">尚未上传附图。可在「数据审核」中为该专利添加图片。</p>';
+    var items = mode === "lite" ? figures.slice(0, 5) : figures;
+    var html = '<div class="figures-grid">';
+    items.forEach(function (fig) {
+      html += '<figure class="patent-figure">';
+      html += '<img src="' + fig.dataUrl + '" alt="' + escapeHtml(fig.caption || "附图") + '"' + (fig.width ? ' style="max-width:' + fig.width + 'px"' : '') + ' />';
+      if (fig.caption) html += '<figcaption>' + escapeHtml(fig.caption) + '</figcaption>';
+      html += '</figure>';
+    });
+    html += '</div>';
+    if (mode === "lite" && figures.length > 5) html += '<p class="missing">（精简模式仅展示前5张，共' + figures.length + '张附图）</p>';
+    return html;
   }
 
   function renderAISummary(patent, researchSummary, aiAnalysis, mode) {
@@ -232,15 +247,15 @@
     var html = '<div style="overflow-x:auto"><table class="compare-matrix"><tr><th>维度</th>';
     project.patents.forEach(function (p) { html += '<th>' + escapeHtml(p.patentNumber) + '</th>'; });
     html += '</tr>';
-    [["标题", "title"], ["技术问题", "problem"], ["申请人", "assignee"], ["公开日", "publicationDate"]].forEach(function (row) {
+    [["标题", "title", null], ["技术问题", "problem", "技术问题"], ["申请人", "assignee", null], ["公开日", "publicationDate", null]].forEach(function (row) {
       html += '<tr><td><strong>' + escapeHtml(row[0]) + '</strong></td>';
       project.patents.forEach(function (p) {
         var val = "";
         if (row[1] === "title") val = p.title || "";
         else if (row[1] === "assignee" && p.fields && p.fields.assignees) val = p.fields.assignees.value || "";
         else if (row[1] === "publicationDate" && p.fields && p.fields.publicationDate) val = p.fields.publicationDate.value || "";
-        else if (p.aiAnalysis && p.aiAnalysis.summary && p.aiAnalysis.summary.content) {
-          var match = p.aiAnalysis.summary.content.match(new RegExp("##\\s*[一二]?、?\\s*" + row[1] + "\\s*\\n([\\s\\S]*?)(?=\\n##|$)", "i"));
+        else if (row[2] && p.aiAnalysis && p.aiAnalysis.summary && p.aiAnalysis.summary.content) {
+          var match = p.aiAnalysis.summary.content.match(new RegExp("##\\s*" + row[2] + "[\\s\\S]*?\\n([\\s\\S]*?)(?=\\n##|$)", "i"));
           if (match) val = match[1].slice(0, 200);
         }
         html += '<td>' + escapeHtml(val || "未提供") + '</td>';
@@ -284,6 +299,10 @@
       html += '<h3>说明书</h3>';
       html += renderDescription(record.description, moduleMode(config, "S5"));
     }
+    if (moduleEnabled(config, "S7")) {
+      html += '<h3>附图</h3>';
+      html += renderFigures(record.figures, moduleMode(config, "S7"));
+    }
     if (moduleEnabled(config, "S4")) {
       html += '<h3>权利要求书</h3>';
       html += '<div id="claims-list-' + index + '">';
@@ -315,7 +334,17 @@
     }
     if (moduleEnabled(config, "R4")) {
       html += moduleHeading("R4", "实施例与验证证据");
-      html += '<p class="missing">实施例归纳功能开发中。请在「数据审核」中补充说明书内容，后续版本将支持AI自动提取实施例和对比实验数据。</p>';
+      if (record.aiAnalysis && record.aiAnalysis.embodiments && record.aiAnalysis.embodiments.content) {
+        var emb = record.aiAnalysis.embodiments;
+        var embContent = emb.content;
+        if (moduleMode(config, "R4") === "lite" && embContent.length > 2000) embContent = embContent.slice(0, 2000) + "\n\n...（内容过长，已截断。完整模式展示全部内容）";
+        html += '<div class="ai-section">';
+        html += '<span class="ai-badge">AI</span><span class="ai-meta">' + escapeHtml(emb.model || "AI") + ' · ' + escapeHtml(emb.generatedAt ? emb.generatedAt.slice(0, 10) : "") + '</span>';
+        html += '<div class="ai-content">' + renderMarkdownSimple(embContent) + '</div>';
+        html += '</div>';
+      } else {
+        html += '<p class="missing">尚未生成实施例分析。请在「研发洞察」中运行R4实施例分析（需要该专利已导入说明书内容）。</p>';
+      }
     }
     if (moduleEnabled(config, "R8")) {
       html += moduleHeading("R8", "引证文献与背景");
@@ -370,13 +399,10 @@
     if (moduleEnabled(config, "R6")) {
       var research = input.researchSummary || {};
       if (research.openQuestions || research.problem || research.approach || research.effect) {
-        // already rendered per-patent or in R1 for single
-        if (patents.length > 1) {
-          html += moduleHeading("R6", "研发启发与待验证问题");
-          html += '<div class="ai-section">';
-          if (research.openQuestions) html += '<div class="field"><span class="label">待验证问题</span><span class="value">' + escapeHtml(research.openQuestions) + '</span></div>';
-          html += '</div>';
-        }
+        html += moduleHeading("R6", "研发启发与待验证问题");
+        html += '<div class="ai-section">';
+        if (research.openQuestions) html += '<div class="field"><span class="label">待验证问题</span><span class="value">' + escapeHtml(research.openQuestions) + '</span></div>';
+        html += '</div>';
       }
     }
     if (!patents.length) html += '<p class="notice">当前项目没有可分享的专利材料。</p>';

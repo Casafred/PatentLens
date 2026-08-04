@@ -64,6 +64,36 @@
     return normalized;
   }
 
+  function normalizeCustomFields(value) {
+    if (!value || typeof value !== "object") return {};
+    var normalized = {};
+    Object.keys(value).forEach(function (key) {
+      var item = value[key];
+      if (!item || typeof item !== "object" || !item.field) return;
+      normalized[key] = {
+        label: cleanText(item.label) || key,
+        field: {
+          value: cleanText(item.field.value),
+          source: cleanText(item.field.source) || "unknown",
+          sourceRef: cleanText(item.field.sourceRef),
+          capturedAt: cleanText(item.field.capturedAt) || now(),
+          confidence: cleanText(item.field.confidence) || "medium",
+          reviewState: item.field.reviewState === "accepted" ? "accepted" : (item.field.reviewState === "conflict" ? "conflict" : "pending"),
+          candidates: Array.isArray(item.field.candidates) ? item.field.candidates.map(function (c) {
+            return c && typeof c === "object" ? {
+              value: cleanText(c.value),
+              source: cleanText(c.source) || "unknown",
+              sourceRef: cleanText(c.sourceRef),
+              capturedAt: cleanText(c.capturedAt) || now(),
+              confidence: cleanText(c.confidence) || "medium",
+            } : null;
+          }).filter(Boolean) : [],
+        },
+      };
+    });
+    return normalized;
+  }
+
   function createProject() {
     var defaultModules = window.PatentShareModules && window.PatentShareModules.defaultConfig ? window.PatentShareModules.defaultConfig() : {};
     return {
@@ -108,6 +138,7 @@
       safeRecord.title = cleanText(safeRecord.title);
       safeRecord.description = cleanText(safeRecord.description).slice(0, 500000);
       safeRecord.fields = safeRecord.fields && typeof safeRecord.fields === "object" ? safeRecord.fields : {};
+      safeRecord.customFields = normalizeCustomFields(safeRecord.customFields);
       safeRecord.claims = Array.isArray(safeRecord.claims) ? safeRecord.claims.map(function (c) {
         return {
           number: cleanText(c.number),
@@ -135,6 +166,16 @@
         } : null;
       }).filter(Boolean) : [];
       safeRecord.ocrSources = Array.isArray(safeRecord.ocrSources) ? safeRecord.ocrSources : [];
+      safeRecord.figures = Array.isArray(safeRecord.figures) ? safeRecord.figures.map(function (f) {
+        return f && typeof f === "object" ? {
+          id: cleanText(f.id) || makeId("fig"),
+          caption: cleanText(f.caption),
+          dataUrl: typeof f.dataUrl === "string" ? f.dataUrl.slice(0, 2000000) : "",
+          width: f.width || 0,
+          height: f.height || 0,
+          addedAt: cleanText(f.addedAt) || now(),
+        } : null;
+      }).filter(function (f) { return f && f.dataUrl; }) : [];
       safeRecord.source = safeRecord.source && typeof safeRecord.source === "object" ? safeRecord.source : {};
       safeRecord.aiAnalysis = normalizeAIAnalysis(safeRecord.aiAnalysis);
       normalized.patents.push(safeRecord);
@@ -429,6 +470,7 @@
         safeRecord.citations = Array.isArray(safeRecord.citations) ? safeRecord.citations : [];
         safeRecord.family = Array.isArray(safeRecord.family) ? safeRecord.family : [];
         safeRecord.ocrSources = Array.isArray(safeRecord.ocrSources) ? safeRecord.ocrSources : [];
+        safeRecord.figures = Array.isArray(safeRecord.figures) ? safeRecord.figures : [];
         if (!safeRecord.aiAnalysis) safeRecord.aiAnalysis = {};
         if (!safeRecord.source) safeRecord.source = {};
         active.patents.push(safeRecord);
@@ -485,11 +527,106 @@
     return true;
   }
 
+  function updateCustomField(patentId, key, value) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    var fieldKey = cleanText(key);
+    var text = cleanText(value);
+    if (!patent || !fieldKey || !text) return false;
+    if (!patent.customFields || typeof patent.customFields !== "object") patent.customFields = {};
+    var existing = patent.customFields[fieldKey];
+    var manualValue = {
+      value: text,
+      source: "manual",
+      sourceRef: "分享工作台人工确认",
+      capturedAt: now(),
+      confidence: "high",
+      reviewState: "accepted",
+    };
+    var merge = window.PatentShareFieldMerge;
+    var mergedField = merge && merge.mergeField ? merge.mergeField(existing && existing.field, manualValue).field : manualValue;
+    patent.customFields[fieldKey] = {
+      label: existing && existing.label ? existing.label : fieldKey,
+      field: mergedField,
+    };
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function addCustomField(patentId, label, value) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    var text = cleanText(label);
+    if (!patent || !text) return false;
+    if (!patent.customFields || typeof patent.customFields !== "object") patent.customFields = {};
+    var key = "custom_" + text.replace(/\s+/g, "_").slice(0, 30) + "_" + Date.now().toString(36);
+    patent.customFields[key] = {
+      label: text,
+      field: {
+        value: cleanText(value),
+        source: "manual",
+        sourceRef: "分享工作台自定义字段",
+        capturedAt: now(),
+        confidence: "high",
+        reviewState: "accepted",
+      },
+    };
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return { ok: true, key: key };
+  }
+
+  function removeCustomField(patentId, key) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    var fieldKey = cleanText(key);
+    if (!patent || !fieldKey || !patent.customFields) return false;
+    if (!patent.customFields[fieldKey]) return false;
+    delete patent.customFields[fieldKey];
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
   function updatePatentDescription(patentId, description) {
     var active = ensureProject();
     var patent = active.patents.find(function (item) { return item.id === patentId; });
     if (!patent) return false;
     patent.description = cleanText(description).slice(0, 500000);
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function updateClaims(patentId, claims) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent) return false;
+    patent.claims = Array.isArray(claims) ? claims.map(function (c) {
+      return {
+        number: cleanText(c.number),
+        text: cleanText(c.text),
+        type: cleanText(c.type),
+        references: Array.isArray(c.references) ? c.references.map(String) : [],
+      };
+    }).filter(function (c) { return !!c.text; }) : [];
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function updateClassifications(patentId, classifications) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent) return false;
+    patent.classifications = Array.isArray(classifications) ? classifications.map(cleanText).filter(Boolean) :
+      cleanText(classifications).split(/[;；,，\n]/).map(function (s) { return s.trim(); }).filter(Boolean);
     active.updatedAt = now();
     queuePersist();
     notify();
@@ -535,6 +672,40 @@
     queuePersist();
     notify();
     return { ok: true, source: clone(source) };
+  }
+
+  function addFigure(patentId, dataUrl, caption, dimensions) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent || typeof dataUrl !== "string" || dataUrl.length < 10) return { ok: false, reason: "invalid-image" };
+    if (dataUrl.length > 2000000) return { ok: false, reason: "too-large" };
+    if (!Array.isArray(patent.figures)) patent.figures = [];
+    var figure = {
+      id: makeId("fig"),
+      caption: cleanText(caption),
+      dataUrl: dataUrl.slice(0, 2000000),
+      width: (dimensions && dimensions.width) || 0,
+      height: (dimensions && dimensions.height) || 0,
+      addedAt: now(),
+    };
+    patent.figures.push(figure);
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return { ok: true, figure: clone(figure) };
+  }
+
+  function removeFigure(patentId, figureId) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent || !Array.isArray(patent.figures)) return false;
+    var before = patent.figures.length;
+    patent.figures = patent.figures.filter(function (f) { return f.id !== figureId; });
+    if (patent.figures.length === before) return false;
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
   }
 
   function setAIAnalysis(patentId, analysisType, analysisData) {
@@ -611,9 +782,16 @@
     addPatent: addPatent,
     importPatents: importPatents,
     updatePatentField: updatePatentField,
+    updateCustomField: updateCustomField,
+    addCustomField: addCustomField,
+    removeCustomField: removeCustomField,
     updatePatentDescription: updatePatentDescription,
+    updateClaims: updateClaims,
+    updateClassifications: updateClassifications,
     selectPatentFieldCandidate: selectPatentFieldCandidate,
     addOcrSource: addOcrSource,
+    addFigure: addFigure,
+    removeFigure: removeFigure,
     setAIAnalysis: setAIAnalysis,
     setProjectAIAnalysis: setProjectAIAnalysis,
     removePatent: removePatent,
