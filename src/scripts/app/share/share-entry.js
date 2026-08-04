@@ -263,6 +263,19 @@
         var value = makeElement("div", "share-review-field-value", field && field.value ? field.value : "来源未提供");
         row.appendChild(value);
         row.appendChild(makeElement("span", "share-review-field-source", readableSource(field)));
+        if (field && Array.isArray(field.candidates) && field.candidates.length > 1) {
+          var candidates = makeElement("div", "share-review-candidates");
+          field.candidates.forEach(function (candidate, candidateIndex) {
+            var choose = makeElement("button", "share-candidate-button", (candidate.source || "来源") + "：" + candidate.value);
+            choose.type = "button";
+            choose.dataset.shareAction = "select-field-candidate";
+            choose.dataset.patentId = patent.id;
+            choose.dataset.fieldName = fieldName;
+            choose.dataset.candidateIndex = String(candidateIndex);
+            candidates.appendChild(choose);
+          });
+          row.appendChild(candidates);
+        }
         var edit = makeElement("button", "share-field-edit", "人工确认");
         edit.type = "button";
         edit.dataset.shareAction = "edit-field";
@@ -271,6 +284,15 @@
         edit.dataset.fieldLabel = definition[1];
         edit.dataset.fieldValue = field && field.value ? field.value : "";
         row.appendChild(edit);
+        table.appendChild(row);
+      });
+      Object.keys(patent.customFields && typeof patent.customFields === "object" ? patent.customFields : {}).forEach(function (key) {
+        var custom = patent.customFields[key];
+        if (!custom || !custom.field) return;
+        var row = makeElement("div", "share-review-field");
+        row.appendChild(makeElement("span", "share-review-field-label", custom.label || key));
+        row.appendChild(makeElement("div", "share-review-field-value", custom.field.value || "来源未提供"));
+        row.appendChild(makeElement("span", "share-review-field-source", readableSource(custom.field)));
         table.appendChild(row);
       });
       card.appendChild(table);
@@ -539,6 +561,17 @@
       if (action.dataset.shareAction === "import-csv") startSpreadsheetImport();
       if (action.dataset.shareAction === "refresh-preview") render();
       if (action.dataset.shareAction === "save-html") saveHtml();
+      if (action.dataset.shareAction === "select-field-candidate") {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再审核。", true);
+          render();
+          return;
+        }
+        if (window.PatentShareStore.selectPatentFieldCandidate(action.dataset.patentId, action.dataset.fieldName, action.dataset.candidateIndex)) {
+          setNotice("已选择字段来源并完成审核。", false);
+          render();
+        }
+      }
       if (action.dataset.shareAction === "rename-project") {
         if (window.PatentShareStore.getPersistenceState().mode === "loading") {
           setNotice("正在恢复本机分享项目，请稍候再编辑。", true);

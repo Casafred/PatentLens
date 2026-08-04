@@ -7113,6 +7113,33 @@ body {
   overflow-wrap: anywhere;
 }
 
+.share-review-candidates {
+  display: flex;
+  grid-column: 2 / -1;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.share-candidate-button {
+  max-width: 100%;
+  padding: 4px 7px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.share-candidate-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .share-field-edit {
   padding: 4px 7px;
   border: 1px solid var(--border);

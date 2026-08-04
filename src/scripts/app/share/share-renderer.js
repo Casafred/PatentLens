@@ -26,6 +26,7 @@
     return '<div class="field"><span class="label">' + escapeHtml(label) + '</span><span class="value">' + escapeHtml(item.value) + '</span><span class="source">' + escapeHtml(item.source || "unknown") + escapeHtml(state) + '</span></div>';
   }
   function moduleEnabled(config, id) { return config.modules[id] && config.modules[id] !== "off"; }
+  function moduleMode(config, id) { return config.modules[id] || "off"; }
   function moduleHeading(id, label) { return '<h2 id="module-' + escapeHtml(id) + '">' + escapeHtml(label) + '</h2>'; }
 
   function scanSensitive(project, html) {
@@ -37,19 +38,48 @@
     return findings;
   }
 
+  function findPendingConflicts(project) {
+    var conflicts = [];
+    (project && Array.isArray(project.patents) ? project.patents : []).forEach(function (record) {
+      Object.keys(record.fields && typeof record.fields === "object" ? record.fields : {}).forEach(function (fieldName) {
+        var field = record.fields[fieldName];
+        if (field && field.reviewState === "conflict") conflicts.push({ patentNumber: record.patentNumber, fieldName: fieldName });
+      });
+      Object.keys(record.customFields && typeof record.customFields === "object" ? record.customFields : {}).forEach(function (key) {
+        var custom = record.customFields[key];
+        if (custom && custom.field && custom.field.reviewState === "conflict") conflicts.push({ patentNumber: record.patentNumber, fieldName: custom.label || key });
+      });
+    });
+    return conflicts;
+  }
+
   function renderPatent(record, config, index) {
     var html = '<article class="patent" id="patent-' + index + '">';
     html += '<h3>' + escapeHtml(record.patentNumber) + ' · ' + escapeHtml(record.title || "未提供标题") + '</h3>';
     if (moduleEnabled(config, "S2")) {
-      html += valueHtml(record, "title", "标题") + valueHtml(record, "applicationDate", "申请日") + valueHtml(record, "publicationDate", "公开日") + valueHtml(record, "priorityDate", "优先权日") + valueHtml(record, "assignees", "申请人") + valueHtml(record, "inventors", "发明人");
+      html += valueHtml(record, "title", "标题") + valueHtml(record, "publicationDate", "公开日") + valueHtml(record, "assignees", "申请人");
+      if (moduleMode(config, "S2") === "full") {
+        html += valueHtml(record, "applicationDate", "申请日") + valueHtml(record, "priorityDate", "优先权日") + valueHtml(record, "inventors", "发明人");
+        Object.keys(record.customFields && typeof record.customFields === "object" ? record.customFields : {}).forEach(function (key) {
+          var custom = record.customFields[key];
+          if (custom && custom.field) html += valueHtml({ fields: { custom: custom.field } }, "custom", custom.label || key);
+        });
+      }
     }
     if (moduleEnabled(config, "S3")) {
       var abstractField = field(record, "abstract");
-      html += '<h3>技术摘要</h3>' + (abstractField ? '<p class="value">' + escapeHtml(abstractField.value) + '</p>' : '<p class="missing">来源未提供摘要</p>');
+      var abstract = abstractField && abstractField.value;
+      if (abstract && moduleMode(config, "S3") === "lite" && abstract.length > 360) abstract = abstract.slice(0, 360) + "…";
+      html += '<h3>技术摘要</h3>' + (abstract ? '<p class="value">' + escapeHtml(abstract) + '</p>' : '<p class="missing">来源未提供摘要</p>');
     }
     if (moduleEnabled(config, "S4")) {
       html += '<h3>权利要求</h3>';
-      if (record.claims && record.claims.length) record.claims.forEach(function (claim) { html += '<div class="claim">' + escapeHtml((claim.number ? claim.number + ". " : "") + claim.text) + '</div>'; });
+      var claims = Array.isArray(record.claims) ? record.claims : [];
+      if (moduleMode(config, "S4") === "lite") {
+        var independent = claims.filter(function (claim) { return claim && claim.type === "independent"; });
+        claims = independent.length ? independent.slice(0, 1) : claims.slice(0, 1);
+      }
+      if (claims.length) claims.forEach(function (claim) { html += '<div class="claim">' + escapeHtml((claim.number ? claim.number + ". " : "") + claim.text) + '</div>'; });
       else html += '<p class="missing">来源未提供权利要求</p>';
     }
     if (moduleEnabled(config, "S5")) {
@@ -77,8 +107,10 @@
     if (moduleEnabled(config, "S5")) html += '<footer class="footer">来源内容来自项目快照；仅供技术沟通，不构成法律意见。AI 内容（如有）应另行标注并人工核验。</footer>';
     html += '</main></body></html>';
     var findings = scanSensitive(input, html);
+    var conflicts = findPendingConflicts(input);
+    if (conflicts.length) findings.push("存在 " + conflicts.length + " 个未确认字段冲突");
     return { html: html, config: config, findings: findings, size: html.length };
   }
 
-  window.PatentShareRenderer = { render: render, scanSensitive: scanSensitive, escapeHtml: escapeHtml, escapeJson: escapeJson };
+  window.PatentShareRenderer = { render: render, scanSensitive: scanSensitive, findPendingConflicts: findPendingConflicts, escapeHtml: escapeHtml, escapeJson: escapeJson };
 })();

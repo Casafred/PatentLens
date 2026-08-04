@@ -157,6 +157,48 @@ test('renderer flags sensitive project material before export', () => {
   assert.equal(findings.length > 0, true);
 });
 
+test('review can select a conflicting source candidate and unblock export', () => {
+  const { PatentShareStore, PatentShareSpreadsheetImport, PatentShareRenderer } = loadShareModules();
+  PatentShareStore.addPatent({
+    id: 'patent_1', patentNumber: 'US12030161B2', title: 'GP title',
+    fields: { title: { value: 'GP title', source: 'google_patents', sourceRef: 'GP' } },
+    source: { type: 'google_patents', label: 'Google Patents' },
+  });
+  const plan = PatentShareSpreadsheetImport.buildRecords('Patent Number,Title,Team label\nUS12030161B2,CSV title,Research', 'patents.csv');
+  PatentShareStore.importPatents(plan.records);
+  const before = PatentShareStore.getSnapshot();
+  assert.equal(PatentShareRenderer.findPendingConflicts(before).length, 1);
+  assert.equal(PatentShareStore.selectPatentFieldCandidate('patent_1', 'title', 1), true);
+  const after = PatentShareStore.getSnapshot();
+  assert.equal(after.patents[0].fields.title.reviewState, 'accepted');
+  assert.equal(PatentShareRenderer.findPendingConflicts(after).length, 0);
+  const rendered = PatentShareRenderer.render(after);
+  assert.equal(rendered.html.includes('Team label'), true);
+});
+
+test('lite module modes reduce exported technical detail', () => {
+  const { PatentShareModules, PatentShareRenderer } = loadShareModules();
+  const config = PatentShareModules.defaultConfig();
+  config.modules.S2 = 'lite';
+  config.modules.S3 = 'lite';
+  config.modules.S4 = 'lite';
+  const result = PatentShareRenderer.render({
+    name: 'Lite',
+    patents: [{
+      patentNumber: 'US1', title: 'Title',
+      fields: {
+        abstract: { value: 'A'.repeat(500), source: 'manual' },
+        inventors: { value: 'Hidden inventor', source: 'manual' },
+      },
+      claims: [{ number: '1', text: 'Independent', type: 'independent' }, { number: '2', text: 'Dependent', type: 'dependent' }],
+    }],
+    moduleConfig: config,
+  });
+  assert.equal(result.html.includes('Hidden inventor'), false);
+  assert.equal(result.html.includes('Dependent'), false);
+  assert.equal(result.html.includes('AAAA…'), true);
+});
+
 test('store degrades to session memory when IndexedDB is unavailable', async () => {
   const { PatentShareStore } = loadShareModules();
   const initialized = await PatentShareStore.initialize();

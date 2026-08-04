@@ -332,6 +332,24 @@
     return true;
   }
 
+  function selectPatentFieldCandidate(patentId, fieldName, candidateIndex) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    var merge = window.PatentShareFieldMerge;
+    var field = cleanText(fieldName);
+    if (!patent || !field || !merge || !merge.selectCandidate) return false;
+    var current = patent.fields && patent.fields[field];
+    var selected = merge.selectCandidate(current, candidateIndex);
+    if (!selected) return false;
+    if (!patent.fields || typeof patent.fields !== "object") patent.fields = {};
+    patent.fields[field] = selected;
+    if (field === "title") patent.title = selected.value;
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
   function removePatent(patentId) {
     var active = ensureProject();
     var before = active.patents.length;
@@ -366,6 +384,7 @@
     addPatent: addPatent,
     importPatents: importPatents,
     updatePatentField: updatePatentField,
+    selectPatentFieldCandidate: selectPatentFieldCandidate,
     removePatent: removePatent,
     flush: flush,
     onChange: onChange,
