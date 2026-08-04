@@ -466,6 +466,31 @@
     container.appendChild(frame);
   }
 
+  function renderInsights(container, project) {
+    addHeading(container, viewMeta.insights);
+    addNotice(container);
+    container.appendChild(makeElement("p", "share-module-hint", "以下内容为人工研发结论。启用 R1 模块后才会进入离线分享，不构成法律意见。"));
+    var summary = project.researchSummary || {};
+    var fields = [
+      ["problem", "技术问题"], ["approach", "技术手段"], ["effect", "技术效果"], ["openQuestions", "待验证问题"],
+    ];
+    fields.forEach(function (item) {
+      var label = makeElement("label", "share-research-label", item[1]);
+      var input = document.createElement("textarea");
+      input.className = "share-research-input";
+      input.id = "share-research-" + item[0];
+      input.maxLength = 5000;
+      input.rows = 4;
+      input.value = summary[item[0]] || "";
+      label.appendChild(input);
+      container.appendChild(label);
+    });
+    var save = makeElement("button", "share-primary-action", "保存研发结论");
+    save.type = "button";
+    save.dataset.shareAction = "save-research-summary";
+    container.appendChild(save);
+  }
+
   function renderExport(container, project) {
     addHeading(container, viewMeta.export);
     addNotice(container);
@@ -504,6 +529,7 @@
     else if (activeView === "sources") renderSources(container, project);
     else if (activeView === "review") renderReview(container, project);
     else if (activeView === "modules") renderModules(container, project);
+    else if (activeView === "insights") renderInsights(container, project);
     else if (activeView === "preview") renderPreview(container, project);
     else if (activeView === "export") renderExport(container, project);
     else renderPlaceholder(container, activeView, project);
@@ -693,6 +719,16 @@
       if (action.dataset.shareAction === "import-pdf") startPdfImport();
       if (action.dataset.shareAction === "refresh-preview") render();
       if (action.dataset.shareAction === "save-html") saveHtml();
+      if (action.dataset.shareAction === "save-research-summary") {
+        window.PatentShareStore.setResearchSummary({
+          problem: byId("share-research-problem").value,
+          approach: byId("share-research-approach").value,
+          effect: byId("share-research-effect").value,
+          openQuestions: byId("share-research-openQuestions").value,
+        });
+        setNotice("研发结论已保存；请在“分享模块”启用 R1 后导出。", false);
+        render();
+      }
       if (action.dataset.shareAction === "open-project") openProject(action.dataset.projectId);
       if (action.dataset.shareAction === "select-field-candidate") {
         if (window.PatentShareStore.getPersistenceState().mode === "loading") {

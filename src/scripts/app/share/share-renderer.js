@@ -111,6 +111,15 @@
       html += moduleHeading("S1", "目录");
       html += '<nav class="toc">' + (patents.length ? patents.map(function (record, index) { return '<a href="#patent-' + index + '">' + escapeHtml(record.patentNumber + " · " + (record.title || "未提供标题")) + '</a>'; }).join("") : '<span class="missing">项目尚未加入专利</span>') + '</nav>';
     }
+    if (moduleEnabled(config, "R1")) {
+      var research = input.researchSummary && typeof input.researchSummary === "object" ? input.researchSummary : {};
+      html += moduleHeading("R1", "研发问题-手段-效果");
+      [["技术问题", research.problem], ["技术手段", research.approach], ["技术效果", research.effect], ["待验证问题", research.openQuestions]].forEach(function (item) {
+        var text = cleanText(item[1]);
+        if (text && moduleMode(config, "R1") === "lite" && text.length > 800) text = text.slice(0, 800) + "…";
+        html += '<div class="field"><span class="label">' + escapeHtml(item[0]) + '</span>' + (text ? '<span class="value">' + escapeHtml(text) + '</span>' : '<span class="missing">尚未填写</span>') + '</div>';
+      });
+    }
     if (!patents.length) html += '<p class="notice">当前项目没有可分享的专利材料。</p>';
     if (patents.length && moduleEnabled(config, "S2")) html += moduleHeading("S2", "专利资料");
     patents.forEach(function (record, index) { html += renderPatent(record, config, index); });
