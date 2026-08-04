@@ -150,6 +150,28 @@
     });
   }
 
+  function readAllProjects(db) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(PROJECT_STORE, "readonly");
+      var request = tx.objectStore(PROJECT_STORE).getAll();
+      request.onsuccess = function () { resolve(Array.isArray(request.result) ? request.result : []); };
+      request.onerror = function () { reject(request.error || new Error("IndexedDB project list read failed")); };
+      tx.onerror = function () { reject(tx.error || new Error("IndexedDB project list transaction failed")); };
+    });
+  }
+
+  function projectSummary(raw) {
+    var normalized = normalizeProject(raw);
+    if (!normalized) return null;
+    return {
+      id: normalized.id,
+      name: normalized.name,
+      createdAt: normalized.createdAt,
+      updatedAt: normalized.updatedAt,
+      patentCount: normalized.patents.length,
+    };
+  }
+
   function queuePersist() {
     if (!initialized || persistence.mode !== "indexeddb") return Promise.resolve(false);
     var snapshot = getSnapshot();
@@ -194,6 +216,52 @@
     queuePersist();
     notify();
     return getSnapshot();
+  }
+
+  function listProjects() {
+    var currentSummary = projectSummary(ensureProject());
+    if (persistence.mode !== "indexeddb") return Promise.resolve(currentSummary ? [currentSummary] : []);
+    return flush().then(function () {
+      return openDatabase().then(function (db) {
+        return readAllProjects(db).then(function (items) {
+          return items.map(projectSummary).filter(Boolean).sort(function (left, right) {
+            return String(right.updatedAt).localeCompare(String(left.updatedAt));
+          });
+        }).finally(function () { db.close(); });
+      });
+    }).catch(function () {
+      return currentSummary ? [currentSummary] : [];
+    });
+  }
+
+  function selectProject(projectId) {
+    var id = cleanText(projectId);
+    if (!id) return Promise.resolve({ ok: false, reason: "invalid-project" });
+    if (ensureProject().id === id) return Promise.resolve({ ok: true, project: getSnapshot() });
+    if (persistence.mode !== "indexeddb") return Promise.resolve({ ok: false, reason: "project-not-available" });
+    return flush().then(function () {
+      return openDatabase().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(PROJECT_STORE, "readonly");
+          var request = tx.objectStore(PROJECT_STORE).get(id);
+          request.onsuccess = function () { resolve(request.result || null); };
+          request.onerror = function () { reject(request.error || new Error("IndexedDB project read failed")); };
+          tx.onerror = function () { reject(tx.error || new Error("IndexedDB project transaction failed")); };
+        }).then(function (saved) {
+          var selected = normalizeProject(saved);
+          if (!selected) return { ok: false, reason: "project-not-found" };
+          return writeActiveProject(db, selected).then(function () {
+            project = selected;
+            notify();
+            return { ok: true, project: getSnapshot() };
+          });
+        }).finally(function () { db.close(); });
+      });
+    }).catch(function (error) {
+      persistence = { mode: "error", error: error && error.message ? error.message : "IndexedDB project switch failed" };
+      notify();
+      return { ok: false, reason: "storage-error" };
+    });
   }
 
   function renameProject(name) {
@@ -402,6 +470,8 @@
     getPersistenceState: getPersistenceState,
     initialize: initialize,
     newProject: newProject,
+    listProjects: listProjects,
+    selectProject: selectProject,
     renameProject: renameProject,
     setModuleConfig: setModuleConfig,
     setModuleMode: setModuleMode,

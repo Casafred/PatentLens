@@ -7001,6 +7001,62 @@ body {
   margin-top: 18px;
 }
 
+.share-project-list-section {
+  margin-top: 22px;
+}
+
+.share-project-list-section h4 {
+  margin: 0 0 10px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.share-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-project-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.share-project-list-copy {
+  min-width: 0;
+}
+
+.share-project-list-copy strong,
+.share-project-list-copy span {
+  display: block;
+}
+
+.share-project-list-copy strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-project-list-copy span,
+.share-project-list-loading {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.share-project-list-item .share-secondary-action {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+
 .share-source-list {
   display: flex;
   flex-direction: column;

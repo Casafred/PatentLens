@@ -102,6 +102,8 @@
     rename.dataset.shareAction = "rename-project";
     container.appendChild(rename);
 
+    renderProjectList(container, project);
+
     if (project.patents.length === 0) {
       var empty = makeElement("div", "share-empty-panel");
       empty.appendChild(makeElement("h4", "", "从已有查询开始"));
@@ -112,6 +114,49 @@
       empty.appendChild(add);
       container.appendChild(empty);
     }
+  }
+
+  function renderProjectList(container, project) {
+    var store = window.PatentShareStore;
+    if (!store || !store.listProjects) return;
+    var section = makeElement("section", "share-project-list-section");
+    section.appendChild(makeElement("h4", "", "本机分享项目"));
+    var list = makeElement("div", "share-project-list");
+    list.appendChild(makeElement("p", "share-project-list-loading", "正在读取已保存项目..."));
+    section.appendChild(list);
+    container.appendChild(section);
+    store.listProjects().then(function (items) {
+      if (!workspaceOpen || activeView !== "overview" || !list.isConnected) return;
+      list.textContent = "";
+      if (!items.length) {
+        list.appendChild(makeElement("p", "share-project-list-loading", "尚无其他已保存项目。"));
+        return;
+      }
+      items.forEach(function (item) {
+        var row = makeElement("article", "share-project-list-item");
+        var copy = makeElement("div", "share-project-list-copy");
+        copy.appendChild(makeElement("strong", "", item.name || "未命名分享项目"));
+        copy.appendChild(makeElement("span", "", String(item.patentCount || 0) + " 篇专利 · 更新于 " + formatProjectTime(item.updatedAt)));
+        row.appendChild(copy);
+        var open = makeElement("button", "share-secondary-action", item.id === project.id ? "当前项目" : "打开");
+        open.type = "button";
+        open.disabled = item.id === project.id;
+        open.dataset.shareAction = "open-project";
+        open.dataset.projectId = item.id;
+        row.appendChild(open);
+        list.appendChild(row);
+      });
+    }).catch(function () {
+      if (!list.isConnected) return;
+      list.textContent = "";
+      list.appendChild(makeElement("p", "share-project-list-loading", "无法读取历史项目，当前项目仍可继续使用。"));
+    });
+  }
+
+  function formatProjectTime(value) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "未知时间";
+    return date.toLocaleString();
   }
 
   function renderSources(container, project) {
@@ -562,6 +607,24 @@
     render();
   }
 
+  function openProject(projectId) {
+    var store = window.PatentShareStore;
+    if (!store || !store.selectProject) return;
+    if (store.getPersistenceState().mode === "loading") {
+      setNotice("正在恢复本机分享项目，请稍候再切换。", true);
+      render();
+      return;
+    }
+    setNotice("正在打开分享项目...", false);
+    render();
+    store.selectProject(projectId).then(function (result) {
+      if (!result || !result.ok) setNotice("未能打开该项目；它可能已不可用。", true);
+      else setNotice("已打开分享项目：" + result.project.name + "。", false);
+      activeView = "overview";
+      render();
+    });
+  }
+
   function saveHtml() {
     var project = currentProject();
     var renderer = window.PatentShareRenderer;
@@ -630,6 +693,7 @@
       if (action.dataset.shareAction === "import-pdf") startPdfImport();
       if (action.dataset.shareAction === "refresh-preview") render();
       if (action.dataset.shareAction === "save-html") saveHtml();
+      if (action.dataset.shareAction === "open-project") openProject(action.dataset.projectId);
       if (action.dataset.shareAction === "select-field-candidate") {
         if (window.PatentShareStore.getPersistenceState().mode === "loading") {
           setNotice("正在恢复本机分享项目，请稍候再审核。", true);

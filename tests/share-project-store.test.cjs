@@ -228,6 +228,18 @@ test('store degrades to session memory when IndexedDB is unavailable', async () 
   });
 });
 
+test('memory fallback exposes only the active project in its project list', async () => {
+  const { PatentShareStore } = loadShareModules();
+  await PatentShareStore.initialize();
+  PatentShareStore.renameProject('Temporary project');
+  const projects = await PatentShareStore.listProjects();
+  assert.equal(projects.length, 1);
+  assert.equal(projects[0].name, 'Temporary project');
+  const selected = await PatentShareStore.selectProject(projects[0].id);
+  assert.equal(selected.ok, true);
+  assert.equal(selected.project.name, 'Temporary project');
+});
+
 test('current GP data is copied into a normalized share snapshot', () => {
   const { PatentShareSources } = loadShareModules({
     patent_number: 'EP4252965A3',
