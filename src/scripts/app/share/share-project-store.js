@@ -76,6 +76,7 @@
       safeRecord.title = cleanText(safeRecord.title);
       safeRecord.fields = safeRecord.fields && typeof safeRecord.fields === "object" ? safeRecord.fields : {};
       safeRecord.claims = Array.isArray(safeRecord.claims) ? safeRecord.claims : [];
+      safeRecord.ocrSources = Array.isArray(safeRecord.ocrSources) ? safeRecord.ocrSources : [];
       safeRecord.source = safeRecord.source && typeof safeRecord.source === "object" ? safeRecord.source : {};
       normalized.patents.push(safeRecord);
     });
@@ -350,6 +351,29 @@
     return true;
   }
 
+  function addOcrSource(patentId, payload, fileName) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent || !payload || (!cleanText(payload.text) && !cleanText(payload.markdown))) return { ok: false, reason: "empty-ocr" };
+    if (!Array.isArray(patent.ocrSources)) patent.ocrSources = [];
+    var source = {
+      id: makeId("ocr"),
+      fileName: cleanText(fileName) || "未命名 PDF",
+      engine: cleanText(payload.engine) || "ocr",
+      capturedAt: now(),
+      text: cleanText(payload.text).slice(0, 500000),
+      markdown: cleanText(payload.markdown).slice(0, 500000),
+      blocks: Array.isArray(payload.blocks) ? clone(payload.blocks).slice(0, 10000) : [],
+      pageDimensions: payload.pageDimensions && typeof payload.pageDimensions === "object" ? clone(payload.pageDimensions) : {},
+    };
+    patent.ocrSources.push(source);
+    active.sources.push({ id: makeId("source"), patentId: patent.id, type: "ocr", label: "PDF OCR · " + source.fileName, capturedAt: source.capturedAt });
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return { ok: true, source: clone(source) };
+  }
+
   function removePatent(patentId) {
     var active = ensureProject();
     var before = active.patents.length;
@@ -385,6 +409,7 @@
     importPatents: importPatents,
     updatePatentField: updatePatentField,
     selectPatentFieldCandidate: selectPatentFieldCandidate,
+    addOcrSource: addOcrSource,
     removePatent: removePatent,
     flush: flush,
     onChange: onChange,

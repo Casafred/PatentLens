@@ -199,6 +199,25 @@ test('lite module modes reduce exported technical detail', () => {
   assert.equal(result.html.includes('AAAA…'), true);
 });
 
+test('PDF OCR snapshot is associated with a patent without retaining PDF bytes', () => {
+  const { PatentShareStore, PatentShareModules, PatentShareRenderer } = loadShareModules();
+  PatentShareStore.addPatent({
+    id: 'patent_1', patentNumber: 'US12030161B2', title: 'OCR patent',
+    source: { type: 'google_patents', label: 'Google Patents' },
+  });
+  const added = PatentShareStore.addOcrSource('patent_1', {
+    engine: 'paddle_ocr_vl', text: 'OCR extracted text', markdown: '# OCR extracted text', blocks: [{ page: 1, content: 'OCR extracted text' }],
+  }, 'material.pdf');
+  assert.equal(added.ok, true);
+  const snapshot = PatentShareStore.getSnapshot();
+  assert.equal(snapshot.patents[0].ocrSources.length, 1);
+  assert.equal(JSON.stringify(snapshot).includes('base64'), false);
+  const config = PatentShareModules.defaultConfig();
+  config.modules.R7 = 'full';
+  const rendered = PatentShareRenderer.render({ ...snapshot, moduleConfig: config });
+  assert.equal(rendered.html.includes('OCR extracted text'), true);
+});
+
 test('store degrades to session memory when IndexedDB is unavailable', async () => {
   const { PatentShareStore } = loadShareModules();
   const initialized = await PatentShareStore.initialize();

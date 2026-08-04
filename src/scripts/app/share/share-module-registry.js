@@ -14,6 +14,7 @@
     { id: "S4", label: "权利要求", description: "按专利展示已导入的权利要求文本。", required: true, defaultMode: "lite" },
     { id: "S5", label: "来源与说明", description: "来源、抓取时间、审核状态和技术沟通声明。", required: true, defaultMode: "full" },
     { id: "R1", label: "研发问题-手段-效果", description: "为后续人工或 AI 研发解读预留的可选模块。", required: false, defaultMode: "off" },
+    { id: "R7", label: "OCR 原文摘录", description: "展示用户选择并 OCR 的 PDF 文本摘录，默认不对外分享。", required: false, defaultMode: "off" },
   ];
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }

@@ -7,7 +7,7 @@
 (function () {
   "use strict";
 
-  var CSS = "body{margin:0;background:#f5f7fa;color:#1f2937;font:15px/1.65 system-ui,-apple-system,Segoe UI,Microsoft YaHei,sans-serif}main{max-width:1040px;margin:0 auto;padding:40px 24px}header{padding:36px 0 24px;border-bottom:1px solid #d8dee8}h1{margin:0 0 8px;font-size:30px;line-height:1.25}h2{margin:34px 0 12px;padding-top:10px;border-top:1px solid #d8dee8;font-size:21px}h3{margin:22px 0 8px;font-size:17px}.meta,.source,.missing{color:#667085;font-size:13px}.source{margin-top:8px}.patent{margin:22px 0;padding:20px;background:#fff;border:1px solid #d8dee8;border-radius:8px}.field{margin:10px 0}.label{display:inline-block;min-width:92px;color:#667085;font-size:13px;vertical-align:top}.value{display:inline;white-space:pre-wrap;overflow-wrap:anywhere}.claim{margin:8px 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #2b7fff;white-space:pre-wrap}.toc{padding:14px 18px;background:#fff;border:1px solid #d8dee8;border-radius:8px}.toc a{display:block;color:#1769aa;text-decoration:none;margin:4px 0}.notice{padding:12px 14px;background:#fff8e6;border-left:3px solid #e5a100}.footer{margin-top:38px;padding-top:16px;border-top:1px solid #d8dee8;color:#667085;font-size:12px}@media(max-width:640px){main{padding:24px 16px}h1{font-size:25px}.label{display:block;margin-bottom:2px}}";
+  var CSS = "body{margin:0;background:#f5f7fa;color:#1f2937;font:15px/1.65 system-ui,-apple-system,Segoe UI,Microsoft YaHei,sans-serif}main{max-width:1040px;margin:0 auto;padding:40px 24px}header{padding:36px 0 24px;border-bottom:1px solid #d8dee8}h1{margin:0 0 8px;font-size:30px;line-height:1.25}h2{margin:34px 0 12px;padding-top:10px;border-top:1px solid #d8dee8;font-size:21px}h3{margin:22px 0 8px;font-size:17px}.meta,.source,.missing{color:#667085;font-size:13px}.source{margin-top:8px}.patent{margin:22px 0;padding:20px;background:#fff;border:1px solid #d8dee8;border-radius:8px}.field{margin:10px 0}.label{display:inline-block;min-width:92px;color:#667085;font-size:13px;vertical-align:top}.value{display:inline;white-space:pre-wrap;overflow-wrap:anywhere}.claim{margin:8px 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #2b7fff;white-space:pre-wrap}.ocr-excerpt{max-height:360px;overflow:auto;padding:12px;background:#f8fafc;border:1px solid #d8dee8;white-space:pre-wrap;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}.toc{padding:14px 18px;background:#fff;border:1px solid #d8dee8;border-radius:8px}.toc a{display:block;color:#1769aa;text-decoration:none;margin:4px 0}.notice{padding:12px 14px;background:#fff8e6;border-left:3px solid #e5a100}.footer{margin-top:38px;padding-top:16px;border-top:1px solid #d8dee8;color:#667085;font-size:12px}@media(max-width:640px){main{padding:24px 16px}h1{font-size:25px}.label{display:block;margin-bottom:2px}}";
 
   function cleanText(value) { return typeof value === "string" ? value.trim() : ""; }
   function escapeHtml(value) {
@@ -81,6 +81,16 @@
       }
       if (claims.length) claims.forEach(function (claim) { html += '<div class="claim">' + escapeHtml((claim.number ? claim.number + ". " : "") + claim.text) + '</div>'; });
       else html += '<p class="missing">来源未提供权利要求</p>';
+    }
+    if (moduleEnabled(config, "R7")) {
+      html += '<h3>PDF OCR 原文摘录</h3>';
+      var ocrSources = Array.isArray(record.ocrSources) ? record.ocrSources : [];
+      if (ocrSources.length) ocrSources.forEach(function (source) {
+        var excerpt = source.text || source.markdown || "";
+        if (moduleMode(config, "R7") === "lite" && excerpt.length > 4000) excerpt = excerpt.slice(0, 4000) + "…";
+        html += '<div class="source">' + escapeHtml(source.fileName || "PDF") + ' · ' + escapeHtml(source.engine || "OCR") + '</div><pre class="ocr-excerpt">' + escapeHtml(excerpt) + '</pre>';
+      });
+      else html += '<p class="missing">尚未关联 PDF OCR 材料</p>';
     }
     if (moduleEnabled(config, "S5")) {
       var source = record.source || {};

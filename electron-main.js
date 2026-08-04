@@ -4633,6 +4633,25 @@ app.whenReady().then(async () => {
     return { canceled: false, filePath: result.filePath };
   });
 
+  ipcMain.handle("ocr-share-pdf", async (_event, bytes) => {
+    if (!bytes || typeof bytes.byteLength !== "number" || bytes.byteLength > 20 * 1024 * 1024) {
+      throw new Error("PDF 文件超过 20 MB 限制或内容无效。");
+    }
+    const pdfBuffer = Buffer.from(bytes);
+    if (pdfBuffer.subarray(0, 5).toString("ascii") !== "%PDF-") throw new Error("所选文件不是有效 PDF。");
+    const result = await ocrWithPaddleVl(pdfBuffer.toString("base64"), {});
+    const text = String(result.text || "").slice(0, 500000);
+    const markdown = String(result.markdown || "").slice(0, 500000);
+    if (!text && !markdown) throw new Error(result.error || "未能从 PDF 提取可用文本。");
+    return {
+      engine: "paddle_ocr_vl",
+      text,
+      markdown,
+      blocks: Array.isArray(result.blocks) ? result.blocks.slice(0, 10000) : [],
+      pageDimensions: result.pageDimensions || {},
+    };
+  });
+
   // IPC: EPO Cloudflare 验证 - 打开内嵌 BrowserWindow 让用户完成人机验证，
   // 验证通过后把 session 中的 epo.org cookies 写回 EPO_COOKIE_JAR 文件，
   // 这样 server.js 后续的 curl 请求就能用同一个 cookie 通过 Cloudflare 防护。

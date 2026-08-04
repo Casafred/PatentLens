@@ -121,6 +121,10 @@
     importButton.type = "button";
     importButton.dataset.shareAction = "import-csv";
     container.appendChild(importButton);
+    var pdfButton = makeElement("button", "share-secondary-action", "导入 PDF OCR");
+    pdfButton.type = "button";
+    pdfButton.dataset.shareAction = "import-pdf";
+    container.appendChild(pdfButton);
     if (project.patents.length === 0) {
       var empty = makeElement("div", "share-empty-panel");
       empty.appendChild(makeElement("h4", "", "尚无材料来源"));
@@ -230,6 +234,66 @@
     };
     if (/\.csv$/i.test(file.name || "")) reader.readAsText(file, "UTF-8");
     else reader.readAsArrayBuffer(file);
+  }
+
+  function startPdfImport() {
+    var project = currentProject();
+    if (!project || !project.patents.length) {
+      setNotice("请先加入专利，再将 PDF OCR 材料关联到对应专利。", true);
+      render();
+      return;
+    }
+    if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+      setNotice("正在恢复本机分享项目，请稍候再导入 PDF。", true);
+      render();
+      return;
+    }
+    var input = byId("share-pdf-input");
+    if (!input) return;
+    input.value = "";
+    input.click();
+  }
+
+  function importPdfFile(file) {
+    if (!file || !/\.pdf$/i.test(file.name || "") || file.size > 20 * 1024 * 1024) {
+      setNotice("仅支持不超过 20 MB 的 PDF 文件。", true);
+      render();
+      return;
+    }
+    var project = currentProject();
+    var target = project && project.patents && project.patents[0];
+    if (!target) return;
+    if (project.patents.length > 1) {
+      var choices = project.patents.map(function (patent, index) { return (index + 1) + ". " + patent.patentNumber + " · " + (patent.title || "未提供标题"); }).join("\n");
+      var answer = window.prompt("请选择关联该 PDF 的专利：\n" + choices, "1");
+      if (answer == null) return;
+      var targetIndex = Number(answer) - 1;
+      if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= project.patents.length) {
+        setNotice("专利选择无效。", true);
+        render();
+        return;
+      }
+      target = project.patents[targetIndex];
+    }
+    var bridge = window.electronAPI && window.electronAPI.ocrSharePdf;
+    if (!bridge) { setNotice("当前环境不支持 PDF OCR，请使用桌面版。", true); render(); return; }
+    var reader = new FileReader();
+    reader.onerror = function () { setNotice("无法读取 PDF 文件。", true); render(); };
+    reader.onload = function () {
+      setNotice("正在 OCR 解析 PDF，请保持应用打开。", false);
+      render();
+      bridge(reader.result).then(function (result) {
+        var stored = window.PatentShareStore.addOcrSource(target.id, result, file.name);
+        if (!stored.ok) setNotice("PDF OCR 未返回可用文本。", true);
+        else setNotice("PDF OCR 已关联到 " + target.patentNumber + "。可在“分享模块”启用“OCR 原文摘录”。", false);
+        activeView = "sources";
+        render();
+      }).catch(function (error) {
+        setNotice(error && error.message ? error.message : "PDF OCR 失败。", true);
+        render();
+      });
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   function renderReview(container, project) {
@@ -545,6 +609,10 @@
     if (spreadsheetInput) spreadsheetInput.addEventListener("change", function () {
       if (spreadsheetInput.files && spreadsheetInput.files[0]) importSpreadsheetFile(spreadsheetInput.files[0]);
     });
+    var pdfInput = byId("share-pdf-input");
+    if (pdfInput) pdfInput.addEventListener("change", function () {
+      if (pdfInput.files && pdfInput.files[0]) importPdfFile(pdfInput.files[0]);
+    });
     var nav = byId("share-workspace-nav");
     if (nav) nav.addEventListener("click", function (event) {
       var button = event.target.closest ? event.target.closest("[data-share-view]") : null;
@@ -559,6 +627,7 @@
       if (!action) return;
       if (action.dataset.shareAction === "add-current") addCurrentPatent();
       if (action.dataset.shareAction === "import-csv") startSpreadsheetImport();
+      if (action.dataset.shareAction === "import-pdf") startPdfImport();
       if (action.dataset.shareAction === "refresh-preview") render();
       if (action.dataset.shareAction === "save-html") saveHtml();
       if (action.dataset.shareAction === "select-field-candidate") {
