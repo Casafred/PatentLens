@@ -590,6 +590,68 @@
       figSection.appendChild(fileInput);
       card.appendChild(figSection);
 
+      var pfSection = makeElement("div", "share-review-processed");
+      pfSection.appendChild(makeElement("h4", "", "加工信息字段（AI 抽取 / 手工录入）"));
+      var pfList = Array.isArray(patent.processedFields) ? patent.processedFields : [];
+      if (pfList.length) {
+        pfList.forEach(function (pf) {
+          var pfRow = makeElement("div", "share-review-field share-processed-field-row");
+          pfRow.appendChild(makeElement("span", "share-review-field-label", pf.label));
+          var pfVal = makeElement("div", "share-review-field-value");
+          var valText = pf.value || "（尚未填写）";
+          if (valText.length > 120) valText = valText.slice(0, 120) + "...";
+          pfVal.appendChild(makeElement("span", "", valText));
+          var badge = makeElement("span", "share-processed-badge" + (pf.source === "ai" ? " ai" : " manual"), pf.source === "ai" ? "AI" : "手工");
+          pfVal.appendChild(badge);
+          pfRow.appendChild(pfVal);
+          var aiBtn = makeElement("button", "share-field-edit", pf.prompt ? "AI抽取" : "配置AI");
+          aiBtn.type = "button";
+          aiBtn.dataset.shareAction = "ai-processed-field";
+          aiBtn.dataset.patentId = patent.id;
+          aiBtn.dataset.fieldId = pf.id;
+          aiBtn.disabled = aiRunning;
+          pfRow.appendChild(aiBtn);
+          var editPf = makeElement("button", "share-field-edit", "编辑");
+          editPf.type = "button";
+          editPf.dataset.shareAction = "edit-processed-field";
+          editPf.dataset.patentId = patent.id;
+          editPf.dataset.fieldId = pf.id;
+          editPf.disabled = aiRunning;
+          pfRow.appendChild(editPf);
+          var rmPf = makeElement("button", "share-field-remove", "删除");
+          rmPf.type = "button";
+          rmPf.dataset.shareAction = "remove-processed-field";
+          rmPf.dataset.patentId = patent.id;
+          rmPf.dataset.fieldId = pf.id;
+          rmPf.disabled = aiRunning;
+          pfRow.appendChild(rmPf);
+          pfSection.appendChild(pfRow);
+        });
+      } else {
+        pfSection.appendChild(makeElement("p", "share-review-field-value", "尚未添加加工字段。可从预设模板添加，或自定义字段名称与提示词后AI抽取。"));
+      }
+      var presetBar = makeElement("div", "share-processed-preset-bar");
+      presetBar.appendChild(makeElement("span", "share-review-field-label", "快速添加："));
+      var presets = window.PatentShareModules && window.PatentShareModules.fieldPresets ? window.PatentShareModules.fieldPresets() : [];
+      presets.forEach(function (preset) {
+        var pb = makeElement("button", "btn-secondary btn-small share-preset-btn", "+" + preset.label);
+        pb.type = "button";
+        pb.dataset.shareAction = "add-preset-field";
+        pb.dataset.patentId = patent.id;
+        pb.dataset.presetLabel = preset.label;
+        pb.dataset.presetType = preset.type;
+        pb.disabled = aiRunning;
+        presetBar.appendChild(pb);
+      });
+      var customBtn = makeElement("button", "btn-secondary btn-small", "+ 自定义字段");
+      customBtn.type = "button";
+      customBtn.dataset.shareAction = "add-processed-field";
+      customBtn.dataset.patentId = patent.id;
+      customBtn.disabled = aiRunning;
+      presetBar.appendChild(customBtn);
+      pfSection.appendChild(presetBar);
+      card.appendChild(pfSection);
+
       container.appendChild(card);
     });
   }
@@ -605,7 +667,7 @@
     var hint = makeElement("p", "share-module-hint", "必要模块不能关闭；配置会自动保存到当前分享项目，并在预览与导出中生效。AI生成的研发洞察内容需启用对应R模块后才会出现在分享中。");
     container.appendChild(hint);
     var categories = registry.listByCategory();
-    var categoryLabels = { basic: "基础内容模块", research: "研发洞察模块（AI/人工）", appendix: "附录模块" };
+    var categoryLabels = { basic: "基础信息（从来源提取 + 人工校核）", processed: "加工信息（AI 抽取 / 手工录入）" };
     Object.keys(categories).forEach(function(catKey) {
       var catLabel = categoryLabels[catKey] || catKey;
       container.appendChild(makeElement("h4", "share-module-category-title", catLabel));
@@ -1021,6 +1083,40 @@
     });
   }
 
+  function runAIProcessedField(patentId, fieldId) {
+    var AI = window.PatentShareAI;
+    var project = currentProject();
+    if (!AI || !project || aiRunning) return;
+    var provider = AI.getActiveAIProvider();
+    if (!provider) { setNotice("未检测到可用的AI配置，请先在设置中配置AI接口。", true); render(); return; }
+    var patent = project.patents.find(function (p) { return p.id === patentId; });
+    if (!patent) { setNotice("未找到目标专利。", true); render(); return; }
+    var field = patent.processedFields && patent.processedFields.find(function (f) { return f.id === fieldId; });
+    if (!field) { setNotice("未找到目标加工字段。", true); render(); return; }
+    aiRunning = true;
+    setNotice("AI正在抽取「" + field.label + "」，请稍候...", false);
+    render();
+    AI.generateProcessedField(patent, field).then(function (result) {
+      if (result.ok) {
+        window.PatentShareStore.updateProcessedField(patentId, fieldId, {
+          value: result.value,
+          source: "ai",
+          model: result.model,
+          generatedAt: result.generatedAt,
+          reviewState: "accepted",
+        });
+        setNotice("AI已抽取「" + field.label + "」内容。", false);
+      } else {
+        setNotice("AI抽取失败: " + (result.error || "未知错误"), true);
+      }
+    }).catch(function (err) {
+      setNotice("AI抽取出错: " + (err && err.message ? err.message : String(err)), true);
+    }).then(function () {
+      aiRunning = false;
+      render();
+    });
+  }
+
   function runAIComparison() {
     var AI = window.PatentShareAI;
     var project = currentProject();
@@ -1363,8 +1459,8 @@
       if (actionName === "figure-file-input" && action.dataset.patentId) {
         var file = action.files && action.files[0];
         if (!file) return;
-        if (file.size > 2 * 1024 * 1024) {
-          setNotice("图片不能超过 2 MB。", true);
+        if (file.size > 2.5 * 1024 * 1024) {
+          setNotice("图片不能超过 2.5 MB。", true);
           render();
           return;
         }
@@ -1372,21 +1468,26 @@
         reader.onload = function (ev) {
           var dataUrl = ev.target.result;
           PatentShareUI.prompt("附图说明（可选）", "").then(function (caption) {
-            var dims = {};
             var probe = new Image();
-            probe.onload = function () { dims = { width: probe.width, height: probe.height }; };
+            probe.onload = function () {
+              var dims = { width: probe.width, height: probe.height };
+              doAddFigure(dataUrl, caption, dims);
+            };
+            probe.onerror = function () { doAddFigure(dataUrl, caption, {}); };
             probe.src = dataUrl;
-            var result = window.PatentShareStore.addFigure(action.dataset.patentId, dataUrl, caption || "", dims);
-            if (!result || !result.ok) {
-              setNotice("附图上传失败：" + (result && result.reason || "未知错误"), true);
-            } else {
-              setNotice("已添加附图。可在「分享模块」中启用 S7(附图) 模块。", false);
-            }
-            render();
           });
         };
         reader.onerror = function () { setNotice("图片读取失败。", true); render(); };
         reader.readAsDataURL(file);
+        function doAddFigure(dataUrl, caption, dims) {
+          var result = window.PatentShareStore.addFigure(action.dataset.patentId, dataUrl, caption || "", dims);
+          if (!result || !result.ok) {
+            setNotice("附图上传失败：" + (result && result.reason || "未知错误"), true);
+          } else {
+            setNotice("已添加附图。S7(附图)模块默认开启，可在「分享模块」调整展示模式。", false);
+          }
+          render();
+        }
       }
       if (actionName === "remove-figure" && action.dataset.patentId && action.dataset.figureId) {
         if (window.PatentShareStore.getPersistenceState().mode === "loading") {
@@ -1398,6 +1499,95 @@
           if (confirmed) {
             window.PatentShareStore.removeFigure(action.dataset.patentId, action.dataset.figureId);
             setNotice("已删除附图。", false);
+          }
+          render();
+        });
+      }
+      if (actionName === "add-preset-field" && action.dataset.patentId) {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再编辑。", true);
+          render();
+          return;
+        }
+        var presets = window.PatentShareModules && window.PatentShareModules.fieldPresets ? window.PatentShareModules.fieldPresets() : [];
+        var matched = presets.find(function (p) { return p.label === action.dataset.presetLabel; });
+        if (!matched) { setNotice("未找到该预设模板。", true); render(); return; }
+        var addResult = window.PatentShareStore.addProcessedField(action.dataset.patentId, matched.label, matched.prompt, matched.type);
+        if (!addResult || !addResult.ok) {
+          setNotice("添加加工字段失败。", true);
+        } else {
+          setNotice("已添加加工字段「" + matched.label + "」，可点击AI抽取或手工编辑。", false);
+        }
+        render();
+      }
+      if (actionName === "add-processed-field" && action.dataset.patentId) {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再编辑。", true);
+          render();
+          return;
+        }
+        PatentShareUI.prompt("加工字段名称（如：技术优势、避让方案）", "").then(function (label) {
+          if (label == null) return;
+          label = label.trim();
+          if (!label) { render(); return; }
+          PatentShareUI.multilinePrompt("AI抽取提示词（可选，留空则仅手工录入）", "", "提示AI如何抽取该字段内容，如：请概括该专利在XX方面的技术优势，3-5个要点。").then(function (prompt) {
+            if (prompt == null) { render(); return; }
+            var r = window.PatentShareStore.addProcessedField(action.dataset.patentId, label, prompt, "text");
+            if (!r || !r.ok) { setNotice("添加加工字段失败。", true); }
+            else { setNotice("已添加加工字段「" + label + "」。", false); }
+            render();
+          });
+        });
+      }
+      if (actionName === "edit-processed-field" && action.dataset.patentId && action.dataset.fieldId) {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再编辑。", true);
+          render();
+          return;
+        }
+        var projForPF = currentProject();
+        var patForPF = projForPF.patents.find(function (x) { return x.id === action.dataset.patentId; });
+        var pfField = patForPF && Array.isArray(patForPF.processedFields) ? patForPF.processedFields.find(function (f) { return f.id === action.dataset.fieldId; }) : null;
+        if (!pfField) { setNotice("未找到该加工字段。", true); render(); return; }
+        PatentShareUI.multilinePrompt("编辑加工字段：" + pfField.label, pfField.value || "", "可手工录入或粘贴内容，保存后在分享报告中展示。").then(function (nextValue) {
+          if (nextValue == null) return;
+          window.PatentShareStore.updateProcessedField(action.dataset.patentId, action.dataset.fieldId, { value: nextValue, source: "manual", reviewState: "accepted" });
+          setNotice("加工字段「" + pfField.label + "」已保存。", false);
+          render();
+        });
+      }
+      if (actionName === "ai-processed-field" && action.dataset.patentId && action.dataset.fieldId) {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再操作。", true);
+          render();
+          return;
+        }
+        var projForAIPF = currentProject();
+        var patForAIPF = projForAIPF.patents.find(function (x) { return x.id === action.dataset.patentId; });
+        var aiPFField = patForAIPF && Array.isArray(patForAIPF.processedFields) ? patForAIPF.processedFields.find(function (f) { return f.id === action.dataset.fieldId; }) : null;
+        if (!aiPFField) { setNotice("未找到该加工字段。", true); render(); return; }
+        if (!aiPFField.prompt) {
+          PatentShareUI.multilinePrompt("配置AI抽取提示词：" + aiPFField.label, "", "提示AI如何抽取该字段内容，如：请概括该专利的技术问题，2-4句话。").then(function (prompt) {
+            if (prompt == null) return;
+            prompt = prompt.trim();
+            if (!prompt) { setNotice("提示词不能为空。", true); render(); return; }
+            window.PatentShareStore.updateProcessedField(action.dataset.patentId, action.dataset.fieldId, { prompt: prompt });
+            runAIProcessedField(action.dataset.patentId, action.dataset.fieldId);
+          });
+        } else {
+          runAIProcessedField(action.dataset.patentId, action.dataset.fieldId);
+        }
+      }
+      if (actionName === "remove-processed-field" && action.dataset.patentId && action.dataset.fieldId) {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再编辑。", true);
+          render();
+          return;
+        }
+        PatentShareUI.confirm("确定要删除该加工字段吗？").then(function (confirmed) {
+          if (confirmed) {
+            window.PatentShareStore.removeProcessedField(action.dataset.patentId, action.dataset.fieldId);
+            setNotice("已删除加工字段。", false);
           }
           render();
         });

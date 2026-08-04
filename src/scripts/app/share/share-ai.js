@@ -180,12 +180,43 @@
     }
   }
 
+  // 加工字段抽取：基于用户自定义提示词，抽取一个聚焦的结构化字段值
+  async function generateProcessedField(patent, field) {
+    try {
+      if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
+      if (!field || typeof field !== "object") throw new Error("无效的加工字段");
+      var prompt = cleanText(field.prompt);
+      var label = cleanText(field.label) || "加工字段";
+      if (!prompt) throw new Error("该字段未配置提示词，无法进行AI抽取");
+      var context = buildPatentContext(patent);
+      var systemPrompt = '你是一位资深专利分析师。请严格根据提供的专利内容回答问题。\n\n要求：\n- 结论必须基于提供的专利内容，不要编造未给出的细节\n- 语言精炼准确，适合研发人员阅读\n- 使用中文输出，专业术语可保留英文原文\n- 直接输出结论内容，不要添加标题或引导语\n- 如果是列表，用 "- " 开头每行一个要点';
+      var userPrompt = "【抽取任务】" + label + "\n\n【抽取要求】\n" + prompt + "\n\n【专利内容】\n" + context;
+      var messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ];
+      var result = await callAI(messages);
+      return {
+        ok: true,
+        value: result.content,
+        model: result.model,
+        reasoning: result.reasoning,
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  }
+
+  function cleanText(value) { return typeof value === "string" ? value.trim() : ""; }
+
   window.PatentShareAI = {
     getActiveAIProvider: getActiveAIProvider,
     generatePatentSummary: generatePatentSummary,
     generateTechnicalElements: generateTechnicalElements,
     generateEmbodiments: generateEmbodiments,
     generateMultiPatentComparison: generateMultiPatentComparison,
+    generateProcessedField: generateProcessedField,
     buildPatentContext: buildPatentContext,
   };
 })();
