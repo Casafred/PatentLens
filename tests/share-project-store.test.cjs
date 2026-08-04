@@ -276,6 +276,10 @@ test('current GP data is copied into a normalized share snapshot', () => {
   assert.equal(snapshot.patentNumber, 'EP4252965A3');
   assert.equal(snapshot.title, '用于测试的专利');
   assert.equal(snapshot.fields.assignees.value, '申请人 A');
-  assert.deepEqual({ ...snapshot.claims[0] }, { number: '1', text: '一种装置', type: 'independent' });
+  assert.equal(snapshot.claims[0].number, '1');
+  assert.equal(snapshot.claims[0].text, '一种装置');
+  assert.equal(snapshot.claims[0].type, 'independent');
+  assert.equal(Array.isArray(snapshot.claims[0].references), true);
+  assert.equal(snapshot.claims[0].references.length, 0);
   assert.equal(snapshot.source.type, 'google_patents');
 });

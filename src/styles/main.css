@@ -7245,6 +7245,215 @@ body {
   color: var(--danger);
 }
 
+/* ===== 分享工作台新增：AI、模态框、分类标签等 ===== */
+.share-source-actions,
+.share-source-card-actions,
+.share-overview-actions,
+.share-ai-btn-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.share-overview-actions {
+  margin-top: 16px;
+}
+.share-module-category-title {
+  margin: 20px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.share-review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.share-review-header h4 {
+  margin: 0;
+}
+.share-classification-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 2px 4px 2px 0;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.share-description-preview {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border-color, var(--border));
+  border-radius: 6px;
+}
+.share-description-preview .share-review-field-label {
+  display: block;
+  margin-bottom: 6px;
+}
+.share-ai-patent-card {
+  background: #fff;
+  border: 1px solid var(--border-color, var(--border));
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.share-ai-patent-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.share-ai-patent-header h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.share-ai-btn {
+  font-size: 12px;
+  padding: 6px 12px;
+}
+.share-ai-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.share-ai-status {
+  font-size: 12px;
+  color: #059669;
+  margin: 8px 0;
+  padding: 6px 10px;
+  background: #ecfdf5;
+  border-radius: 4px;
+}
+.share-ai-divider {
+  border: none;
+  border-top: 1px solid var(--border-color, var(--border));
+  margin: 12px 0 0;
+}
+.share-ai-loading {
+  padding: 16px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  color: #1e40af;
+  text-align: center;
+  margin-bottom: 16px;
+}
+/* ===== 自定义模态对话框 ===== */
+.share-modal-root {
+  position: fixed;
+  z-index: 99999;
+}
+.share-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.share-modal-overlay.open {
+  opacity: 1;
+}
+.share-modal-overlay.closing {
+  opacity: 0;
+}
+.share-modal-dialog {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow: auto;
+  transform: scale(0.95) translateY(10px);
+  transition: transform 0.15s ease;
+}
+.share-modal-overlay.open .share-modal-dialog {
+  transform: scale(1) translateY(0);
+}
+.share-modal-header {
+  padding: 20px 20px 0;
+}
+.share-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+}
+.share-modal-body {
+  padding: 16px 20px;
+}
+.share-modal-message {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--text-secondary, #667085);
+  line-height: 1.5;
+}
+.share-modal-input,
+.share-modal-select,
+.share-modal-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, var(--border));
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+  background: #fff;
+}
+.share-modal-input:focus,
+.share-modal-select:focus,
+.share-modal-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color, #2b7fff);
+  box-shadow: 0 0 0 3px rgba(43,127,255,0.1);
+}
+.share-modal-textarea {
+  min-height: 160px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.share-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 20px 20px;
+}
+.share-modal-btn {
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease;
+}
+.share-modal-btn-cancel {
+  background: #f1f5f9;
+  color: #475569;
+}
+.share-modal-btn-cancel:hover {
+  background: #e2e8f0;
+}
+.share-modal-btn-ok {
+  background: var(--primary-color, #2b7fff);
+  color: #fff;
+}
+.share-modal-btn-ok:hover {
+  background: #1d6ae5;
+}
+
 @media (max-width: 860px) {
   .share-workspace-layout {
     grid-template-columns: 1fr;
@@ -7298,6 +7507,11 @@ body {
 
   .share-workspace-view {
     padding: 20px;
+  }
+
+  .share-modal-dialog {
+    max-width: calc(100vw - 20px);
+    margin: 10px;
   }
 }
 

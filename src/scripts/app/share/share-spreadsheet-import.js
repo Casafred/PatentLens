@@ -17,6 +17,9 @@
     priorityDate: ["优先权日", "优先权日期", "prioritydate"],
     assignees: ["申请人", "权利人", "专利权人", "assignee", "assignees", "applicant", "applicants"],
     inventors: ["发明人", "inventor", "inventors"],
+    description: ["说明书", "具体实施方式", "发明内容", "description", "specification", "detaileddescription", "disclosure"],
+    classifications: ["ipc", "ipc分类", "ipc分类号", "cpc", "cpc分类", "cpc分类号", "分类号", "classifications", "internationalclassifications"],
+    claims: ["权利要求", "权利要求书", "claims"],
   };
 
   function cleanText(value) { return typeof value === "string" ? value.trim() : ""; }
@@ -82,6 +85,46 @@
     });
   }
 
+  function parseClaimsFromText(text) {
+    var raw = cleanText(text);
+    if (!raw) return [];
+    var claims = [];
+    var claimPattern = /(?:^|\n)\s*(\d+)[\.、，\)]\s*([\s\S]*?)(?=(?:\n\s*\d+[\.、，\)])|$)/g;
+    var match;
+    while ((match = claimPattern.exec(raw)) !== null) {
+      var num = cleanText(match[1]);
+      var text = cleanText(match[2]);
+      if (num && text) {
+        claims.push({ number: num, text: text, type: "", references: [] });
+      }
+    }
+    if (!claims.length) {
+      claims.push({ number: "1", text: raw, type: "independent", references: [] });
+    }
+    var allClaims = claims.map(function(c) { return { number: c.number }; });
+    claims.forEach(function(claim) {
+      if (!claim.type) {
+        var refs = [];
+        var refPattern = /(?:权项|权利要求|权)\s*(\d+)/g;
+        var refMatch;
+        while ((refMatch = refPattern.exec(claim.text)) !== null) {
+          refs.push(refMatch[1]);
+        }
+        claim.type = refs.length > 0 ? "dependent" : (claim.number === "1" ? "independent" : "dependent");
+        claim.references = refs.filter(function(n) {
+          return allClaims.some(function(c) { return c.number === n; });
+        });
+      }
+    });
+    return claims;
+  }
+
+  function parseClassificationsFromText(text) {
+    var raw = cleanText(text);
+    if (!raw) return [];
+    return raw.split(/[;；,，\n]/).map(function(s) { return cleanText(s); }).filter(Boolean);
+  }
+
   function buildRecordsFromRows(rows, fileName, sourceKind, sheetName) {
     if (!rows.length) return { ok: false, reason: "empty-file", message: "CSV 文件为空。" };
     var headers = uniqueHeaders(rows[0]);
@@ -98,24 +141,44 @@
       var patentNumber = cleanText(row[numberColumn.index]);
       if (!patentNumber) { skippedRows.push({ rowNumber: rowIndex + 1, reason: "missing-patent-number" }); continue; }
       var fields = {}, customFields = {};
+      var description = "";
+      var classifications = [];
+      var claims = [];
       mapping.forEach(function (column) {
         if (!column.fieldName || column.fieldName === "patentNumber") return;
-        var candidate = fieldValue(row[column.index], sourceLabel + " · 第 " + (rowIndex + 1) + " 行 · " + column.header, capturedAt);
+        var cellValue = cleanText(row[column.index]);
+        if (!cellValue) return;
+        if (column.fieldName === "description") {
+          description = cellValue;
+          return;
+        }
+        if (column.fieldName === "classifications") {
+          classifications = parseClassificationsFromText(cellValue);
+          return;
+        }
+        if (column.fieldName === "claims") {
+          claims = parseClaimsFromText(cellValue);
+          return;
+        }
+        var candidate = fieldValue(cellValue, sourceLabel + " · 第 " + (rowIndex + 1) + " 行 · " + column.header, capturedAt);
         if (candidate) fields[column.fieldName] = candidate;
       });
       mapping.filter(function (column) { return !column.fieldName; }).forEach(function (column) {
         var candidate = fieldValue(row[column.index], sourceLabel + " · 第 " + (rowIndex + 1) + " 行 · " + column.header, capturedAt);
         if (candidate) customFields["csv:" + normalizeHeader(column.header)] = { label: column.header, field: candidate };
       });
-      records.push({
+      var record = {
         id: "csv_" + patentNumber.replace(/[^a-z0-9]+/gi, "_") + "_" + (rowIndex + 1),
         patentNumber: patentNumber,
         title: fields.title ? fields.title.value : "",
         fields: fields,
         customFields: customFields,
-        claims: [],
-        source: { type: "excel", label: sourceLabel + " · 第 " + (rowIndex + 1) + " 行", capturedAt: capturedAt },
-      });
+        claims: claims,
+        source: { type: sourceKind === "Excel" ? "excel" : "csv", label: sourceLabel + " · 第 " + (rowIndex + 1) + " 行", capturedAt: capturedAt },
+      };
+      if (description) record.description = description;
+      if (classifications.length) record.classifications = classifications;
+      records.push(record);
     }
     return { ok: true, headers: headers, mapping: mapping, unmappedHeaders: mapping.filter(function (item) { return !item.fieldName; }).map(function (item) { return item.header; }), records: records, skippedRows: skippedRows };
   }
