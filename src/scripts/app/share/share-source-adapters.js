@@ -19,17 +19,157 @@
     return text ? [text] : [];
   }
 
-  function sourceValue(value, source, confidence) {
+  function parseClaimReferences(claimText, allClaims) {
+    var refs = [];
+    if (!claimText) return refs;
+    var refPatterns = [
+      /(?:according to|as in|as set forth in|of)\s+(?:claim|claims)\s+(\d+(?:\s*(?:to|or|,|and|-|–|—)\s*\d+)*)/gi,
+      /(?:权项|权利要求|权)\s*(\d+(?:\s*(?:至|或|、|和|-|–|—)\s*\d+)*)\s*(?:所述|的|其)/g,
+      /\(?(?:claim|权项|权利要求)\s*(\d+)\)?/gi
+    ];
+    refPatterns.forEach(function (pattern) {
+      var match;
+      while ((match = pattern.exec(claimText)) !== null) {
+        var refStr = match[1];
+        var rangeMatch = refStr.match(/(\d+)\s*(?:to|-|–|—|至)\s*(\d+)/i);
+        if (rangeMatch) {
+          var start = parseInt(rangeMatch[1], 10);
+          var end = parseInt(rangeMatch[2], 10);
+          for (var i = Math.min(start, end); i <= Math.max(start, end); i++) {
+            if (refs.indexOf(String(i)) < 0) refs.push(String(i));
+          }
+        } else {
+          var parts = refStr.split(/\s*(?:,|and|或|、|和)\s*/);
+          parts.forEach(function (p) {
+            var num = cleanText(p);
+            if (num && /^\d+$/.test(num) && refs.indexOf(num) < 0) refs.push(num);
+          });
+        }
+      }
+    });
+    return refs.map(String).filter(function (n) {
+      return allClaims.some(function (c) { return String(c.number) === n; });
+    });
+  }
+
+  function detectClaimType(claim, index, allClaims) {
+    if (claim.type && cleanText(claim.type)) return cleanText(claim.type).toLowerCase();
+    var text = cleanText(claim.text).toLowerCase();
+    var refs = parseClaimReferences(claim.text, allClaims);
+    if (refs.length > 0) return "dependent";
+    if (index === 0) return "independent";
+    var independentStartPatterns = [
+      /^(?:a|an|the)\s+(?:system|method|apparatus|device|composition|article|process|use)/i,
+      /^(?:一种|一个|一项|用于)/
+    ];
+    for (var i = 0; i < independentStartPatterns.length; i++) {
+      if (independentStartPatterns[i].test(cleanText(claim.text))) return "independent";
+    }
+    return refs.length > 0 ? "dependent" : "independent";
+  }
+
+  function sourceValue(value, source, confidence, sourceRef) {
     var text = cleanText(value);
     if (!text) return null;
     return {
       value: text,
       source: source,
-      sourceRef: "当前 PatentLens 专利原文快照",
+      sourceRef: sourceRef || "当前 PatentLens 专利原文快照",
       capturedAt: new Date().toISOString(),
       confidence: confidence || "high",
       reviewState: "accepted",
     };
+  }
+
+  function extractClassifications(data) {
+    var results = [];
+    var classFields = ["ipc", "ipcr", "cpc", "classification", "international_classifications", "cpc_classifications"];
+    classFields.forEach(function (field) {
+      var value = data[field];
+      if (!value) return;
+      if (Array.isArray(value)) {
+        value.forEach(function (v) {
+          var text = cleanText(typeof v === "object" ? (v.code || v.symbol || v.classification || JSON.stringify(v)) : v);
+          if (text && results.indexOf(text) < 0) results.push(text);
+        });
+      } else if (typeof value === "object") {
+        Object.values(value).forEach(function (v) {
+          var text = cleanText(v);
+          if (text && results.indexOf(text) < 0) results.push(text);
+        });
+      } else {
+        var text = cleanText(value);
+        if (text) {
+          text.split(/[;,；，]/).forEach(function (part) {
+            var cleaned = cleanText(part);
+            if (cleaned && results.indexOf(cleaned) < 0) results.push(cleaned);
+          });
+        }
+      }
+    });
+    return results;
+  }
+
+  function extractDescription(data) {
+    var descFields = ["description", "specification", "detaileddescription", "detailed_description", "disclosure"];
+    for (var i = 0; i < descFields.length; i++) {
+      var val = data[descFields[i]];
+      if (typeof val === "string" && cleanText(val).length > 50) return cleanText(val);
+      if (Array.isArray(val)) {
+        var text = val.map(function (v) { return typeof v === "string" ? v : (v.text || v.content || ""); }).filter(Boolean).join("\n\n");
+        if (cleanText(text).length > 50) return cleanText(text);
+      }
+    }
+    return "";
+  }
+
+  function extractCitations(data) {
+    var citations = [];
+    var citeFields = ["citations", "cited_by", "references", "cited_patents", "backward_citations", "forward_citations"];
+    citeFields.forEach(function (field) {
+      var value = data[field];
+      if (!value) return;
+      var arr = Array.isArray(value) ? value : (value.patents || value.items || []);
+      if (Array.isArray(arr)) {
+        arr.forEach(function (c) {
+          if (!c) return;
+          var num = cleanText(c.patent_number || c.publication_number || c.number || c.patentNumber || (typeof c === "string" ? c : ""));
+          if (!num) return;
+          citations.push({
+            number: num,
+            type: cleanText(c.type || c.category || (field === "cited_by" || field === "forward_citations" ? "forward" : "backward")),
+            title: cleanText(c.title || ""),
+            assignee: cleanText(c.assignee || c.applicant || ""),
+            date: cleanText(c.date || c.publication_date || c.filing_date || ""),
+          });
+        });
+      }
+    });
+    return citations;
+  }
+
+  function extractFamily(data) {
+    var family = [];
+    var famFields = ["family", "family_members", "patent_family", "similars", "similar_patents"];
+    famFields.forEach(function (field) {
+      var value = data[field];
+      if (!value) return;
+      var arr = Array.isArray(value) ? value : (value.members || value.items || []);
+      if (Array.isArray(arr)) {
+        arr.forEach(function (m) {
+          if (!m) return;
+          var num = cleanText(m.patent_number || m.publication_number || m.number || m.patentNumber || (typeof m === "string" ? m : ""));
+          if (!num) return;
+          family.push({
+            number: num,
+            country: cleanText(m.country || m.country_code || (num.match(/^([A-Z]{2})/) || [])[1] || ""),
+            title: cleanText(m.title || ""),
+            date: cleanText(m.date || m.publication_date || m.filing_date || ""),
+          });
+        });
+      }
+    });
+    return family;
   }
 
   function currentPatentSnapshot() {
@@ -40,22 +180,44 @@
     if (!patentNumber) return null;
 
     var sourceName = cleanText(data.data_source) || "Google Patents";
-    var claims = Array.isArray(data.claims) ? data.claims.map(function (claim, index) {
+    var capturedAt = new Date().toISOString();
+
+    var rawClaims = Array.isArray(data.claims) ? data.claims.map(function (claim, index) {
       if (typeof claim === "string") {
-        return { number: String(index + 1), text: cleanText(claim), type: "" };
+        return { number: String(index + 1), text: cleanText(claim), type: "", references: [] };
       }
       return {
         number: cleanText(claim && (claim.num || claim.number)) || String(index + 1),
         text: cleanText(claim && (claim.text || claim.content)),
         type: cleanText(claim && claim.type),
+        references: Array.isArray(claim && claim.dependencies) ? claim.dependencies.map(String) : [],
       };
     }).filter(function (claim) { return !!claim.text; }) : [];
 
-    var capturedAt = new Date().toISOString();
-    return {
+    var claims = rawClaims.map(function (claim, index) {
+      var detectedType = detectClaimType(claim, index, rawClaims);
+      var refs = claim.references.length ? claim.references : parseClaimReferences(claim.text, rawClaims);
+      return {
+        number: claim.number,
+        text: claim.text,
+        type: (claim.type || detectedType).toLowerCase(),
+        references: refs,
+      };
+    });
+
+    var classifications = extractClassifications(data);
+    var description = extractDescription(data);
+    var citations = extractCitations(data);
+    var family = extractFamily(data);
+
+    var result = {
       id: "patent_" + patentNumber + "_" + Date.now().toString(36),
       patentNumber: patentNumber,
       title: cleanText(data.title),
+      description: description,
+      classifications: classifications,
+      citations: citations,
+      family: family,
       fields: {
         title: sourceValue(data.title, "google_patents"),
         abstract: sourceValue(data.abstract, "google_patents"),
@@ -64,8 +226,10 @@
         priorityDate: sourceValue(data.priority_date, "google_patents"),
         assignees: sourceValue(toStringList(data.assignees).join("; "), "google_patents"),
         inventors: sourceValue(toStringList(data.inventors).join("; "), "google_patents"),
+        classifications: sourceValue(classifications.join("; "), "google_patents"),
       },
       claims: claims,
+      aiAnalysis: {},
       source: {
         type: "google_patents",
         label: sourceName + " · " + patentNumber,
@@ -73,6 +237,13 @@
         url: cleanText(data.url),
       },
     };
+
+    if (!description) delete result.description;
+    if (!classifications.length) delete result.classifications;
+    if (!citations.length) delete result.citations;
+    if (!family.length) delete result.family;
+
+    return result;
   }
 
   window.PatentShareSources = {

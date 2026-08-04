@@ -8,7 +8,7 @@
   "use strict";
 
   var DB_NAME = "patentlens-share";
-  var DB_VERSION = 1;
+  var DB_VERSION = 2;
   var PROJECT_STORE = "projects";
   var META_STORE = "meta";
   var ACTIVE_PROJECT_KEY = "activeProjectId";
@@ -46,10 +46,28 @@
     };
   }
 
+  function normalizeAIAnalysis(value) {
+    if (!value || typeof value !== "object") return {};
+    var normalized = {};
+    Object.keys(value).forEach(function (key) {
+      var item = value[key];
+      if (!item || typeof item !== "object") return;
+      normalized[key] = {
+        content: cleanText(item.content).slice(0, 200000),
+        reasoning: cleanText(item.reasoning).slice(0, 100000),
+        parsed: item.parsed && typeof item.parsed === "object" ? clone(item.parsed) : null,
+        model: cleanText(item.model),
+        generatedAt: cleanText(item.generatedAt) || now(),
+        reviewState: item.reviewState === "accepted" ? "accepted" : "pending",
+      };
+    });
+    return normalized;
+  }
+
   function createProject() {
     var defaultModules = window.PatentShareModules && window.PatentShareModules.defaultConfig ? window.PatentShareModules.defaultConfig() : {};
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: makeId("project"),
       name: "未命名分享项目",
       createdAt: now(),
@@ -58,13 +76,14 @@
       sources: [],
       researchSummary: {},
       moduleConfig: defaultModules,
+      aiAnalysis: {},
     };
   }
 
   function normalizeProject(raw) {
     if (!raw || typeof raw !== "object") return null;
     var normalized = {
-      schemaVersion: 1,
+      schemaVersion: raw.schemaVersion || 2,
       id: cleanText(raw.id) || makeId("project"),
       name: cleanText(raw.name) || "未命名分享项目",
       createdAt: cleanText(raw.createdAt) || now(),
@@ -73,6 +92,7 @@
       sources: [],
       researchSummary: normalizeResearchSummary(raw.researchSummary),
       moduleConfig: raw.moduleConfig && typeof raw.moduleConfig === "object" ? clone(raw.moduleConfig) : {},
+      aiAnalysis: raw.aiAnalysis && typeof raw.aiAnalysis === "object" ? clone(raw.aiAnalysis) : {},
     };
     var knownNumbers = {};
     (Array.isArray(raw.patents) ? raw.patents : []).forEach(function (record) {
@@ -86,10 +106,37 @@
       safeRecord.id = cleanText(safeRecord.id) || makeId("patent");
       safeRecord.patentNumber = patentNumber;
       safeRecord.title = cleanText(safeRecord.title);
+      safeRecord.description = cleanText(safeRecord.description).slice(0, 500000);
       safeRecord.fields = safeRecord.fields && typeof safeRecord.fields === "object" ? safeRecord.fields : {};
-      safeRecord.claims = Array.isArray(safeRecord.claims) ? safeRecord.claims : [];
+      safeRecord.claims = Array.isArray(safeRecord.claims) ? safeRecord.claims.map(function (c) {
+        return {
+          number: cleanText(c.number),
+          text: cleanText(c.text),
+          type: cleanText(c.type),
+          references: Array.isArray(c.references) ? c.references.map(String) : [],
+        };
+      }).filter(function (c) { return !!c.text; }) : [];
+      safeRecord.classifications = Array.isArray(safeRecord.classifications) ? safeRecord.classifications.map(cleanText).filter(Boolean) : [];
+      safeRecord.citations = Array.isArray(safeRecord.citations) ? safeRecord.citations.map(function (c) {
+        return c && typeof c === "object" ? {
+          number: cleanText(c.number),
+          type: cleanText(c.type),
+          title: cleanText(c.title),
+          assignee: cleanText(c.assignee),
+          date: cleanText(c.date),
+        } : null;
+      }).filter(Boolean) : [];
+      safeRecord.family = Array.isArray(safeRecord.family) ? safeRecord.family.map(function (m) {
+        return m && typeof m === "object" ? {
+          number: cleanText(m.number),
+          country: cleanText(m.country),
+          title: cleanText(m.title),
+          date: cleanText(m.date),
+        } : null;
+      }).filter(Boolean) : [];
       safeRecord.ocrSources = Array.isArray(safeRecord.ocrSources) ? safeRecord.ocrSources : [];
       safeRecord.source = safeRecord.source && typeof safeRecord.source === "object" ? safeRecord.source : {};
+      safeRecord.aiAnalysis = normalizeAIAnalysis(safeRecord.aiAnalysis);
       normalized.patents.push(safeRecord);
     });
     (Array.isArray(raw.sources) ? raw.sources : []).forEach(function (source) {
@@ -212,7 +259,6 @@
         return true;
       });
     }).catch(function (error) {
-      // 无隐式 localStorage 回退：存储不可用时仍可完成当次工作，但明确标记为临时内存草稿。
       persistence = { mode: "memory", error: error && error.message ? error.message : "IndexedDB unavailable" };
       initialized = true;
       return false;
@@ -325,6 +371,7 @@
 
     var safeRecord = clone(record);
     safeRecord.patentNumber = patentNumber;
+    if (!safeRecord.aiAnalysis) safeRecord.aiAnalysis = {};
     active.patents.push(safeRecord);
     active.sources.push({
       id: makeId("source"),
@@ -373,8 +420,17 @@
         var safeRecord = clone(record);
         safeRecord.id = cleanText(safeRecord.id) || makeId("patent");
         safeRecord.patentNumber = number;
+        safeRecord.title = cleanText(safeRecord.title) || (safeRecord.fields && safeRecord.fields.title ? safeRecord.fields.title.value : "");
+        safeRecord.description = cleanText(safeRecord.description);
         safeRecord.fields = safeRecord.fields && typeof safeRecord.fields === "object" ? safeRecord.fields : {};
         safeRecord.customFields = safeRecord.customFields && typeof safeRecord.customFields === "object" ? safeRecord.customFields : {};
+        safeRecord.claims = Array.isArray(safeRecord.claims) ? safeRecord.claims : [];
+        safeRecord.classifications = Array.isArray(safeRecord.classifications) ? safeRecord.classifications : [];
+        safeRecord.citations = Array.isArray(safeRecord.citations) ? safeRecord.citations : [];
+        safeRecord.family = Array.isArray(safeRecord.family) ? safeRecord.family : [];
+        safeRecord.ocrSources = Array.isArray(safeRecord.ocrSources) ? safeRecord.ocrSources : [];
+        if (!safeRecord.aiAnalysis) safeRecord.aiAnalysis = {};
+        if (!safeRecord.source) safeRecord.source = {};
         active.patents.push(safeRecord);
         addSource(active, safeRecord);
         summary.added++;
@@ -384,6 +440,13 @@
       var fieldResult = merge && merge.mergeFieldMap ? merge.mergeFieldMap(existing.fields, record.fields) : { fields: existing.fields || {}, conflicts: [] };
       existing.fields = fieldResult.fields;
       existing.customFields = mergeCustomFields(existing.customFields, record.customFields, merge);
+      if (record.description && !existing.description) existing.description = cleanText(record.description);
+      if (Array.isArray(record.claims) && record.claims.length && (!existing.claims || !existing.claims.length)) {
+        existing.claims = record.claims.map(function (c) { return clone(c); });
+      }
+      if (Array.isArray(record.classifications) && record.classifications.length && (!existing.classifications || !existing.classifications.length)) {
+        existing.classifications = record.classifications.slice();
+      }
       if (existing.fields.title && existing.fields.title.value) existing.title = existing.fields.title.value;
       addSource(active, record);
       summary.merged++;
@@ -416,6 +479,17 @@
     var merge = window.PatentShareFieldMerge;
     patent.fields[field] = merge && merge.mergeField ? merge.mergeField(patent.fields[field], manualValue).field : manualValue;
     if (field === "title") patent.title = text;
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function updatePatentDescription(patentId, description) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent) return false;
+    patent.description = cleanText(description).slice(0, 500000);
     active.updatedAt = now();
     queuePersist();
     notify();
@@ -463,6 +537,43 @@
     return { ok: true, source: clone(source) };
   }
 
+  function setAIAnalysis(patentId, analysisType, analysisData) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent || !cleanText(analysisType) || !analysisData) return false;
+    if (!patent.aiAnalysis || typeof patent.aiAnalysis !== "object") patent.aiAnalysis = {};
+    patent.aiAnalysis[analysisType] = {
+      content: cleanText(analysisData.content).slice(0, 200000),
+      reasoning: cleanText(analysisData.reasoning).slice(0, 100000),
+      parsed: analysisData.parsed && typeof analysisData.parsed === "object" ? clone(analysisData.parsed) : null,
+      model: cleanText(analysisData.model),
+      generatedAt: cleanText(analysisData.generatedAt) || now(),
+      reviewState: analysisData.reviewState === "accepted" ? "accepted" : "pending",
+    };
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function setProjectAIAnalysis(analysisType, analysisData) {
+    var active = ensureProject();
+    if (!cleanText(analysisType) || !analysisData) return false;
+    if (!active.aiAnalysis || typeof active.aiAnalysis !== "object") active.aiAnalysis = {};
+    active.aiAnalysis[analysisType] = {
+      content: cleanText(analysisData.content).slice(0, 200000),
+      reasoning: cleanText(analysisData.reasoning).slice(0, 100000),
+      model: cleanText(analysisData.model),
+      patentIds: Array.isArray(analysisData.patentIds) ? analysisData.patentIds.slice() : [],
+      generatedAt: cleanText(analysisData.generatedAt) || now(),
+      reviewState: analysisData.reviewState === "accepted" ? "accepted" : "pending",
+    };
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
   function removePatent(patentId) {
     var active = ensureProject();
     var before = active.patents.length;
@@ -500,8 +611,11 @@
     addPatent: addPatent,
     importPatents: importPatents,
     updatePatentField: updatePatentField,
+    updatePatentDescription: updatePatentDescription,
     selectPatentFieldCandidate: selectPatentFieldCandidate,
     addOcrSource: addOcrSource,
+    setAIAnalysis: setAIAnalysis,
+    setProjectAIAnalysis: setProjectAIAnalysis,
     removePatent: removePatent,
     flush: flush,
     onChange: onChange,
