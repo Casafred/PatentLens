@@ -117,15 +117,15 @@
   function renderSources(container, project) {
     addHeading(container, viewMeta.sources, "加入当前专利", "add-current");
     addNotice(container);
-    var importButton = makeElement("button", "share-secondary-action", "导入 CSV");
+    var importButton = makeElement("button", "share-secondary-action", "导入表格");
     importButton.type = "button";
     importButton.dataset.shareAction = "import-csv";
     container.appendChild(importButton);
     if (project.patents.length === 0) {
       var empty = makeElement("div", "share-empty-panel");
       empty.appendChild(makeElement("h4", "", "尚无材料来源"));
-      empty.appendChild(makeElement("p", "", "可复制当前 PatentLens 专利原文结果，或导入 CSV。CSV 会自动识别常见中英文列名，并将未映射列保留为自定义字段。"));
-      var importEmpty = makeElement("button", "share-primary-action", "导入 CSV");
+      empty.appendChild(makeElement("p", "", "可复制当前 PatentLens 专利原文结果，或导入 CSV/XLS/XLSX。系统会自动识别常见中英文列名，并将未映射列保留为自定义字段。"));
+      var importEmpty = makeElement("button", "share-primary-action", "导入表格");
       importEmpty.type = "button";
       importEmpty.dataset.shareAction = "import-csv";
       empty.appendChild(importEmpty);
@@ -136,7 +136,7 @@
     project.patents.forEach(function (patent) {
       var card = makeElement("article", "share-source-card");
       var sourceCount = project.sources.filter(function (source) { return source.patentId === patent.id; }).length;
-      card.appendChild(makeElement("span", "share-source-badge", patent.source && patent.source.type === "excel" ? "CSV" : "GP"));
+      card.appendChild(makeElement("span", "share-source-badge", patent.source && patent.source.type === "excel" ? "表格" : "GP"));
       var content = makeElement("div", "share-source-content");
       content.appendChild(makeElement("div", "share-source-title", patent.title || patent.patentNumber));
       content.appendChild(makeElement("div", "share-source-meta", patent.patentNumber + " · " + sourceCount + " 个来源"));
@@ -164,19 +164,31 @@
     return (labels[field.source] || field.source) + (field.reviewState === "conflict" ? " · 待确认冲突" : "");
   }
 
-  function startCsvImport() {
+  function startSpreadsheetImport() {
     if (window.PatentShareStore.getPersistenceState().mode === "loading") {
       setNotice("正在恢复本机分享项目，请稍候再导入文件。", true);
       render();
       return;
     }
-    var input = byId("share-csv-input");
+    var input = byId("share-spreadsheet-input");
     if (!input) return;
     input.value = "";
     input.click();
   }
 
-  function importCsvFile(file) {
+  function finishSpreadsheetImport(plan) {
+    if (!plan.ok) { setNotice(plan.message || "表格导入失败。", true); render(); return; }
+    var result = window.PatentShareStore.importPatents(plan.records);
+    var message = "表格已处理：新增 " + result.added + " 篇，合并 " + result.merged + " 篇";
+    if (plan.skippedRows.length) message += "，跳过 " + plan.skippedRows.length + " 行（缺少专利号）";
+    if (plan.unmappedHeaders.length) message += "；保留 " + plan.unmappedHeaders.length + " 个未映射列";
+    if (result.conflicts) message += "；发现 " + result.conflicts + " 个待确认冲突";
+    setNotice(message + "。", false);
+    activeView = result.conflicts ? "review" : "sources";
+    render();
+  }
+
+  function importSpreadsheetFile(file) {
     var importer = window.PatentShareSpreadsheetImport;
     if (!importer) return;
     var validation = importer.validateFile(file);
@@ -187,24 +199,37 @@
     }
     var reader = new FileReader();
     reader.onerror = function () {
-      setNotice("无法读取 CSV 文件。", true);
+      setNotice("无法读取表格文件。", true);
       render();
     };
     reader.onload = function () {
-      var plan;
-      try { plan = importer.buildRecords(String(reader.result || ""), file.name); }
-      catch (error) { setNotice(error.message || "CSV 解析失败。", true); render(); return; }
-      if (!plan.ok) { setNotice(plan.message || "CSV 导入失败。", true); render(); return; }
-      var result = window.PatentShareStore.importPatents(plan.records);
-      var message = "CSV 已处理：新增 " + result.added + " 篇，合并 " + result.merged + " 篇";
-      if (plan.skippedRows.length) message += "，跳过 " + plan.skippedRows.length + " 行（缺少专利号）";
-      if (plan.unmappedHeaders.length) message += "；保留 " + plan.unmappedHeaders.length + " 个未映射列";
-      if (result.conflicts) message += "；发现 " + result.conflicts + " 个待确认冲突";
-      setNotice(message + "。", false);
-      activeView = result.conflicts ? "review" : "sources";
-      render();
+      if (/\.csv$/i.test(file.name || "")) {
+        try { finishSpreadsheetImport(importer.buildRecords(String(reader.result || ""), file.name)); }
+        catch (error) { setNotice(error.message || "CSV 解析失败。", true); render(); }
+        return;
+      }
+      var bridge = window.electronAPI && window.electronAPI.parseShareSpreadsheet;
+      if (!bridge) { setNotice("当前环境不支持 Excel 解析，请使用桌面版或导入 CSV。", true); render(); return; }
+      bridge(reader.result).then(function (workbook) {
+        var sheets = workbook && workbook.sheets ? workbook.sheets : [];
+        if (!sheets.length) { setNotice("Excel 文件不包含可导入的工作表。", true); render(); return; }
+        var selected = sheets[0];
+        if (sheets.length > 1) {
+          var options = sheets.map(function (sheet, index) { return (index + 1) + ". " + sheet.name; }).join("\n");
+          var answer = window.prompt("请选择要导入的工作表：\n" + options, "1");
+          if (answer == null) return;
+          var index = Number(answer) - 1;
+          if (!Number.isInteger(index) || index < 0 || index >= sheets.length) { setNotice("工作表选择无效。", true); render(); return; }
+          selected = sheets[index];
+        }
+        finishSpreadsheetImport(importer.buildRecordsFromRows(selected.rows, file.name, "Excel", selected.name));
+      }).catch(function (error) {
+        setNotice(error && error.message ? error.message : "Excel 解析失败。", true);
+        render();
+      });
     };
-    reader.readAsText(file, "UTF-8");
+    if (/\.csv$/i.test(file.name || "")) reader.readAsText(file, "UTF-8");
+    else reader.readAsArrayBuffer(file);
   }
 
   function renderReview(container, project) {
@@ -379,9 +404,9 @@
     if (close) close.addEventListener("click", closeWorkspace);
     var create = byId("share-new-project-btn");
     if (create) create.addEventListener("click", newProject);
-    var csvInput = byId("share-csv-input");
-    if (csvInput) csvInput.addEventListener("change", function () {
-      if (csvInput.files && csvInput.files[0]) importCsvFile(csvInput.files[0]);
+    var spreadsheetInput = byId("share-spreadsheet-input");
+    if (spreadsheetInput) spreadsheetInput.addEventListener("change", function () {
+      if (spreadsheetInput.files && spreadsheetInput.files[0]) importSpreadsheetFile(spreadsheetInput.files[0]);
     });
     var nav = byId("share-workspace-nav");
     if (nav) nav.addEventListener("click", function (event) {
@@ -396,7 +421,7 @@
       var action = event.target.closest ? event.target.closest("[data-share-action]") : null;
       if (!action) return;
       if (action.dataset.shareAction === "add-current") addCurrentPatent();
-      if (action.dataset.shareAction === "import-csv") startCsvImport();
+      if (action.dataset.shareAction === "import-csv") startSpreadsheetImport();
       if (action.dataset.shareAction === "rename-project") {
         if (window.PatentShareStore.getPersistenceState().mode === "loading") {
           setNotice("正在恢复本机分享项目，请稍候再编辑。", true);

@@ -116,6 +116,20 @@ test('CSV records merge with GP snapshots and report field conflicts', () => {
   assert.equal(snapshot.patents[0].fields.title.reviewState, 'conflict');
 });
 
+test('spreadsheet row input reuses CSV mapping and accepts Excel extensions', () => {
+  const { PatentShareSpreadsheetImport } = loadShareModules();
+  const plan = PatentShareSpreadsheetImport.buildRecordsFromRows([
+    ['公开号', '标题', '研发标签'],
+    ['EP4252965A3', 'Excel 导入专利', '材料'],
+  ], 'patents.xlsx', 'Excel', '专利清单');
+  assert.equal(plan.ok, true);
+  assert.equal(plan.records[0].source.label.includes('工作表 专利清单'), true);
+  assert.equal(plan.records[0].fields.title.value, 'Excel 导入专利');
+  assert.equal(plan.records[0].customFields['csv:研发标签'].field.value, '材料');
+  assert.equal(PatentShareSpreadsheetImport.validateFile({ name: 'patents.xlsx', size: 10 }).ok, true);
+  assert.equal(PatentShareSpreadsheetImport.validateFile({ name: 'patents.xls', size: 10 }).ok, true);
+});
+
 test('store degrades to session memory when IndexedDB is unavailable', async () => {
   const { PatentShareStore } = loadShareModules();
   const initialized = await PatentShareStore.initialize();

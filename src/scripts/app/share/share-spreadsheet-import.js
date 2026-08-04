@@ -82,8 +82,7 @@
     });
   }
 
-  function buildRecords(text, fileName) {
-    var rows = parseCsv(text);
+  function buildRecordsFromRows(rows, fileName, sourceKind, sheetName) {
     if (!rows.length) return { ok: false, reason: "empty-file", message: "CSV 文件为空。" };
     var headers = uniqueHeaders(rows[0]);
     var mapping = detectColumnMapping(headers);
@@ -91,6 +90,7 @@
     if (!numberColumn) return { ok: false, reason: "missing-patent-number", message: "未识别到专利号、公开号或申请号列。" };
     var capturedAt = now();
     var name = cleanText(fileName) || "未命名 CSV";
+    var sourceLabel = sourceKind === "Excel" ? "Excel · " + name + " · 工作表 " + (cleanText(sheetName) || "Sheet1") : "CSV · " + name;
     var records = [], skippedRows = [];
     for (var rowIndex = 1; rowIndex < rows.length; rowIndex++) {
       var row = rows[rowIndex];
@@ -100,11 +100,11 @@
       var fields = {}, customFields = {};
       mapping.forEach(function (column) {
         if (!column.fieldName || column.fieldName === "patentNumber") return;
-        var candidate = fieldValue(row[column.index], "CSV " + name + " · 第 " + (rowIndex + 1) + " 行 · " + column.header, capturedAt);
+        var candidate = fieldValue(row[column.index], sourceLabel + " · 第 " + (rowIndex + 1) + " 行 · " + column.header, capturedAt);
         if (candidate) fields[column.fieldName] = candidate;
       });
       mapping.filter(function (column) { return !column.fieldName; }).forEach(function (column) {
-        var candidate = fieldValue(row[column.index], "CSV " + name + " · 第 " + (rowIndex + 1) + " 行 · " + column.header, capturedAt);
+        var candidate = fieldValue(row[column.index], sourceLabel + " · 第 " + (rowIndex + 1) + " 行 · " + column.header, capturedAt);
         if (candidate) customFields["csv:" + normalizeHeader(column.header)] = { label: column.header, field: candidate };
       });
       records.push({
@@ -114,16 +114,20 @@
         fields: fields,
         customFields: customFields,
         claims: [],
-        source: { type: "excel", label: "CSV · " + name + " · 第 " + (rowIndex + 1) + " 行", capturedAt: capturedAt },
+        source: { type: "excel", label: sourceLabel + " · 第 " + (rowIndex + 1) + " 行", capturedAt: capturedAt },
       });
     }
     return { ok: true, headers: headers, mapping: mapping, unmappedHeaders: mapping.filter(function (item) { return !item.fieldName; }).map(function (item) { return item.header; }), records: records, skippedRows: skippedRows };
   }
 
+  function buildRecords(text, fileName) {
+    return buildRecordsFromRows(parseCsv(text), fileName, "CSV", "");
+  }
+
   function validateFile(file) {
     if (!file) return { ok: false, message: "未选择 CSV 文件。" };
     if (file.size > MAX_CSV_BYTES) return { ok: false, message: "CSV 文件超过 10 MB 限制。" };
-    if (!/\.csv$/i.test(file.name || "")) return { ok: false, message: "当前仅支持 .csv 文件。" };
+    if (!/\.(csv|xlsx|xls)$/i.test(file.name || "")) return { ok: false, message: "仅支持 .csv、.xlsx 或 .xls 文件。" };
     return { ok: true };
   }
 
@@ -132,6 +136,7 @@
     parseCsv: parseCsv,
     detectColumnMapping: detectColumnMapping,
     buildRecords: buildRecords,
+    buildRecordsFromRows: buildRecordsFromRows,
     validateFile: validateFile,
   };
 })();

@@ -39,7 +39,41 @@ const { execFile } = require("child_process");
 
 const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
 const fontkit = require("@pdf-lib/fontkit");
+const XLSX = require("xlsx");
 const { normalizePatentNumber, extractPatentFromHtml } = require("./patent-parser");
+
+const SHARE_SHEET_MAX_BYTES = 10 * 1024 * 1024;
+const SHARE_SHEET_MAX_SHEETS = 20;
+const SHARE_SHEET_MAX_ROWS = 5000;
+const SHARE_SHEET_MAX_COLUMNS = 100;
+
+function parseShareSpreadsheet(bytes) {
+  if (!bytes || typeof bytes.byteLength !== "number" || bytes.byteLength > SHARE_SHEET_MAX_BYTES) {
+    throw new Error("Excel 文件超过 10 MB 限制或内容无效。");
+  }
+  const workbook = XLSX.read(Buffer.from(bytes), {
+    type: "buffer",
+    cellFormula: false,
+    cellHTML: false,
+    cellStyles: false,
+    cellNF: false,
+    cellText: true,
+  });
+  if (!workbook.SheetNames || !workbook.SheetNames.length) throw new Error("Excel 文件不包含工作表。");
+  if (workbook.SheetNames.length > SHARE_SHEET_MAX_SHEETS) throw new Error("Excel 工作表数量超过 20 个限制。");
+  return { sheets: workbook.SheetNames.map((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false, blankrows: false });
+    if (rows.length > SHARE_SHEET_MAX_ROWS) throw new Error(`工作表“${sheetName}”超过 ${SHARE_SHEET_MAX_ROWS} 行限制。`);
+    return {
+      name: String(sheetName),
+      rows: rows.map((row) => {
+        if (row.length > SHARE_SHEET_MAX_COLUMNS) throw new Error(`工作表“${sheetName}”超过 ${SHARE_SHEET_MAX_COLUMNS} 列限制。`);
+        return row.map((value) => String(value == null ? "" : value));
+      }),
+    };
+  }) };
+}
 
 const GD_API_BASE = "https://d1kazzu6rbodne.cloudfront.net";
 const GOOGLE_PATENTS_BASE = "https://patents.google.com";
@@ -4583,6 +4617,9 @@ app.whenReady().then(async () => {
       createPopoutWindow(targetUrl, title, _serverPort, opts || null);
     }
   });
+
+  // 分享工作台只传递用户选择文件的二进制内容；不暴露路径、文件系统读取或 XLSX 库给 renderer。
+  ipcMain.handle("parse-share-spreadsheet", async (_event, bytes) => parseShareSpreadsheet(bytes));
 
   // IPC: EPO Cloudflare 验证 - 打开内嵌 BrowserWindow 让用户完成人机验证，
   // 验证通过后把 session 中的 epo.org cookies 写回 EPO_COOKIE_JAR 文件，
