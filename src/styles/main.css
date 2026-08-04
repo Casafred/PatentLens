@@ -6865,6 +6865,29 @@ body {
   line-height: 1.6;
 }
 
+.share-research-label {
+  display: block;
+  margin: 14px 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.share-research-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 10px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+}
+
 .share-module-list {
   display: flex;
   flex-direction: column;
