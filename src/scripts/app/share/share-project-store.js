@@ -36,6 +36,16 @@
     return typeof value === "string" ? value.trim() : "";
   }
 
+  function normalizeResearchSummary(value) {
+    var source = value && typeof value === "object" ? value : {};
+    return {
+      problem: cleanText(source.problem).slice(0, 5000),
+      approach: cleanText(source.approach).slice(0, 5000),
+      effect: cleanText(source.effect).slice(0, 5000),
+      openQuestions: cleanText(source.openQuestions).slice(0, 5000),
+    };
+  }
+
   function createProject() {
     var defaultModules = window.PatentShareModules && window.PatentShareModules.defaultConfig ? window.PatentShareModules.defaultConfig() : {};
     return {
@@ -46,6 +56,7 @@
       updatedAt: now(),
       patents: [],
       sources: [],
+      researchSummary: {},
       moduleConfig: defaultModules,
     };
   }
@@ -60,6 +71,7 @@
       updatedAt: cleanText(raw.updatedAt) || now(),
       patents: [],
       sources: [],
+      researchSummary: normalizeResearchSummary(raw.researchSummary),
       moduleConfig: raw.moduleConfig && typeof raw.moduleConfig === "object" ? clone(raw.moduleConfig) : {},
     };
     var knownNumbers = {};
@@ -284,6 +296,15 @@
     return getSnapshot().moduleConfig;
   }
 
+  function setResearchSummary(summary) {
+    var active = ensureProject();
+    active.researchSummary = normalizeResearchSummary(summary);
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return clone(active.researchSummary);
+  }
+
   function setModuleMode(moduleId, mode) {
     var modules = window.PatentShareModules;
     if (!modules || !modules.setModuleMode) return false;
@@ -473,6 +494,7 @@
     listProjects: listProjects,
     selectProject: selectProject,
     renameProject: renameProject,
+    setResearchSummary: setResearchSummary,
     setModuleConfig: setModuleConfig,
     setModuleMode: setModuleMode,
     addPatent: addPatent,

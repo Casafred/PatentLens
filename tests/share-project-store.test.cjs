@@ -218,6 +218,19 @@ test('PDF OCR snapshot is associated with a patent without retaining PDF bytes',
   assert.equal(rendered.html.includes('OCR extracted text'), true);
 });
 
+test('manual research summary is isolated and rendered only when R1 is enabled', () => {
+  const { PatentShareStore, PatentShareModules, PatentShareRenderer } = loadShareModules();
+  PatentShareStore.setResearchSummary({ problem: '降低热损失', approach: '优化层压结构', effect: '提升效率', openQuestions: '验证耐久性' });
+  const snapshot = PatentShareStore.getSnapshot();
+  assert.equal(snapshot.researchSummary.problem, '降低热损失');
+  const disabled = PatentShareRenderer.render(snapshot);
+  assert.equal(disabled.html.includes('降低热损失'), false);
+  const config = PatentShareModules.defaultConfig();
+  config.modules.R1 = 'full';
+  const enabled = PatentShareRenderer.render({ ...snapshot, moduleConfig: config });
+  assert.equal(enabled.html.includes('优化层压结构'), true);
+});
+
 test('store degrades to session memory when IndexedDB is unavailable', async () => {
   const { PatentShareStore } = loadShareModules();
   const initialized = await PatentShareStore.initialize();
