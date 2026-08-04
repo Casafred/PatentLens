@@ -13,6 +13,7 @@
     { id: "S3", label: "技术摘要", description: "摘要和技术主题，缺失时保留来源缺失提示。", required: true, defaultMode: "full", category: "basic" },
     { id: "S4", label: "权利要求书", description: "按专利展示完整权利要求，包括独立/从属标识和引用关系。", required: true, defaultMode: "lite", category: "basic" },
     { id: "S5", label: "说明书", description: "专利说明书/具体实施方式内容。", required: false, defaultMode: "off", category: "basic" },
+    { id: "S7", label: "附图与图示", description: "专利附图、流程图或用户上传的图片。", required: false, defaultMode: "off", category: "basic" },
     { id: "S6", label: "来源与说明", description: "数据来源、抓取时间、审核状态和技术沟通声明。", required: true, defaultMode: "full", category: "basic" },
     { id: "R1", label: "研发问题-手段-效果", description: "AI自动生成或人工编辑的技术问题、技术方案、技术效果分析。", required: false, defaultMode: "off", category: "research" },
     { id: "R2", label: "技术要素与系统结构", description: "AI提取的核心部件、方法步骤、参数和接口关系结构化展示。", required: false, defaultMode: "off", category: "research" },
