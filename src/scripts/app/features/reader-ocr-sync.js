@@ -170,10 +170,30 @@
     return out;
   }
 
-  // 在译文段落数组中为指定块原文找最匹配的段落元素。
-  // 优先级：译文段落是块原文的译文时，二者文本通常无直接包含关系，
-  // 因此采用「该块原文在全文中的位置比例」映射到译文段落位置比例，
-  // 并叠加文本相似度微调（数字/标识符重合度），避免多个相邻块挤到同一段。
+  // 计算译文段落的累积字符长度数组，用于基于位置的映射。
+  // 返回 { lengths: [每段长度], cumulative: [0, len0, len0+len1, ...] }
+  function paragraphStats(paragraphs) {
+    var lengths = [];
+    var cum = 0;
+    var cumulative = [0];
+    for (var i = 0; i < paragraphs.length; i++) {
+      var len = normalizeText(paragraphs[i].textContent).length;
+      lengths.push(len);
+      cum += len;
+      cumulative.push(cum);
+    }
+    return { lengths: lengths, cumulative: cumulative, total: cum };
+  }
+
+  // 基于「累积字符长度的单调映射」+「数字锚点校正」定位译文段落。
+  //
+  // 原理：译文是原文的逐段翻译，两者的累积文本长度比例应单调对应。
+  // 即使 AI 合并多个块为一段、或把一个块拆成多段，累积长度比例仍能
+  // 保持大致同步，从而把每个块映射到位置最接近的译文段落，避免
+  // 「多个相邻块挤到同一段」或「位置大面积漂移」的问题。
+  //
+  // 在累积映射的基准位置附近，再用块原文中的数字串（专利号、条款号、
+  // 日期等）与译文段落做锚点校正，修正局部偏差。
   function pickTranslateParagraph(paragraphs, ordered, blockId) {
     if (!paragraphs || paragraphs.length === 0) return null;
     var total = ordered.length;
@@ -183,33 +203,46 @@
     }
     if (blockIdx < 0) return null;
 
-    // 按位置比例映射到译文段落索引（线性插值）
-    var ratio = total > 1 ? (blockIdx / (total - 1)) : 0;
-    var pIdx = Math.round(ratio * (paragraphs.length - 1));
-    if (pIdx < 0) pIdx = 0;
-    if (pIdx >= paragraphs.length) pIdx = paragraphs.length - 1;
+    var stats = paragraphStats(paragraphs);
+    if (stats.total === 0) return paragraphs[0];
 
-    // 文本相似度微调：在比例映射点附近 ±2 段范围内，寻找与块原文
-    // 共享数字/标识符最多的段落（用于纠正比例映射的偏差）
-    var blockDigits = (ordered[blockIdx].text.match(/\d+/g) || []);
-    var bestIdx = pIdx;
+    // 1) 累积长度比例映射：该块在原文中的累积长度比例 → 译文中的累积长度位置
+    var blockCum = 0;
+    for (var k = 0; k <= blockIdx; k++) blockCum += ordered[k].text.length;
+    var blockTotal = 0;
+    for (var m = 0; m < total; m++) blockTotal += ordered[m].text.length;
+    var blockRatio = blockTotal > 0 ? (blockCum / blockTotal) : 0;
+    var targetCum = blockRatio * stats.total;
+
+    // 找到译文累积长度最接近 targetCum 的段落索引（用段落中点比较）
+    var baseIdx = 0;
+    var minDist = Infinity;
+    for (var p = 0; p < paragraphs.length; p++) {
+      var mid = (stats.cumulative[p] + stats.cumulative[p + 1]) / 2;
+      var dist = Math.abs(mid - targetCum);
+      if (dist < minDist) { minDist = dist; baseIdx = p; }
+    }
+
+    // 2) 数字锚点校正：在 baseIdx 附近 ±3 段内，找与块原文数字重合度最高的段落
+    var blockDigits = (ordered[blockIdx].text.match(/\d{2,}/g) || []);
+    var bestIdx = baseIdx;
     var bestScore = -1;
-    var lo = Math.max(0, pIdx - 2);
-    var hi = Math.min(paragraphs.length - 1, pIdx + 2);
+    var lo = Math.max(0, baseIdx - 3);
+    var hi = Math.min(paragraphs.length - 1, baseIdx + 3);
     for (var j = lo; j <= hi; j++) {
       var pText = normalizeText(paragraphs[j].textContent);
       var score = 0;
       for (var d = 0; d < blockDigits.length; d++) {
         if (pText.indexOf(blockDigits[d]) >= 0) score++;
       }
-      // 距离惩罚：离比例映射点越远，分数衰减
-      score -= Math.abs(j - pIdx) * 0.5;
+      // 距离惩罚：离基准位置越远，分数衰减
+      score -= Math.abs(j - baseIdx) * 0.5;
       if (score > bestScore) { bestScore = score; bestIdx = j; }
     }
     return paragraphs[bestIdx];
   }
 
-  // 对照翻译栏：按块原文位置比例 + 文本相似度定位译文段落
+  // 对照翻译栏：按累积长度映射 + 数字锚点校正定位译文段落
   function syncTranslatePanel(blockId) {
     var ks = getKanbanState();
     var vs = getPdfViewState();
