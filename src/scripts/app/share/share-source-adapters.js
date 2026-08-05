@@ -172,14 +172,17 @@
     return family;
   }
 
-  function currentPatentSnapshot() {
-    var data = window._currentPatentData;
+  // 把主应用 GP 原始数据（window._currentPatentData 或 fetchPatentWithRetry 返回的 data）
+  // 转换为分享领域的独立快照。currentPatentSnapshot 与工作台内"按专利号搜索加入"复用本函数。
+  function snapshotFromGpData(data) {
     if (!data || typeof data !== "object") return null;
 
     var patentNumber = cleanText(data.patent_number || data.publication_number || data.application_number);
     if (!patentNumber) return null;
 
-    var sourceName = cleanText(data.data_source) || "Google Patents";
+    // 不直接暴露 "Google Patents" 字样，使用中性来源名
+    var rawSource = cleanText(data.data_source);
+    var sourceName = rawSource ? rawSource.replace(/google\s*patents?/gi, "专利原文") : "专利原文";
     var capturedAt = new Date().toISOString();
 
     var rawClaims = Array.isArray(data.claims) ? data.claims.map(function (claim, index) {
@@ -246,7 +249,12 @@
     return result;
   }
 
+  function currentPatentSnapshot() {
+    return snapshotFromGpData(window._currentPatentData);
+  }
+
   window.PatentShareSources = {
     currentPatentSnapshot: currentPatentSnapshot,
+    snapshotFromGpData: snapshotFromGpData,
   };
 })();
