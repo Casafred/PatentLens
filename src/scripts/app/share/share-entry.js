@@ -885,6 +885,8 @@
           annoBar.appendChild(makeAnnoBtn("comment", "注释", patent.id, "claims", claim.number || ""));
           annoBar.appendChild(makeAnnoBtn("clear", "清除标注", patent.id, "claims", claim.number || ""));
           claimItem.appendChild(annoBar);
+          var claimAnnoList = buildAnnotationList(patent, "claims", claim.number || "");
+          if (claimAnnoList) claimItem.appendChild(claimAnnoList);
           if (claim.references && claim.references.length) {
             claimItem.appendChild(makeElement("div", "review-claim-dep", "引用：权项 " + claim.references.join(", ")));
           }
@@ -929,6 +931,8 @@
         descAnnoBar.appendChild(makeAnnoBtn("comment", "注释", patent.id, "description", ""));
         descAnnoBar.appendChild(makeAnnoBtn("clear", "清除标注", patent.id, "description", ""));
         body.appendChild(descAnnoBar);
+        var descAnnoList = buildAnnotationList(patent, "description", "");
+        if (descAnnoList) body.appendChild(descAnnoList);
       } else {
         body.appendChild(makeElement("div", "review-drawings-empty", "尚未提供说明书内容，点击上方「编辑说明书」按钮添加"));
       }
@@ -993,6 +997,43 @@
     btn.title = type === "clear" ? "清除本段所有标注" : "先选中正文，再" + label;
     btn.disabled = aiRunning;
     return btn;
+  }
+
+  // 逐条标注删除入口：列出当前段落已有的标注，每条提供独立删除按钮。
+  // data-annotation-ui 标记的节点会被 selectionOffsetsInText 的 TreeWalker 跳过，
+  // 避免删除按钮等 UI 文本污染选区偏移量。
+  function buildAnnotationList(patent, field, key) {
+    var property = field === "claims" ? "claimsAnnotations" : (field === "description" ? "descriptionAnnotations" : "");
+    if (!property) return null;
+    var annos = Array.isArray(patent[property]) ? patent[property].filter(function (a) {
+      return a && a.key === (key || "");
+    }) : [];
+    if (!annos.length) return null;
+    var typeLabels = { underline: "下划线", highlight: "高亮", comment: "注释" };
+    var list = makeElement("div", "review-anno-list");
+    list.setAttribute("data-annotation-ui", "true");
+    annos.forEach(function (anno) {
+      var item = makeElement("div", "review-anno-item");
+      item.appendChild(makeElement("span", "review-anno-item-type type-" + anno.type, typeLabels[anno.type] || anno.type));
+      var snippet = anno.text || (anno.type === "comment" ? anno.comment : "");
+      if (snippet.length > 40) snippet = snippet.slice(0, 40) + "…";
+      item.appendChild(makeElement("span", "review-anno-item-text", snippet));
+      if (anno.type === "comment" && anno.comment) {
+        var commentText = anno.comment.length > 30 ? anno.comment.slice(0, 30) + "…" : anno.comment;
+        item.appendChild(makeElement("span", "review-anno-item-comment", "「" + commentText + "」"));
+      }
+      var rm = makeElement("button", "review-anno-item-remove", "删除");
+      rm.type = "button";
+      rm.dataset.shareAction = "remove-annotation";
+      rm.dataset.patentId = patent.id;
+      rm.dataset.annoField = field;
+      rm.dataset.annoId = anno.id;
+      rm.title = "删除该条标注";
+      rm.disabled = aiRunning;
+      item.appendChild(rm);
+      list.appendChild(item);
+    });
+    return list;
   }
 
   function showAnnotationFeedback(action, message, isError) {
@@ -1961,6 +2002,20 @@
             render();
           }
         }
+        return;
+      }
+      if (actionName === "remove-annotation" && action.dataset.patentId && action.dataset.annoField && action.dataset.annoId) {
+        if (window.PatentShareStore.getPersistenceState().mode === "loading") {
+          setNotice("正在恢复本机分享项目，请稍候再编辑。", true);
+          render();
+          return;
+        }
+        PatentShareUI.confirm("确定要删除该条标注吗？").then(function (confirmed) {
+          if (!confirmed) return;
+          var removed = window.PatentShareStore.removeAnnotation(action.dataset.patentId, action.dataset.annoField, action.dataset.annoId);
+          setNotice(removed ? "已删除该条标注。" : "未找到该标注，可能已被删除。", !removed);
+          render();
+        });
         return;
       }
       // 审核页悬浮导航跳转

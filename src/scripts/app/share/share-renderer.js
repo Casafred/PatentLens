@@ -193,7 +193,7 @@
         html += '<div class="claim-item dependent" id="' + claimId + '">';
         html += '<span class="claim-type dependent">从属</span>';
         html += '<span class="claim-num">' + escapeHtml(claim.number || "") + '.</span> ';
-        html += applyAnnotationsToHtml(escapeHtml(claim.text || ""), annos, claim.number || "");
+        html += applyAnnotationsToHtml(claim.text || "", annos, claim.number || "");
         if (claim.references && claim.references.length) {
           html += '<div class="claim-refs">引用权项：';
           html += claim.references.map(function (ref) {
