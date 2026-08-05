@@ -185,49 +185,64 @@
   function renderSources(container, project) {
     addHeading(container, viewMeta.sources, "加入当前专利", "add-current");
     addNotice(container);
-    var buttonGroup = makeElement("div", "share-source-actions");
-    var importButton = makeElement("button", "share-secondary-action", "导入 CSV/Excel");
-    importButton.type = "button";
-    importButton.dataset.shareAction = "import-csv";
-    importButton.disabled = aiRunning;
-    buttonGroup.appendChild(importButton);
-    var pdfButton = makeElement("button", "share-secondary-action", "导入 PDF OCR");
-    pdfButton.type = "button";
-    pdfButton.dataset.shareAction = "import-pdf";
-    pdfButton.disabled = aiRunning;
-    buttonGroup.appendChild(pdfButton);
-    container.appendChild(buttonGroup);
-    // 按专利号搜索加入：复用主应用 GP 查询能力，支持批量
-    var searchPanel = makeElement("div", "share-search-panel");
-    searchPanel.appendChild(makeElement("h4", "", "按专利号搜索加入"));
-    var searchHint = makeElement("p", "share-search-hint", "输入专利号（如 US12030161B2、EP4252965A3），每行一个，支持批量查询并加入当前项目。最多 10 篇，串行查询避免限流。");
-    searchPanel.appendChild(searchHint);
+    // —— 材料加入区：双列卡片（快速加入 / 批量导入），无专利时仍展示 ——
+    var addArea = makeElement("div", "share-add-area");
+    // 左列：按专利号搜索加入（含当前专利一键加入）
+    var searchCard = makeElement("div", "share-add-card");
+    var searchHead = makeElement("div", "share-add-card-head");
+    searchHead.appendChild(makeElement("span", "share-add-card-icon", "#"));
+    var searchTitleWrap = makeElement("div", "share-add-card-title-wrap");
+    searchTitleWrap.appendChild(makeElement("h4", "", "按专利号搜索加入"));
+    searchTitleWrap.appendChild(makeElement("p", "share-add-card-desc", "复用主应用 GP 查询，串行抓取原文与权利要求。每行一个，最多 10 篇。"));
+    searchHead.appendChild(searchTitleWrap);
+    searchCard.appendChild(searchHead);
     var searchInput = makeElement("textarea", "share-search-input");
     searchInput.id = "share-patent-search-input";
     searchInput.placeholder = "US12030161B2\nEP4252965A3\n...";
-    searchInput.rows = 3;
+    searchInput.rows = 4;
     searchInput.disabled = aiRunning;
-    searchPanel.appendChild(searchInput);
+    searchInput.spellcheck = false;
+    searchCard.appendChild(searchInput);
+    var searchFoot = makeElement("div", "share-add-card-foot");
     var searchBtn = makeElement("button", "share-primary-action", "查询并加入");
     searchBtn.type = "button";
     searchBtn.dataset.shareAction = "search-add-patents";
     searchBtn.disabled = aiRunning;
-    searchPanel.appendChild(searchBtn);
-    container.appendChild(searchPanel);
+    searchFoot.appendChild(searchBtn);
+    var curBtn = makeElement("button", "share-secondary-action", "加入当前打开的专利");
+    curBtn.type = "button";
+    curBtn.dataset.shareAction = "add-current";
+    curBtn.disabled = aiRunning;
+    searchFoot.appendChild(curBtn);
+    searchCard.appendChild(searchFoot);
+    addArea.appendChild(searchCard);
+    // 右列：批量文件导入
+    var fileCard = makeElement("div", "share-add-card");
+    var fileHead = makeElement("div", "share-add-card-head");
+    fileHead.appendChild(makeElement("span", "share-add-card-icon", "F"));
+    var fileTitleWrap = makeElement("div", "share-add-card-title-wrap");
+    fileTitleWrap.appendChild(makeElement("h4", "", "批量文件导入"));
+    fileTitleWrap.appendChild(makeElement("p", "share-add-card-desc", "支持 CSV/XLS/XLSX 自动识别中英文列名，或 PDF OCR 文本层。未映射列保留为自定义字段。"));
+    fileHead.appendChild(fileTitleWrap);
+    fileCard.appendChild(fileHead);
+    var fileFoot = makeElement("div", "share-add-card-foot");
+    var importButton = makeElement("button", "share-secondary-action", "导入 CSV/Excel");
+    importButton.type = "button";
+    importButton.dataset.shareAction = "import-csv";
+    importButton.disabled = aiRunning;
+    fileFoot.appendChild(importButton);
+    var pdfButton = makeElement("button", "share-secondary-action", "导入 PDF OCR");
+    pdfButton.type = "button";
+    pdfButton.dataset.shareAction = "import-pdf";
+    pdfButton.disabled = aiRunning;
+    fileFoot.appendChild(pdfButton);
+    fileCard.appendChild(fileFoot);
+    addArea.appendChild(fileCard);
+    container.appendChild(addArea);
     if (project.patents.length === 0) {
       var empty = makeElement("div", "share-empty-panel");
       empty.appendChild(makeElement("h4", "", "尚无材料来源"));
-      empty.appendChild(makeElement("p", "", "可复制当前 PatentLens 专利原文结果，或导入 CSV/XLS/XLSX。系统会自动识别常见中英文列名，并将未映射列保留为自定义字段，同时导入说明书、权利要求引用、IPC分类等完整内容。"));
-      var importEmpty = makeElement("button", "share-primary-action", "导入表格");
-      importEmpty.type = "button";
-      importEmpty.dataset.shareAction = "import-csv";
-      importEmpty.disabled = aiRunning;
-      empty.appendChild(importEmpty);
-      var pdfEmpty = makeElement("button", "share-secondary-action", "导入 PDF");
-      pdfEmpty.type = "button";
-      pdfEmpty.dataset.shareAction = "import-pdf";
-      pdfEmpty.disabled = aiRunning;
-      empty.appendChild(pdfEmpty);
+      empty.appendChild(makeElement("p", "", "可使用上方任一方式加入专利：按专利号搜索、加入当前打开的专利，或导入 CSV/Excel/PDF。系统会自动识别常见中英文列名，并将未映射列保留为自定义字段，同时导入说明书、权利要求引用、IPC分类等完整内容。"));
       container.appendChild(empty);
       return;
     }
@@ -845,7 +860,9 @@
     var frame = document.createElement("iframe");
     frame.className = "share-preview-frame";
     frame.title = "专利分享离线预览";
-    frame.setAttribute("sandbox", "");
+    // sandbox=allow-scripts 允许分享 HTML 内的交互脚本（标签页/分栏/灯箱/返回顶部）运行；
+    // 不加 allow-same-origin，保持 iframe 与父页面跨域隔离，脚本无法访问主应用 DOM 或 IPC。
+    frame.setAttribute("sandbox", "allow-scripts");
     frame.srcdoc = result.html;
     container.appendChild(frame);
   }
