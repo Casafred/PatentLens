@@ -112,6 +112,23 @@
     }).filter(function (f) { return f && (f.value || f.prompt); });
   }
 
+  function normalizeAnnotations(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map(function (a) {
+      if (!a || typeof a !== "object") return null;
+      var type = cleanText(a.type);
+      if (["underline", "highlight", "comment"].indexOf(type) < 0) return null;
+      return {
+        key: cleanText(a.key),
+        type: type,
+        start: Math.max(0, parseInt(a.start, 10) || 0),
+        end: Math.max(0, parseInt(a.end, 10) || 0),
+        text: cleanText(a.text).slice(0, 5000),
+        comment: cleanText(a.comment).slice(0, 5000),
+      };
+    }).filter(Boolean);
+  }
+
   function createProject() {
     var defaultModules = window.PatentShareModules && window.PatentShareModules.defaultConfig ? window.PatentShareModules.defaultConfig() : {};
     return {
@@ -203,6 +220,8 @@
         model: cleanText(safeRecord.translationMeta.model),
         generatedAt: cleanText(safeRecord.translationMeta.generatedAt),
       } : {};
+      safeRecord.claimsAnnotations = normalizeAnnotations(safeRecord.claimsAnnotations);
+      safeRecord.descriptionAnnotations = normalizeAnnotations(safeRecord.descriptionAnnotations);
       normalized.patents.push(safeRecord);
     });
     (Array.isArray(raw.sources) ? raw.sources : []).forEach(function (source) {
@@ -472,6 +491,52 @@
     if (!active.moduleConfig || typeof active.moduleConfig !== "object") active.moduleConfig = {};
     if (!active.moduleConfig.moduleOrder || typeof active.moduleConfig.moduleOrder !== "object") active.moduleConfig.moduleOrder = {};
     active.moduleConfig.moduleOrder[zone] = Array.isArray(order) ? order.slice() : [];
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function addAnnotation(patentId, annotation) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (p) { return p.id === patentId; });
+    if (!patent || !annotation || !annotation.field || !annotation.type) return false;
+    if (annotation.field === "claims") {
+      if (!Array.isArray(patent.claimsAnnotations)) patent.claimsAnnotations = [];
+      patent.claimsAnnotations.push({
+        key: annotation.key || "",
+        type: annotation.type,
+        start: annotation.start || 0,
+        end: annotation.end || 0,
+        text: annotation.text || "",
+        comment: annotation.comment || "",
+      });
+    } else if (annotation.field === "description") {
+      if (!Array.isArray(patent.descriptionAnnotations)) patent.descriptionAnnotations = [];
+      patent.descriptionAnnotations.push({
+        key: "",
+        type: annotation.type,
+        start: annotation.start || 0,
+        end: annotation.end || 0,
+        text: annotation.text || "",
+        comment: annotation.comment || "",
+      });
+    }
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function clearAnnotations(patentId, field, key) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (p) { return p.id === patentId; });
+    if (!patent) return false;
+    if (field === "claims") {
+      patent.claimsAnnotations = (patent.claimsAnnotations || []).filter(function(a) { return a.key !== (key || ""); });
+    } else if (field === "description") {
+      patent.descriptionAnnotations = [];
+    }
     active.updatedAt = now();
     queuePersist();
     notify();
@@ -954,6 +1019,8 @@
     setProjectAIAnalysis: setProjectAIAnalysis,
     removePatent: removePatent,
     setModuleOrder: setModuleOrder,
+    addAnnotation: addAnnotation,
+    clearAnnotations: clearAnnotations,
     flush: flush,
     onChange: onChange,
   };

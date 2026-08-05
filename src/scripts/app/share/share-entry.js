@@ -596,12 +596,6 @@
     headerLeft.appendChild(sourceMeta);
     header.appendChild(headerLeft);
     var headerActions = makeElement("div", "share-review-detail-actions");
-    var descBtn = makeElement("button", "share-secondary-action", patent.description ? "编辑说明书" : "添加说明书");
-    descBtn.type = "button";
-    descBtn.dataset.shareAction = "edit-description";
-    descBtn.dataset.patentId = patent.id;
-    descBtn.disabled = aiRunning;
-    headerActions.appendChild(descBtn);
     var removeBtn = makeElement("button", "share-field-remove", "移除该专利");
     removeBtn.type = "button";
     removeBtn.dataset.shareAction = "remove-patent";
@@ -611,8 +605,29 @@
     header.appendChild(headerActions);
     card.appendChild(header);
 
+    // 悬浮导航条 + 进度条
+    var navBar = makeElement("nav", "share-review-nav");
+    navBar.appendChild(makeElement("div", "share-review-nav-progress"));
+    var navItems = [
+      { id: "basic", label: "基本信息" },
+      { id: "processed", label: "加工字段" },
+      { id: "claims", label: "权利要求" },
+      { id: "description", label: "说明书" },
+      { id: "figures", label: "附图" },
+    ];
+    var navBtnList = makeElement("div", "share-review-nav-list");
+    navItems.forEach(function (ni) {
+      var navBtn = makeElement("button", "share-review-nav-btn", ni.label);
+      navBtn.type = "button";
+      navBtn.dataset.shareAction = "review-nav";
+      navBtn.dataset.reviewNav = ni.id;
+      navBtnList.appendChild(navBtn);
+    });
+    navBar.appendChild(navBtnList);
+    card.appendChild(navBar);
+
     // Section: 基本信息（著录项网格 + 分类号）
-    card.appendChild(buildReviewSection("基本信息", function (body) {
+    card.appendChild(buildReviewSection("基本信息", "basic", function (body) {
       var grid = makeElement("div", "review-basic-grid");
       standardFields.forEach(function (definition) {
         var fieldName = definition[0];
@@ -719,119 +734,8 @@
       body.appendChild(addCustomRow);
     }));
 
-    // Section: 权利要求
-    card.appendChild(buildReviewSection("权利要求", function (body) {
-      var claimList = Array.isArray(patent.claims) ? patent.claims : [];
-      var claimActions = makeElement("div", "review-drawings-actions");
-      if (claimList.length) {
-        var indep = claimList.filter(function(c) { return c.type === "independent"; }).length;
-        claimActions.appendChild(makeElement("span", "", claimList.length + " 项权利要求（独立 " + indep + " 项，从属 " + (claimList.length - indep) + " 项）"));
-      } else {
-        claimActions.appendChild(makeElement("span", "", "尚未提供权利要求"));
-      }
-      var claimEdit = makeElement("button", "share-secondary-action", claimList.length ? "编辑" : "添加");
-      claimEdit.type = "button";
-      claimEdit.dataset.shareAction = "edit-claims";
-      claimEdit.dataset.patentId = patent.id;
-      claimEdit.disabled = aiRunning;
-      claimActions.appendChild(claimEdit);
-      if (claimList.length) {
-        var trClaimsBtn = makeElement("button", "share-secondary-action", patent.claimsTranslation ? "重新翻译" : "翻译为中文");
-        trClaimsBtn.type = "button";
-        trClaimsBtn.dataset.shareAction = "translate-claims";
-        trClaimsBtn.dataset.patentId = patent.id;
-        trClaimsBtn.disabled = aiRunning;
-        claimActions.appendChild(trClaimsBtn);
-        if (patent.claimsTranslation) {
-          claimActions.appendChild(makeElement("span", "share-processed-badge ai", "已翻译"));
-        }
-      }
-      body.appendChild(claimActions);
-      if (claimList.length) {
-        var claimGrid = makeElement("div", "review-claims");
-        claimList.forEach(function (claim) {
-          var claimItem = makeElement("div", "review-claim-item");
-          var claimNum = makeElement("div", "review-claim-num", (claim.number || "") + " · " + (claim.type === "independent" ? "独立权利要求" : claim.type === "dependent" ? "从属权利要求" : "权利要求"));
-          claimItem.appendChild(claimNum);
-          claimItem.appendChild(makeElement("div", "review-claim-text", claim.text || ""));
-          if (claim.references && claim.references.length) {
-            claimItem.appendChild(makeElement("div", "review-claim-dep", "引用：权项 " + claim.references.join(", ")));
-          }
-          claimGrid.appendChild(claimItem);
-        });
-        body.appendChild(claimGrid);
-      }
-    }));
-
-    // Section: 说明书
-    card.appendChild(buildReviewSection("说明书", function (body) {
-      if (patent.description) {
-        var descPreview = makeElement("div", "review-desc-block");
-        var truncated = patent.description.length > 500 ? patent.description.slice(0, 500) + "..." : patent.description;
-        descPreview.appendChild(makeElement("div", "review-desc-text", truncated));
-        body.appendChild(descPreview);
-        var descActions = makeElement("div", "review-drawings-actions");
-        var trDescBtn = makeElement("button", "share-secondary-action", patent.descriptionTranslation ? "重新翻译说明书" : "翻译说明书");
-        trDescBtn.type = "button";
-        trDescBtn.dataset.shareAction = "translate-description";
-        trDescBtn.dataset.patentId = patent.id;
-        trDescBtn.disabled = aiRunning;
-        descActions.appendChild(trDescBtn);
-        if (patent.descriptionTranslation) {
-          descActions.appendChild(makeElement("span", "share-processed-badge ai", "已翻译"));
-        }
-        body.appendChild(descActions);
-      } else {
-        body.appendChild(makeElement("div", "review-drawings-empty", "尚未提供说明书内容，点击上方「编辑说明书」按钮添加"));
-      }
-    }));
-
-    // Section: 附图
-    card.appendChild(buildReviewSection("附图", function (body) {
-      var figList = Array.isArray(patent.figures) ? patent.figures : [];
-      var figActions = makeElement("div", "review-drawings-actions");
-      figActions.appendChild(makeElement("span", "", figList.length ? figList.length + " 张附图" : "尚未上传附图"));
-      var uploadBtn = makeElement("button", "share-secondary-action", "+ 上传附图");
-      uploadBtn.type = "button";
-      uploadBtn.dataset.shareAction = "upload-figure";
-      uploadBtn.dataset.patentId = patent.id;
-      uploadBtn.disabled = aiRunning;
-      figActions.appendChild(uploadBtn);
-      var fileInput = makeElement("input", "share-figure-file-input");
-      fileInput.type = "file";
-      fileInput.accept = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
-      fileInput.style.display = "none";
-      fileInput.dataset.shareAction = "figure-file-input";
-      fileInput.dataset.patentId = patent.id;
-      body.appendChild(fileInput);
-      body.appendChild(figActions);
-      if (figList.length) {
-        var figGrid = makeElement("div", "review-drawings-grid");
-        figList.forEach(function (fig) {
-          var figItem = makeElement("div", "review-drawing-thumb");
-          var img = makeElement("img");
-          img.src = fig.dataUrl;
-          img.alt = fig.caption || "附图";
-          figItem.appendChild(img);
-          if (fig.caption) figItem.appendChild(makeElement("span", "review-drawing-label", fig.caption));
-          var rmFig = makeElement("button", "share-fig-remove", "×");
-          rmFig.type = "button";
-          rmFig.title = "删除";
-          rmFig.dataset.shareAction = "remove-figure";
-          rmFig.dataset.patentId = patent.id;
-          rmFig.dataset.figureId = fig.id;
-          rmFig.disabled = aiRunning;
-          figItem.appendChild(rmFig);
-          figGrid.appendChild(figItem);
-        });
-        body.appendChild(figGrid);
-      } else {
-        body.appendChild(makeElement("div", "review-drawings-empty", "尚未上传附图，点击上方按钮上传图片"));
-      }
-    }));
-
-    // Section: 加工信息字段
-    card.appendChild(buildReviewSection("加工信息字段（AI 抽取 / 手工录入）", function (body) {
+    // Section: 加工信息字段（移到基本信息下方，排第二）
+    card.appendChild(buildReviewSection("加工信息字段（AI 抽取 / 手工录入）", "processed", function (body) {
       var pfList = Array.isArray(patent.processedFields) ? patent.processedFields : [];
       if (pfList.length) {
         pfList.forEach(function (pf) {
@@ -896,12 +800,198 @@
       body.appendChild(presetBar);
     }));
 
+    // Section: 权利要求
+    card.appendChild(buildReviewSection("权利要求", "claims", function (body) {
+      var claimList = Array.isArray(patent.claims) ? patent.claims : [];
+      var claimActions = makeElement("div", "review-drawings-actions");
+      if (claimList.length) {
+        var indep = claimList.filter(function(c) { return c.type === "independent"; }).length;
+        claimActions.appendChild(makeElement("span", "", claimList.length + " 项权利要求（独立 " + indep + " 项，从属 " + (claimList.length - indep) + " 项）"));
+      } else {
+        claimActions.appendChild(makeElement("span", "", "尚未提供权利要求"));
+      }
+      var claimEdit = makeElement("button", "share-secondary-action", claimList.length ? "编辑" : "添加");
+      claimEdit.type = "button";
+      claimEdit.dataset.shareAction = "edit-claims";
+      claimEdit.dataset.patentId = patent.id;
+      claimEdit.disabled = aiRunning;
+      claimActions.appendChild(claimEdit);
+      if (claimList.length) {
+        var trClaimsBtn = makeElement("button", "share-secondary-action", patent.claimsTranslation ? "重新翻译" : "翻译为中文");
+        trClaimsBtn.type = "button";
+        trClaimsBtn.dataset.shareAction = "translate-claims";
+        trClaimsBtn.dataset.patentId = patent.id;
+        trClaimsBtn.disabled = aiRunning;
+        claimActions.appendChild(trClaimsBtn);
+        if (patent.claimsTranslation) {
+          claimActions.appendChild(makeElement("span", "share-processed-badge ai", "已翻译"));
+        }
+      }
+      body.appendChild(claimActions);
+      if (claimList.length) {
+        var claimGrid = makeElement("div", "review-claims");
+        claimList.forEach(function (claim) {
+          var claimItem = makeElement("div", "review-claim-item");
+          var claimNum = makeElement("div", "review-claim-num", (claim.number || "") + " · " + (claim.type === "independent" ? "独立权利要求" : claim.type === "dependent" ? "从属权利要求" : "权利要求"));
+          claimItem.appendChild(claimNum);
+          // 标注层：用 contenteditable 的文本容器，支持选中后标注
+          var claimText = makeElement("div", "review-claim-text review-annotatable");
+          claimText.dataset.annotationField = "claims";
+          claimText.dataset.annotationKey = claim.number || "";
+          claimText.innerHTML = applyAnnotations(claim.text || "", patent.claimsAnnotations, claim.number || "");
+          claimItem.appendChild(claimText);
+          // 标注工具条
+          var annoBar = makeElement("div", "review-anno-bar");
+          annoBar.appendChild(makeAnnoBtn("underline", "下划线", patent.id, "claims", claim.number || ""));
+          annoBar.appendChild(makeAnnoBtn("highlight", "高亮", patent.id, "claims", claim.number || ""));
+          annoBar.appendChild(makeAnnoBtn("comment", "注释", patent.id, "claims", claim.number || ""));
+          annoBar.appendChild(makeAnnoBtn("clear", "清除标注", patent.id, "claims", claim.number || ""));
+          claimItem.appendChild(annoBar);
+          if (claim.references && claim.references.length) {
+            claimItem.appendChild(makeElement("div", "review-claim-dep", "引用：权项 " + claim.references.join(", ")));
+          }
+          claimGrid.appendChild(claimItem);
+        });
+        body.appendChild(claimGrid);
+      }
+    }));
+
+    // Section: 说明书
+    card.appendChild(buildReviewSection("说明书", "description", function (body) {
+      var descActions = makeElement("div", "review-drawings-actions");
+      var descBtn = makeElement("button", "share-secondary-action", patent.description ? "编辑说明书" : "添加说明书");
+      descBtn.type = "button";
+      descBtn.dataset.shareAction = "edit-description";
+      descBtn.dataset.patentId = patent.id;
+      descBtn.disabled = aiRunning;
+      descActions.appendChild(descBtn);
+      if (patent.description) {
+        var trDescBtn = makeElement("button", "share-secondary-action", patent.descriptionTranslation ? "重新翻译说明书" : "翻译说明书");
+        trDescBtn.type = "button";
+        trDescBtn.dataset.shareAction = "translate-description";
+        trDescBtn.dataset.patentId = patent.id;
+        trDescBtn.disabled = aiRunning;
+        descActions.appendChild(trDescBtn);
+        if (patent.descriptionTranslation) {
+          descActions.appendChild(makeElement("span", "share-processed-badge ai", "已翻译"));
+        }
+      }
+      body.appendChild(descActions);
+      if (patent.description) {
+        var descPreview = makeElement("div", "review-desc-block");
+        var descText = makeElement("div", "review-desc-text review-annotatable");
+        descText.dataset.annotationField = "description";
+        descText.innerHTML = applyAnnotations(patent.description.length > 2000 ? patent.description.slice(0, 2000) + "..." : patent.description, patent.descriptionAnnotations, "");
+        descPreview.appendChild(descText);
+        body.appendChild(descPreview);
+        // 标注工具条
+        var descAnnoBar = makeElement("div", "review-anno-bar");
+        descAnnoBar.appendChild(makeAnnoBtn("underline", "下划线", patent.id, "description", ""));
+        descAnnoBar.appendChild(makeAnnoBtn("highlight", "高亮", patent.id, "description", ""));
+        descAnnoBar.appendChild(makeAnnoBtn("comment", "注释", patent.id, "description", ""));
+        descAnnoBar.appendChild(makeAnnoBtn("clear", "清除标注", patent.id, "description", ""));
+        body.appendChild(descAnnoBar);
+      } else {
+        body.appendChild(makeElement("div", "review-drawings-empty", "尚未提供说明书内容，点击上方「编辑说明书」按钮添加"));
+      }
+    }));
+
+    // Section: 附图
+    card.appendChild(buildReviewSection("附图", "figures", function (body) {
+      var figList = Array.isArray(patent.figures) ? patent.figures : [];
+      var figActions = makeElement("div", "review-drawings-actions");
+      figActions.appendChild(makeElement("span", "", figList.length ? figList.length + " 张附图" : "尚未上传附图"));
+      var uploadBtn = makeElement("button", "share-secondary-action", "+ 上传附图");
+      uploadBtn.type = "button";
+      uploadBtn.dataset.shareAction = "upload-figure";
+      uploadBtn.dataset.patentId = patent.id;
+      uploadBtn.disabled = aiRunning;
+      figActions.appendChild(uploadBtn);
+      var fileInput = makeElement("input", "share-figure-file-input");
+      fileInput.type = "file";
+      fileInput.accept = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
+      fileInput.style.display = "none";
+      fileInput.dataset.shareAction = "figure-file-input";
+      fileInput.dataset.patentId = patent.id;
+      body.appendChild(fileInput);
+      body.appendChild(figActions);
+      if (figList.length) {
+        var figGrid = makeElement("div", "review-drawings-grid");
+        figList.forEach(function (fig) {
+          var figItem = makeElement("div", "review-drawing-thumb");
+          var img = makeElement("img");
+          img.src = fig.dataUrl;
+          img.alt = fig.caption || "附图";
+          figItem.appendChild(img);
+          if (fig.caption) figItem.appendChild(makeElement("span", "review-drawing-label", fig.caption));
+          var rmFig = makeElement("button", "share-fig-remove", "×");
+          rmFig.type = "button";
+          rmFig.title = "删除";
+          rmFig.dataset.shareAction = "remove-figure";
+          rmFig.dataset.patentId = patent.id;
+          rmFig.dataset.figureId = fig.id;
+          rmFig.disabled = aiRunning;
+          figItem.appendChild(rmFig);
+          figGrid.appendChild(figItem);
+        });
+        body.appendChild(figGrid);
+      } else {
+        body.appendChild(makeElement("div", "review-drawings-empty", "尚未上传附图，点击上方按钮上传图片"));
+      }
+    }));
+
     container.appendChild(card);
   }
 
+  // 标注功能辅助函数
+  function makeAnnoBtn(type, label, patentId, field, key) {
+    var btn = makeElement("button", "review-anno-btn review-anno-" + type, label);
+    btn.type = "button";
+    btn.dataset.shareAction = "annotate-text";
+    btn.dataset.annoType = type;
+    btn.dataset.patentId = patentId;
+    btn.dataset.annoField = field;
+    btn.dataset.annoKey = key;
+    btn.disabled = aiRunning;
+    return btn;
+  }
+
+  // 将标注应用到文本，返回 HTML
+  function applyAnnotations(text, annotations, key) {
+    if (!text) return "";
+    var html = escapeHtmlForAnno(text);
+    if (!annotations || !Array.isArray(annotations) || !annotations.length) return html;
+    // 按 start 降序排列，从后往前插入标签
+    var sorted = annotations.filter(function(a) { return a.key === key; }).sort(function(a, b) { return (b.start || 0) - (a.start || 0); });
+    sorted.forEach(function(anno) {
+      var start = anno.start || 0;
+      var end = anno.end || start;
+      if (start < 0 || end > html.length || start > end) return;
+      var before = html.slice(0, start);
+      var middle = html.slice(start, end);
+      var after = html.slice(end);
+      if (anno.type === "underline") {
+        middle = '<span class="anno-underline">' + middle + '</span>';
+      } else if (anno.type === "highlight") {
+        middle = '<mark class="anno-highlight">' + middle + '</mark>';
+      } else if (anno.type === "comment" && anno.comment) {
+        middle = '<span class="anno-comment" title="' + escapeHtmlForAnno(anno.comment) + '">' + middle + '<sup>注</sup></span>';
+      }
+      html = before + middle + after;
+    });
+    return html;
+  }
+
+  function escapeHtmlForAnno(text) {
+    return String(text == null ? "" : text).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
   // 构建审核页面的分节块（标题 + 内容 body 由回调填充）
-  function buildReviewSection(title, fillBody) {
+  function buildReviewSection(title, sectionId, fillBody) {
     var section = makeElement("section", "share-review-section");
+    section.id = "review-section-" + (sectionId || "");
     var secHead = makeElement("div", "share-review-section-head");
     secHead.appendChild(makeElement("h4", "", title));
     section.appendChild(secHead);
@@ -1260,6 +1350,44 @@
       navItems[i].classList.toggle("active", navItems[i].dataset.shareView === activeView);
     }
     updateProjectStatus();
+    if (activeView === "review") bindReviewScrollSpy();
+  }
+
+  // 数据审核页：悬浮导航条 active 状态与滚动进度
+  var reviewScrollSpyBound = false;
+  function bindReviewScrollSpy() {
+    var navBar = document.querySelector(".share-review-nav");
+    if (!navBar) return;
+    var sections = document.querySelectorAll(".share-review-section[id^='review-section-']");
+    var navBtns = navBar.querySelectorAll("[data-review-nav]");
+    if (!sections.length || !navBtns.length) return;
+    var progress = navBar.querySelector(".share-review-nav-progress");
+
+    function updateActive() {
+      var viewTop = window.scrollY || document.documentElement.scrollTop;
+      var viewH = window.innerHeight || document.documentElement.clientHeight;
+      var offset = viewTop + viewH * 0.3;
+      var activeId = null;
+      sections.forEach(function (sec) {
+        var top = sec.getBoundingClientRect().top + viewTop;
+        if (top <= offset) activeId = sec.id;
+      });
+      var scrollableH = (document.documentElement.scrollHeight || document.body.scrollHeight) - viewH;
+      var pct = scrollableH > 0 ? Math.min(100, Math.max(0, (viewTop / scrollableH) * 100)) : 0;
+      if (progress) progress.style.width = pct + "%";
+      navBtns.forEach(function (btn) {
+        btn.classList.toggle("active", activeId === "review-section-" + btn.dataset.reviewNav);
+      });
+    }
+
+    if (reviewScrollSpyBound) {
+      window.removeEventListener("scroll", updateActive);
+      window.removeEventListener("resize", updateActive);
+    }
+    window.addEventListener("scroll", updateActive, { passive: true });
+    window.addEventListener("resize", updateActive, { passive: true });
+    reviewScrollSpyBound = true;
+    updateActive();
   }
 
   function rememberAndHideLegacyViews() {
@@ -1688,6 +1816,67 @@
           setNotice("该模块配置不可用。", true);
         }
         render();
+        return;
+      }
+      if (actionName === "annotate-text" && action.dataset.patentId) {
+        var annoType = action.dataset.annoType;
+        var annoField = action.dataset.annoField;
+        var annoKey = action.dataset.annoKey || "";
+        // 找到对应的可标注文本元素
+        var annoContainer = action.closest(".review-claim-item, .share-review-section-body");
+        var annoTextEl = annoContainer ? annoContainer.querySelector(".review-annotatable[data-annotation-field='" + annoField + "']" + (annoKey ? "[data-annotation-key='" + annoKey + "']" : "")) : null;
+        if (!annoTextEl) return;
+        var sel = window.getSelection();
+        if (annoType === "clear") {
+          if (window.PatentShareStore.clearAnnotations) {
+            window.PatentShareStore.clearAnnotations(action.dataset.patentId, annoField, annoKey);
+            setNotice("已清除该区域标注。", false);
+            render();
+          }
+          return;
+        }
+        if (!sel || sel.isCollapsed || !sel.rangeCount) {
+          setNotice("请先选中文本再点击标注按钮。", true);
+          return;
+        }
+        var range = sel.getRangeAt(0);
+        // 确保选区在标注文本元素内
+        if (!annoTextEl.contains(range.commonAncestorContainer)) {
+          setNotice("请选中该区域内的文本再标注。", true);
+          return;
+        }
+        // 计算选区在纯文本中的位置
+        var fullText = annoTextEl.textContent || "";
+        var selectedText = range.toString();
+        var startIdx = fullText.indexOf(selectedText);
+        if (startIdx < 0) { setNotice("无法定位选中文本。", true); return; }
+        var endIdx = startIdx + selectedText.length;
+        var comment = "";
+        if (annoType === "comment") {
+          PatentShareUI.prompt("请输入注释内容", "").then(function (input) {
+            if (!input) { setNotice("未输入注释内容。", true); return; }
+            comment = input;
+            doSaveAnnotation();
+          });
+        } else {
+          doSaveAnnotation();
+        }
+        function doSaveAnnotation() {
+          if (window.PatentShareStore.addAnnotation) {
+            window.PatentShareStore.addAnnotation(action.dataset.patentId, {
+              field: annoField, key: annoKey, type: annoType,
+              start: startIdx, end: endIdx, text: selectedText, comment: comment,
+            });
+            setNotice("标注已保存。", false);
+            render();
+          }
+        }
+        return;
+      }
+      // 审核页悬浮导航跳转
+      if (actionName === "review-nav" && action.dataset.reviewNav) {
+        var target = document.getElementById("review-section-" + action.dataset.reviewNav);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
       if (actionName === "select-review-patent" && action.dataset.patentIndex != null) {
