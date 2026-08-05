@@ -641,7 +641,11 @@
     removeBtn.disabled = aiRunning;
     headerActions.appendChild(removeBtn);
     header.appendChild(headerActions);
-    card.appendChild(header);
+
+    // 标题 + 段落导航条合并为顶部冻结组：审核页启用独立滚动容器后，
+    // 该组 sticky 到容器顶部，滚动正文时标题与导航按钮始终可见可点击。
+    var stickyTop = makeElement("div", "share-review-sticky-top");
+    stickyTop.appendChild(header);
 
     // 悬浮导航条 + 进度条
     var navBar = makeElement("nav", "share-review-nav");
@@ -662,7 +666,8 @@
       navBtnList.appendChild(navBtn);
     });
     navBar.appendChild(navBtnList);
-    card.appendChild(navBar);
+    stickyTop.appendChild(navBar);
+    card.appendChild(stickyTop);
 
     // Section: 基本信息（著录项网格 + 分类号）
     card.appendChild(buildReviewSection("基本信息", "basic", function (body) {
@@ -1453,6 +1458,8 @@
     var project = currentProject();
     if (!container || !project) return;
     container.textContent = "";
+    // 按当前视图打修饰类，供 CSS 定向（如审核页启用独立滚动容器以冻结标题+导航条）
+    container.className = "share-workspace-view" + (activeView ? " share-workspace-view--" + activeView : "");
     if (activeView === "overview") renderOverview(container, project);
     else if (activeView === "sources") renderSources(container, project);
     else if (activeView === "review") renderReview(container, project);
@@ -1471,7 +1478,11 @@
   }
 
   // 数据审核页：悬浮导航条 active 状态与滚动进度
+  // 审核页改为独立滚动容器（.share-workspace-view--review），滚动事件与坐标
+  // 均以该容器为准，而非 window。这样 sticky 标题/导航条不受 body overflow 影响。
   var reviewScrollSpyBound = false;
+  var reviewScrollSpyEl = null;
+  var reviewScrollSpyHandler = null;
   function bindReviewScrollSpy() {
     var navBar = document.querySelector(".share-review-nav");
     if (!navBar) return;
@@ -1479,29 +1490,40 @@
     var navBtns = navBar.querySelectorAll("[data-review-nav]");
     if (!sections.length || !navBtns.length) return;
     var progress = navBar.querySelector(".share-review-nav-progress");
+    var scrollEl = byId("share-workspace-view");
 
     function updateActive() {
-      var viewTop = window.scrollY || document.documentElement.scrollTop;
-      var viewH = window.innerHeight || document.documentElement.clientHeight;
-      var offset = viewTop + viewH * 0.3;
+      if (!scrollEl) return;
+      var viewH = scrollEl.clientHeight;
+      // 以滚动容器为参考系：section 顶部相对容器顶边的偏移。
+      var containerTop = scrollEl.getBoundingClientRect().top;
+      var offset = viewH * 0.3;
       var activeId = null;
       sections.forEach(function (sec) {
-        var top = sec.getBoundingClientRect().top + viewTop;
+        var top = sec.getBoundingClientRect().top - containerTop;
         if (top <= offset) activeId = sec.id;
       });
-      var scrollableH = (document.documentElement.scrollHeight || document.body.scrollHeight) - viewH;
-      var pct = scrollableH > 0 ? Math.min(100, Math.max(0, (viewTop / scrollableH) * 100)) : 0;
+      var scrollableH = scrollEl.scrollHeight - viewH;
+      var pct = scrollableH > 0 ? Math.min(100, Math.max(0, (scrollEl.scrollTop / scrollableH) * 100)) : 0;
       if (progress) progress.style.width = pct + "%";
       navBtns.forEach(function (btn) {
         btn.classList.toggle("active", activeId === "review-section-" + btn.dataset.reviewNav);
       });
     }
 
-    if (reviewScrollSpyBound) {
-      window.removeEventListener("scroll", updateActive);
-      window.removeEventListener("resize", updateActive);
+    // 重新绑定时先解绑上一轮：scroll 监听挂在滚动容器上，resize 挂在 window。
+    if (reviewScrollSpyBound && reviewScrollSpyHandler) {
+      if (reviewScrollSpyEl) reviewScrollSpyEl.removeEventListener("scroll", reviewScrollSpyHandler);
+      window.removeEventListener("resize", reviewScrollSpyHandler);
+      if (reviewScrollSpyEl === window) window.removeEventListener("scroll", reviewScrollSpyHandler);
     }
-    window.addEventListener("scroll", updateActive, { passive: true });
+    reviewScrollSpyHandler = updateActive;
+    reviewScrollSpyEl = scrollEl || window;
+    if (scrollEl) {
+      scrollEl.addEventListener("scroll", updateActive, { passive: true });
+    } else {
+      window.addEventListener("scroll", updateActive, { passive: true });
+    }
     window.addEventListener("resize", updateActive, { passive: true });
     reviewScrollSpyBound = true;
     updateActive();
