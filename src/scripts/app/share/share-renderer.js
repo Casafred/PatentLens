@@ -65,7 +65,8 @@
     var findings = [];
     if (/["']?(?:api[_-]?key|access[_-]?token|token|secret|cookie)["']?\s*[:=]/i.test(text)) findings.push("可能包含密钥、Token 或 Cookie 字段");
     if (/https?:\/\/127\.0\.0\.1(?::\d+)?|https?:\/\/localhost(?::\d+)?|127\.0\.0\.1:\d+/i.test(text)) findings.push("可能包含本机代理或本地服务地址");
-    if (/[A-Z]:\\[^\n"<>]+|\/(?:Users|home|private|var)\/[^\n"<>]+/i.test(text)) findings.push("可能包含绝对本机路径");
+    // 收紧路径正则：至少两层目录（/Users/foo/、C:\Users\foo\），避免误命中字段名或 CSS 转义
+    if (/[A-Z]:\\[^\n"<>\\]+\\[^\n"<>\\]+|\/(?:Users|home|private|var)\/[^\n"<>\/]+\/[^\n"<>\/]+/i.test(text)) findings.push("可能包含绝对本机路径");
     return findings;
   }
 

@@ -1214,31 +1214,44 @@
       return;
     }
     var result = renderer.render(project);
-    if (result.findings.length) {
+    // 安全扫描：密钥/Token 类硬阻断；本机路径/本地地址类仅警告，确认后允许导出
+    var hardBlock = result.findings.some(function (f) { return /密钥|Token|Cookie/.test(f); });
+    if (hardBlock) {
       setNotice("导出已阻止：" + result.findings.join("；"), true);
       render();
       return;
     }
-    var baseName = (project.name || "patent-share").replace(/[<>:"/\\|?*]/g, "-").trim().slice(0, 60) || "patent-share";
-    var bridge = window.electronAPI && window.electronAPI.saveShareHtml;
-    if (bridge) {
-      bridge(result.html, baseName + ".html").then(function (saved) {
-        setNotice(saved && saved.canceled ? "已取消保存。" : "分享 HTML 已保存到本机，可发送给研发团队分享。", false);
-        render();
-      }).catch(function (error) {
-        setNotice(error && error.message ? error.message : "保存 HTML 失败。", true);
-        render();
+    var softWarnings = result.findings.filter(function (f) { return !/密钥|Token|Cookie/.test(f); });
+    function doExport() {
+      var baseName = (project.name || "patent-share").replace(/[<>:"/\\|?*]/g, "-").trim().slice(0, 60) || "patent-share";
+      var bridge = window.electronAPI && window.electronAPI.saveShareHtml;
+      if (bridge) {
+        bridge(result.html, baseName + ".html").then(function (saved) {
+          setNotice(saved && saved.canceled ? "已取消保存。" : "分享 HTML 已保存到本机，可发送给研发团队分享。", false);
+          render();
+        }).catch(function (error) {
+          setNotice(error && error.message ? error.message : "保存 HTML 失败。", true);
+          render();
+        });
+        return;
+      }
+      var blobUrl = URL.createObjectURL(new Blob([result.html], { type: "text/html;charset=utf-8" }));
+      var link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = baseName + ".html";
+      link.click();
+      setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 1000);
+      setNotice("分享 HTML 已生成并开始下载。", false);
+      render();
+    }
+    if (softWarnings.length) {
+      PatentShareUI.confirm("导出前提示：" + softWarnings.join("；") + "\n\n分享 HTML 为离线自包含文件，不会自动外发数据。是否继续导出？").then(function (yes) {
+        if (!yes) { setNotice("已取消导出。", false); render(); return; }
+        doExport();
       });
       return;
     }
-    var blobUrl = URL.createObjectURL(new Blob([result.html], { type: "text/html;charset=utf-8" }));
-    var link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = baseName + ".html";
-    link.click();
-    setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 1000);
-    setNotice("分享 HTML 已生成并开始下载。", false);
-    render();
+    doExport();
   }
 
   function runAIAnalysis(patentId, type) {
