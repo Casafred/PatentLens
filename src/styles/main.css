@@ -12322,11 +12322,22 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 }
 
 /* ── 数据审核页：分节块 + 悬浮导航条 + 标注 ── */
+/* 审核页改为独立滚动容器：body 的 overflow-x:hidden 会使 overflow-y 计算为 auto，
+   从而破坏 position:sticky 相对视口的吸附。这里把 .share-workspace-view--review
+   显式设为滚动容器，sticky 以它为参考系，标题+导航条即可稳定冻结在顶部。 */
+.share-workspace-view--review {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 顶部预留工作台标题栏（~117px）+ app 上下 padding（16+32px），使审核区在
+     视口内独立滚动，避免窗口与容器同时滚动的双重滚动体验。 */
+  max-height: calc(100vh - 168px);
+}
 .share-review-section {
   margin-top: 22px;
   padding-top: 18px;
   border-top: 1px solid var(--border-soft, #e8f1ec);
-  scroll-margin-top: 76px;
+  /* 与冻结的「标题+导航条」高度匹配，避免 scrollIntoView 时段标题被遮挡 */
+  scroll-margin-top: 120px;
 }
 .share-review-section:first-of-type {
   border-top: none;
@@ -12351,18 +12362,24 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   display: block;
 }
 
-/* 悬浮导航条：sticky 在视图顶部，含进度条 */
-.share-review-nav {
+/* 冻结顶部组：专利标题 + 段落导航条，sticky 到审核滚动容器顶部 */
+.share-review-sticky-top {
   position: sticky;
   top: 0;
   z-index: 20;
+  background: var(--bg-primary, #fff);
+  border-radius: var(--radius, 10px) var(--radius, 10px) 0 0;
+}
+/* 导航条本身不再单独 sticky（由父级 .share-review-sticky-top 统一吸附） */
+.share-review-nav {
+  position: static;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: saturate(180%) blur(8px);
   -webkit-backdrop-filter: saturate(180%) blur(8px);
   border-bottom: 1px solid var(--border, #d6e8dc);
-  border-radius: 8px;
+  border-radius: 0;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 .share-review-nav-progress {
   height: 3px;
