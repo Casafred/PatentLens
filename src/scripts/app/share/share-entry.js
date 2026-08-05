@@ -623,7 +623,6 @@
         if (!f || !f.value) valEl.style.color = "var(--c-text-muted, #7a9486)";
         item.appendChild(valEl);
         var metaEl = makeElement("div", "review-field-meta");
-        metaEl.appendChild(makeElement("span", "review-field-badge", readableSource(f)));
         var editBtn = makeElement("button", "review-field-edit-btn", "编辑");
         editBtn.type = "button";
         editBtn.dataset.shareAction = "edit-field";
@@ -689,7 +688,6 @@
           if (!custom.field.value) valEl.style.color = "var(--c-text-muted, #7a9486)";
           item.appendChild(valEl);
           var metaEl = makeElement("div", "review-field-meta");
-          metaEl.appendChild(makeElement("span", "review-field-badge", readableSource(custom.field)));
           var cEdit = makeElement("button", "review-field-edit-btn", "编辑");
           cEdit.type = "button";
           cEdit.dataset.shareAction = "edit-custom-field";
@@ -921,38 +919,160 @@
     var registry = window.PatentShareModules;
     if (!registry) { renderPlaceholder(container, "modules", project); return; }
     var config = registry.resolveConfig(project.moduleConfig);
-    var hint = makeElement("p", "share-module-hint", "必要模块不能关闭；配置会自动保存到当前分享项目，并在预览与导出中生效。AI生成的研发洞察内容需启用对应R模块后才会出现在分享中。");
+    var hint = makeElement("p", "share-module-hint", "点击模块切换「完整 / 精简 / 关闭」模式。拖拽模块卡片可调整在分享页面中的显示顺序。配置自动保存并在预览与导出中生效。");
     container.appendChild(hint);
-    var categories = registry.listByCategory();
-    var categoryLabels = { basic: "基础信息（从来源提取 + 人工校核）", processed: "加工信息（AI 抽取 / 手工录入）" };
-    Object.keys(categories).forEach(function(catKey) {
-      var catLabel = categoryLabels[catKey] || catKey;
-      container.appendChild(makeElement("h4", "share-module-category-title", catLabel));
-      var list = makeElement("div", "share-module-list");
-      categories[catKey].forEach(function (module) {
-        var card = makeElement("article", "share-module-card");
-        var copy = makeElement("div", "share-module-copy");
-        copy.appendChild(makeElement("strong", "", module.id + " · " + module.label));
-        copy.appendChild(makeElement("p", "", module.description + (module.required ? " （必要模块）" : " （可选模块）")));
-        card.appendChild(copy);
-        var select = document.createElement("select");
-        select.className = "share-module-mode";
-        select.dataset.shareAction = "module-mode";
-        select.dataset.moduleId = module.id;
-        select.disabled = aiRunning;
-        ["full", "lite", "off"].forEach(function (mode) {
-          if (module.required && mode === "off") return;
-          var option = document.createElement("option");
-          option.value = mode;
-          option.textContent = modeLabel(mode);
-          option.selected = config.modules[module.id] === mode;
-          select.appendChild(option);
-        });
-        card.appendChild(select);
-        list.appendChild(card);
-      });
-      container.appendChild(list);
+
+    // 可视化布局编辑器：模拟最终分享 HTML 的版面结构
+    var preview = makeElement("div", "share-module-visual");
+    preview.appendChild(makeElement("div", "share-module-visual-hint", "以下版面模拟最终分享网页的布局结构，各模块可点击切换或拖拽排序"));
+
+    // 模拟封面区
+    var coverZone = makeElement("div", "share-module-zone cover-zone");
+    coverZone.appendChild(makeElement("div", "share-module-zone-label", "封面区"));
+    var allModules = registry.list();
+    var basicModules = allModules.filter(function(m) { return m.category === "basic"; });
+    var processedModules = allModules.filter(function(m) { return m.category === "processed"; });
+
+    // S1 封面单独放封面区
+    var s1 = basicModules.find(function(m) { return m.id === "S1"; });
+    if (s1) coverZone.appendChild(buildModuleBlock(s1, config));
+    preview.appendChild(coverZone);
+
+    // 模拟主体布局：左侧导航 + 右侧内容区
+    var bodyZone = makeElement("div", "share-module-body-zone");
+    // 左侧导航（固定，非模块）
+    var sidebarMock = makeElement("div", "share-module-sidebar-mock");
+    sidebarMock.appendChild(makeElement("div", "share-module-sidebar-title", "专利导航"));
+    sidebarMock.appendChild(makeElement("div", "share-module-sidebar-item", "专利 1"));
+    sidebarMock.appendChild(makeElement("div", "share-module-sidebar-item", "专利 2"));
+    sidebarMock.appendChild(makeElement("div", "share-module-sidebar-item", "专利 3"));
+    bodyZone.appendChild(sidebarMock);
+
+    // 右侧内容区：分面板
+    var contentArea = makeElement("div", "share-module-content-area");
+
+    // 基础信息面板
+    var basicPanel = makeElement("div", "share-module-panel");
+    basicPanel.appendChild(makeElement("div", "share-module-panel-header", "基础信息标签页"));
+    var basicDropZone = makeElement("div", "share-module-drop-zone");
+    basicDropZone.dataset.zone = "basic";
+    basicModules.filter(function(m) { return m.id !== "S1"; }).forEach(function(m) {
+      basicDropZone.appendChild(buildModuleBlock(m, config));
     });
+    basicPanel.appendChild(basicDropZone);
+    contentArea.appendChild(basicPanel);
+
+    // 加工信息面板
+    var procPanel = makeElement("div", "share-module-panel");
+    procPanel.appendChild(makeElement("div", "share-module-panel-header", "加工信息标签页"));
+    var procDropZone = makeElement("div", "share-module-drop-zone");
+    procDropZone.dataset.zone = "processed";
+    processedModules.forEach(function(m) {
+      procDropZone.appendChild(buildModuleBlock(m, config));
+    });
+    procPanel.appendChild(procDropZone);
+    contentArea.appendChild(procPanel);
+
+    bodyZone.appendChild(contentArea);
+    preview.appendChild(bodyZone);
+
+    container.appendChild(preview);
+
+    // 绑定拖拽事件
+    bindModuleDragAndDrop(container);
+  }
+
+  function buildModuleBlock(module, config) {
+    var mode = config.modules[module.id] || "off";
+    var isOff = mode === "off";
+    var block = makeElement("div", "share-module-block" + (isOff ? " disabled" : ""));
+    block.dataset.moduleId = module.id;
+    block.dataset.moduleMode = mode;
+    block.draggable = !aiRunning;
+
+    var dragHandle = makeElement("div", "share-module-drag-handle", "⋮⋮");
+    dragHandle.title = "拖拽排序";
+    block.appendChild(dragHandle);
+
+    var info = makeElement("div", "share-module-block-info");
+    info.appendChild(makeElement("span", "share-module-block-id", module.id));
+    info.appendChild(makeElement("span", "share-module-block-label", module.label));
+    if (module.required) info.appendChild(makeElement("span", "share-module-block-required", "必要"));
+    block.appendChild(info);
+
+    // 模式切换按钮组
+    var modeBar = makeElement("div", "share-module-mode-bar");
+    ["full", "lite", "off"].forEach(function(m) {
+      if (module.required && m === "off") return;
+      var btn = makeElement("button", "share-module-mode-btn" + (mode === m ? " active" : ""), modeLabel(m));
+      btn.type = "button";
+      btn.dataset.shareAction = "module-mode";
+      btn.dataset.moduleId = module.id;
+      btn.dataset.mode = m;
+      btn.disabled = aiRunning;
+      modeBar.appendChild(btn);
+    });
+    block.appendChild(modeBar);
+
+    return block;
+  }
+
+  function bindModuleDragAndDrop(container) {
+    var dropZones = container.querySelectorAll(".share-module-drop-zone");
+    var dragged = null;
+    dropZones.forEach(function(zone) {
+      zone.addEventListener("dragstart", function(e) {
+        var block = e.target.closest(".share-module-block");
+        if (!block) return;
+        dragged = block;
+        block.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+      });
+      zone.addEventListener("dragend", function(e) {
+        var block = e.target.closest(".share-module-block");
+        if (block) block.classList.remove("dragging");
+        dragged = null;
+      });
+      zone.addEventListener("dragover", function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        var afterElement = getDragAfterElement(zone, e.clientY);
+        if (!dragged) return;
+        if (afterElement == null) {
+          zone.appendChild(dragged);
+        } else if (afterElement !== dragged) {
+          zone.insertBefore(dragged, afterElement);
+        }
+      });
+      zone.addEventListener("drop", function(e) {
+        e.preventDefault();
+        if (!dragged) return;
+        // 保存新的模块顺序
+        var blocks = zone.querySelectorAll(".share-module-block");
+        var order = [];
+        blocks.forEach(function(b) { order.push(b.dataset.moduleId); });
+        // 暂存顺序到项目配置（通过 store）
+        if (window.PatentShareStore && window.PatentShareStore.setModuleOrder) {
+          window.PatentShareStore.setModuleOrder(zone.dataset.zone, order);
+        }
+        setNotice("模块顺序已保存。", false);
+      });
+    });
+  }
+
+  function getDragAfterElement(container, y) {
+    var draggables = container.querySelectorAll(".share-module-block:not(.dragging)");
+    var closest = null;
+    var closestOffset = Number.NEGATIVE_INFINITY;
+    draggables.forEach(function(el) {
+      var box = el.getBoundingClientRect();
+      var offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closestOffset) {
+        closestOffset = offset;
+        closest = el;
+      }
+    });
+    return closest;
   }
 
   function renderPreview(container, project) {
@@ -1561,6 +1681,15 @@
       var actionName = action.dataset.shareAction;
       if (actionName === "add-current") addCurrentPatent();
       if (actionName === "search-add-patents") searchAndAddPatents();
+      if (actionName === "module-mode" && action.dataset.moduleId && action.dataset.mode) {
+        if (window.PatentShareStore.setModuleMode(action.dataset.moduleId, action.dataset.mode)) {
+          setNotice("模块配置已保存。", false);
+        } else {
+          setNotice("该模块配置不可用。", true);
+        }
+        render();
+        return;
+      }
       if (actionName === "select-review-patent" && action.dataset.patentIndex != null) {
         var idx = parseInt(action.dataset.patentIndex, 10);
         if (!Number.isNaN(idx)) { reviewPatentIndex = idx; render(); }

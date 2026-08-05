@@ -185,6 +185,10 @@
     var sourceName = rawSource ? rawSource.replace(/google\s*patents?/gi, "专利原文") : "专利原文";
     var capturedAt = new Date().toISOString();
 
+    // 清理标题中可能残留的 "Google Patents" 字样
+    var rawTitle = cleanText(data.title);
+    var title = rawTitle.replace(/[-—]\s*Google\s*Patents?\s*$/i, "").replace(/Google\s*Patents?\s*[-—:]\s*/i, "").trim();
+
     var rawClaims = Array.isArray(data.claims) ? data.claims.map(function (claim, index) {
       if (typeof claim === "string") {
         return { number: String(index + 1), text: cleanText(claim), type: "", references: [] };
@@ -223,13 +227,13 @@
     var result = {
       id: "patent_" + patentNumber + "_" + Date.now().toString(36),
       patentNumber: patentNumber,
-      title: cleanText(data.title),
+      title: title,
       description: description,
       classifications: classifications,
       citations: citations,
       family: family,
       fields: {
-        title: sourceValue(data.title, "google_patents"),
+        title: sourceValue(title, "google_patents"),
         abstract: sourceValue(data.abstract, "google_patents"),
         applicationDate: sourceValue(data.application_date || data.filing_date, "google_patents"),
         publicationDate: sourceValue(data.publication_date, "google_patents"),
@@ -265,28 +269,39 @@
   }
 
   // 异步抓取附图 URL 列表并转为 DataURL，返回 figures 数组
+  // 优先使用 Electron 主进程 IPC（绕过 CORS），降级到 fetch
   function fetchDrawingsAsDataUrls(urls, maxCount, onProgress) {
     var list = Array.isArray(urls) ? urls.slice(0, maxCount || 20) : [];
     var figures = [];
     var done = 0;
+    var hasElectron = typeof window !== "undefined" && window.electronAPI && window.electronAPI.fetchImageAsDataUrl;
     function next() {
       if (done >= list.length) return Promise.resolve(figures);
       var idx = done;
       var url = list[idx];
       done++;
-      return fetch(url, { mode: "cors" })
-        .then(function (res) {
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          return res.blob();
-        })
-        .then(function (blob) {
-          return new Promise(function (resolve, reject) {
-            var reader = new FileReader();
-            reader.onload = function () { resolve(reader.result); };
-            reader.onerror = function () { reject(new Error("FileReader failed")); };
-            reader.readAsDataURL(blob);
+      var fetchPromise;
+      if (hasElectron) {
+        fetchPromise = window.electronAPI.fetchImageAsDataUrl(url).then(function (result) {
+          if (!result || !result.ok || !result.dataUrl) throw new Error(result && result.error || "IPC fetch failed");
+          return result.dataUrl;
+        });
+      } else {
+        fetchPromise = fetch(url, { mode: "cors" })
+          .then(function (res) {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.blob();
+          })
+          .then(function (blob) {
+            return new Promise(function (resolve, reject) {
+              var reader = new FileReader();
+              reader.onload = function () { resolve(reader.result); };
+              reader.onerror = function () { reject(new Error("FileReader failed")); };
+              reader.readAsDataURL(blob);
+            });
           });
-        })
+      }
+      return fetchPromise
         .then(function (dataUrl) {
           figures.push({
             id: "fig_" + Date.now().toString(36) + "_" + idx,

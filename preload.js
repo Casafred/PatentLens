@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openPopoutWindow: (url, title, opts) => ipcRenderer.send("open-popout-window", url, title, opts || null),
   epoVerifyAndFetchCookies: (url) => ipcRenderer.invoke("epo-verify-and-fetch-cookies", url),
   downloadFile: (url, filename) => ipcRenderer.send("download-file", url, filename || null),
+  fetchImageAsDataUrl: (url) => ipcRenderer.invoke("fetch-image-as-dataurl", url),
   exportPdfWithAnnotations: (data) => ipcRenderer.invoke("export-pdf-annotations", data),
   getImmersiveTranslateScript: () => ipcRenderer.invoke("get-immersive-translate-script"),
   getImmersiveTranslateStatus: () => ipcRenderer.invoke("get-immersive-translate-status"),
