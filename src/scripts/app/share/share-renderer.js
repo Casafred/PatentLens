@@ -36,7 +36,22 @@
     var type = cleanText(source.type);
     if (label) return label.replace(/google\s*patents?/gi, "专利原文");
     if (type === "google_patents") return "专利原文";
-    return type || "未标记";
+    return sourceKeyLabel(type) || "未标记";
+  }
+
+  // 内部来源 key → 中文标签映射
+  function sourceKeyLabel(key) {
+    var map = {
+      google_patents: "专利原文",
+      manual: "人工确认",
+      excel: "Excel/CSV",
+      csv: "CSV",
+      dossier: "审查档案",
+      pdf_text: "PDF 文本层",
+      ocr: "OCR",
+      ai: "AI生成",
+    };
+    return map[key] || (cleanText(key) ? key.replace(/google\s*patents?/gi, "专利原文") : "");
   }
 
   function renderMarkdownSimple(text) {
@@ -90,7 +105,7 @@
     var rowClass = fullRow ? " field-item full-row" : " field-item";
     if (!item) return '<div class="' + rowClass.trim() + '"><span class="fl">' + escapeHtml(label) + '</span><span class="fv empty">来源未提供</span></div>';
     var state = item.reviewState === "conflict" ? " · 待确认冲突" : "";
-    return '<div class="' + rowClass.trim() + '"><span class="fl">' + escapeHtml(label) + '</span><span class="fv">' + escapeHtml(item.value) + '</span><span class="fs">' + escapeHtml(item.source || "unknown") + escapeHtml(state) + '</span></div>';
+    return '<div class="' + rowClass.trim() + '"><span class="fl">' + escapeHtml(label) + '</span><span class="fv">' + escapeHtml(item.value) + '</span><span class="fs">' + escapeHtml(sourceKeyLabel(item.source) || "未标记") + escapeHtml(state) + '</span></div>';
   }
 
   function renderClaimsHtml(claims, config) {
@@ -347,7 +362,7 @@
           var custom = record.customFields[key];
           if (custom && custom.field) {
             var val = cleanText(custom.field.value);
-            html += '<div class="field-item"><span class="fl">' + escapeHtml(custom.label || key) + '</span><span class="fv' + (val ? '' : ' empty') + '">' + escapeHtml(val || "来源未提供") + '</span><span class="fs">' + escapeHtml(custom.field.source || "unknown") + '</span></div>';
+            html += '<div class="field-item"><span class="fl">' + escapeHtml(custom.label || key) + '</span><span class="fv' + (val ? '' : ' empty') + '">' + escapeHtml(val || "来源未提供") + '</span><span class="fs">' + escapeHtml(sourceKeyLabel(custom.field.source) || "未标记") + '</span></div>';
           }
         });
       }
