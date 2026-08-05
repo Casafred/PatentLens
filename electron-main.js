@@ -4682,7 +4682,9 @@ app.whenReady().then(async () => {
   });
 
   // IPC: 渲染进程请求下载文件（避免 window.open 被 setWindowOpenHandler 拦截成弹窗）
-  let _pendingDownloadFilename = null;
+  // 修复竞态条件：使用 Map<url, filename> 避免并发下载时文件名错乱
+  // 对于短时间内同一 URL 重复下载的情况，文件名会被覆盖为最新值，这是合理的语义
+  const _pendingDownloads = new Map();
 
   // IPC: popout 窗口向主窗口转发数据（Espacenet 提取等）
   ipcMain.on("popout-to-main", (_event, data) => {
@@ -4695,13 +4697,20 @@ app.whenReady().then(async () => {
 
   ipcMain.on("download-file", (_event, url, filename) => {
     if (!mainWindow || typeof url !== "string") return;
-    _pendingDownloadFilename = filename || null;
+    // 使用 URL 作为 key 存储文件名，避免并发竞态
+    _pendingDownloads.set(url, { filename: filename || null, timestamp: Date.now() });
     mainWindow.webContents.downloadURL(url);
   });
+
   session.defaultSession.on("will-download", (_event, item) => {
-    if (_pendingDownloadFilename) {
+    // 从 URL 查找对应的文件名
+    const itemUrl = item.getURLChain()[0] || item.getURL();
+    const downloadInfo = _pendingDownloads.get(itemUrl);
+
+    if (downloadInfo && downloadInfo.filename) {
+      _pendingDownloads.delete(itemUrl); // 清理以避免内存泄漏
       const savePath = dialog.showSaveDialogSync(mainWindow, {
-        defaultPath: _pendingDownloadFilename,
+        defaultPath: downloadInfo.filename,
         filters: [
           { name: "Images", extensions: ["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp"] },
           { name: "All Files", extensions: ["*"] },
@@ -4712,7 +4721,6 @@ app.whenReady().then(async () => {
       } else {
         item.cancel();
       }
-      _pendingDownloadFilename = null;
     }
   });
 
