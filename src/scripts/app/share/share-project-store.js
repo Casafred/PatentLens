@@ -467,6 +467,17 @@
     return true;
   }
 
+  function setModuleOrder(zone, order) {
+    var active = ensureProject();
+    if (!active.moduleConfig || typeof active.moduleConfig !== "object") active.moduleConfig = {};
+    if (!active.moduleConfig.moduleOrder || typeof active.moduleConfig.moduleOrder !== "object") active.moduleConfig.moduleOrder = {};
+    active.moduleConfig.moduleOrder[zone] = Array.isArray(order) ? order.slice() : [];
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
   function addPatent(record) {
     var active = ensureProject();
     if (!record || !record.id || !cleanText(record.patentNumber)) return { ok: false, reason: "invalid-record" };
@@ -942,6 +953,7 @@
     setPatentTranslation: setPatentTranslation,
     setProjectAIAnalysis: setProjectAIAnalysis,
     removePatent: removePatent,
+    setModuleOrder: setModuleOrder,
     flush: flush,
     onChange: onChange,
   };

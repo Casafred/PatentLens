@@ -4716,6 +4716,64 @@ app.whenReady().then(async () => {
     }
   });
 
+  // IPC: 抓取图片 URL 并返回 DataURL（绕过渲染进程 CORS 限制）
+  ipcMain.handle("fetch-image-as-dataurl", async (_event, url) => {
+    try {
+      if (!url || typeof url !== "string") return { error: "invalid url" };
+      const https = require("https");
+      const http = require("http");
+      const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+
+      const fetchImage = (imageUrl) => {
+        return new Promise((resolve, reject) => {
+          const mod = imageUrl.startsWith("https:") ? https : http;
+          const options = {};
+
+          // 如果有代理，使用代理
+          if (proxyUrl && imageUrl.startsWith("https:")) {
+            try {
+              const proxyUrlObj = new URL(proxyUrl);
+              const tunnel = require("tunnel");
+              const agent = tunnel.httpsOverHttp({
+                proxy: {
+                  host: proxyUrlObj.hostname,
+                  port: proxyUrlObj.port || 80,
+                },
+              });
+              options.agent = agent;
+            } catch (e) {
+              // 代理配置失败，直接连接
+            }
+          }
+
+          mod.get(imageUrl, options, (res) => {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+              // 跟随重定向
+              return resolve(fetchImage(res.headers.location));
+            }
+            if (res.statusCode !== 200) {
+              return reject(new Error("HTTP " + res.statusCode));
+            }
+            const chunks = [];
+            res.on("data", (chunk) => chunks.push(chunk));
+            res.on("end", () => {
+              const buffer = Buffer.concat(chunks);
+              const contentType = res.headers["content-type"] || "image/png";
+              const dataUrl = "data:" + contentType + ";base64," + buffer.toString("base64");
+              resolve(dataUrl);
+            });
+            res.on("error", reject);
+          }).on("error", reject);
+        });
+      };
+
+      const dataUrl = await fetchImage(url);
+      return { ok: true, dataUrl: dataUrl };
+    } catch (e) {
+      return { error: e.message || "fetch failed" };
+    }
+  });
+
   // IPC: 获取沉浸式翻译用户脚本（供渲染进程注入到webview中）
   ipcMain.handle("get-immersive-translate-status", async () => {
     await prepareImmersiveTranslate();
