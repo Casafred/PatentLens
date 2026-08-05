@@ -409,6 +409,36 @@
     return html;
   }
 
+  // 项目级研发结论模块（R1 技术问题-方案-效果 / R6 研发启发与待验证）。
+  // 这两个模块属于项目级数据（project.researchSummary），与专利条目无关；
+  // 在多专利视图中挂在第一篇专利的「加工信息」标签页下，无专利时作为独立面板渲染。
+  function renderProjectResearchBlocks(project, config) {
+    var html = "";
+    if (moduleEnabled(config, "R1")) {
+      var researchR1 = project.researchSummary && typeof project.researchSummary === "object" ? project.researchSummary : {};
+      if (researchR1.problem || researchR1.approach || researchR1.effect || researchR1.openQuestions) {
+        html += '<div class="card"><div class="card-body">';
+        html += '<div class="section-title"><span class="bar"></span>技术问题-方案-效果</div>';
+        [["技术问题", researchR1.problem], ["技术手段", researchR1.approach], ["技术效果", researchR1.effect], ["待验证问题", researchR1.openQuestions]].forEach(function (item) {
+          var text = cleanText(item[1]);
+          if (text && moduleMode(config, "R1") === "lite" && text.length > 800) text = text.slice(0, 800) + "…";
+          if (text) html += '<div class="field-item full-row" style="margin:6px 0"><span class="fl">' + escapeHtml(item[0]) + '</span><span class="fv">' + escapeHtml(text) + '</span></div>';
+        });
+        html += '</div></div>';
+      }
+    }
+    if (moduleEnabled(config, "R6")) {
+      var researchR6 = project.researchSummary || {};
+      if (researchR6.openQuestions) {
+        html += '<div class="card"><div class="card-body">';
+        html += '<div class="section-title"><span class="bar"></span>研发启发与待验证问题</div>';
+        html += '<div class="ai-block"><div class="field-item full-row"><span class="fl">待验证问题</span><span class="fv">' + escapeHtml(researchR6.openQuestions) + '</span></div></div>';
+        html += '</div></div>';
+      }
+    }
+    return html;
+  }
+
   // 加工信息面板：processedFields + AI分析模块
   function renderProcessedPanel(record, config, project) {
     var html = '<div class="panel" data-panel="processed">';
@@ -425,18 +455,9 @@
       html += renderProcessedFields(record, "full");
       html += '</div></div>';
     }
-    if (record === project.patents[0] && moduleEnabled(config, "R1")) {
-      var researchR1 = project.researchSummary && typeof project.researchSummary === "object" ? project.researchSummary : {};
-      if (researchR1.problem || researchR1.approach || researchR1.effect || researchR1.openQuestions) {
-        html += '<div class="card"><div class="card-body">';
-        html += '<div class="section-title"><span class="bar"></span>技术问题-方案-效果</div>';
-        [["技术问题", researchR1.problem], ["技术手段", researchR1.approach], ["技术效果", researchR1.effect], ["待验证问题", researchR1.openQuestions]].forEach(function (item) {
-          var text = cleanText(item[1]);
-          if (text && moduleMode(config, "R1") === "lite" && text.length > 800) text = text.slice(0, 800) + "…";
-          if (text) html += '<div class="field-item full-row" style="margin:6px 0"><span class="fl">' + escapeHtml(item[0]) + '</span><span class="fv">' + escapeHtml(text) + '</span></div>';
-        });
-        html += '</div></div>';
-      }
+    // 项目级研发结论（R1/R6）挂在第一篇专利下
+    if (record === project.patents[0]) {
+      html += renderProjectResearchBlocks(project, config);
     }
     if (moduleEnabled(config, "R1") && record.aiAnalysis && record.aiAnalysis.summary) {
       html += '<div class="card"><div class="card-body">';
@@ -478,15 +499,7 @@
       }
       html += '</div></div>';
     }
-    if (record === project.patents[0] && moduleEnabled(config, "R6")) {
-      var researchR6 = project.researchSummary || {};
-      if (researchR6.openQuestions) {
-        html += '<div class="card"><div class="card-body">';
-        html += '<div class="section-title"><span class="bar"></span>研发启发与待验证问题</div>';
-        html += '<div class="ai-block"><div class="field-item full-row"><span class="fl">待验证问题</span><span class="fv">' + escapeHtml(researchR6.openQuestions) + '</span></div></div>';
-        html += '</div></div>';
-      }
-    }
+    // R6 已在 renderProjectResearchBlocks 中渲染（项目级，挂在第一篇专利下）
     if (moduleEnabled(config, "R8")) {
       html += '<div class="card"><div class="card-body">';
       html += '<div class="section-title"><span class="bar"></span>引证文献</div>';
@@ -573,7 +586,19 @@
     // 右侧内容：三大标签页
     html += '<main class="content">';
     if (!patents.length) {
-      html += '<p class="notice">当前项目没有可分享的专利材料。</p>';
+      // 无专利时仍渲染项目级研发结论（R1/R6），便于在加入专利前先整理研发结论
+      var projectBlocks = renderProjectResearchBlocks(input, config);
+      if (projectBlocks) {
+        html += '<div class="tabs">';
+        html += '<button class="tab active" data-tab="processed">加工信息</button>';
+        html += '</div>';
+        html += '<div class="patent-panels active" data-patent-index="0">';
+        html += '<div class="panel" data-panel="processed">';
+        html += projectBlocks;
+        html += '</div></div>';
+      } else {
+        html += '<p class="notice">当前项目没有可分享的专利材料。</p>';
+      }
     } else {
       html += '<div class="tabs">';
       html += '<button class="tab active" data-tab="basic">基础信息</button>';
