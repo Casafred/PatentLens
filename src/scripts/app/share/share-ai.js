@@ -7,8 +7,9 @@
 (function () {
   "use strict";
 
+  var PROMPT_VERSION = "share-rnd-v2";
   var SHARE_AI_PROMPTS = {
-    patentSummary: '你是一位资深专利分析师，擅长将专利内容整理为研发团队易读的技术分享材料。请根据提供的专利信息，从以下维度进行结构化分析，输出Markdown格式。\n\n## 一、技术问题\n本专利要解决的**具体技术问题**是什么？现有技术存在哪些痛点、缺陷或不足？请基于摘要、权利要求和说明书内容，总结2-4个核心技术问题。\n\n## 二、技术方案\n为解决上述问题，本专利采用了哪些**核心技术手段/技术特征**？请归纳为3-7个要点，每个要点清晰说明：\n- 采用了什么结构/步骤/模块\n- 各组成部分如何连接/配合\n- 关键技术特征是什么\n\n## 三、技术效果\n这些技术手段带来了哪些**具体的技术效果或优势**？请对应技术方案分点说明效果，尽可能量化或明确效果产生的原因。\n\n## 四、权利要求保护范围分析\n基于独立权利要求，分析：\n- 独立权利要求的必要技术特征有哪些\n- 哪些特征是关键限定（决定保护范围宽窄）\n- 从属权利要求进一步限定了哪些内容\n- 初步判断保护范围是宽/中/窄，说明理由\n\n## 五、研发启发\n基于该专利，对研发团队的启示：\n- 该方案解决问题的思路有何借鉴价值\n- 哪些技术点值得关注\n- 可能的设计绕开方向（仅作技术讨论，不构成法律意见）\n\n要求：\n- 语言精炼准确，适合研发人员阅读\n- 所有结论必须基于提供的专利内容，不要编造未给出的细节\n- 使用中文输出，专业术语可保留英文原文\n- Markdown格式清晰，适当使用列表和小标题',
+    patentSummary: '你是一位专利技术信息分析师，任务是制作供研发团队讨论的技术分享草稿，不提供法律意见。请根据输入输出Markdown。\n\n## 技术问题\n概括专利明确要解决的具体技术问题。\n\n## 核心方案\n用3-6个要点说明结构、步骤、材料或模块及其关系。\n\n## 技术效果与证据\n区分“专利主张的效果”和“实施例或测试已验证的效果”；未公开验证数据时必须明确说明，禁止补充数值。\n\n## 研发待确认事项\n仅列值得进一步查证、实验或讨论的信息缺口，不给出侵权、自由实施、无效或规避结论。\n\n要求：\n- 每个要点末尾用括号标注来源，例如（来源：权利要求1）或（来源：说明书）。没有可定位依据时写“来源：待核验”\n- 仅使用输入材料，不能推测未披露的实现细节\n- 使用中文，语言精炼；所有结果均为“待人工审核”的分享草稿',
 
     technicalElements: '你是一位专利技术要素提取专家。请从提供的专利中提取**结构化技术要素**，输出为JSON格式（不要输出其他说明文字）：\n\n```json\n{\n  "components": [\n    {\n      "name": "部件/模块名称",\n      "role": "在方案中的作用",\n      "keyFeatures": ["关键特征1", "关键特征2"]\n    }\n  ],\n  "steps": [\n    {\n      "order": 1,\n      "action": "步骤描述",\n      "input": "输入",\n      "output": "输出",\n      "keyParams": ["关键参数/条件"]\n    }\n  ],\n  "parameters": [\n    {\n      "name": "参数名称",\n      "range": "数值范围/取值",\n      "unit": "单位",\n      "effect": "该参数的作用/对效果的影响"\n    }\n  ],\n  "interfaces": ["关键接口/连接关系1", "关键接口/连接关系2"],\n  "materials": ["涉及的材料/物质1", "涉及的材料/物质2"]\n}\n```\n\n请只输出符合上述格式的JSON，不要输出Markdown代码块标记以外的任何文字。',
 
@@ -27,8 +28,11 @@
     }
   }
 
-  function buildPatentContext(patent) {
+  function buildPatentContext(patent, brief) {
     var parts = [];
+    if (brief && typeof brief === "object") {
+      parts.push("【分享任务】面向" + (brief.audience || "研发团队") + "的" + (brief.purpose || "技术分享") + "。关注重点：" + (brief.focus || "未指定"));
+    }
     parts.push("【专利号】" + (patent.patentNumber || "未知"));
     parts.push("【标题】" + (patent.title || "未提供"));
     if (patent.fields && patent.fields.abstract && patent.fields.abstract.value) {
@@ -48,17 +52,27 @@
     if (patent.claims && patent.claims.length) {
       parts.push("\n【权利要求书】");
       var claimsText = patent.claims.map(function (c) {
-        return (c.number ? c.number + ". " : "") + (c.text || "");
+        return "【权利要求" + (c.number || "未编号") + "】" + (c.text || "");
       }).join("\n\n");
       if (claimsText.length > 12000) claimsText = claimsText.slice(0, 12000) + "...(内容过长，已截断)";
       parts.push(claimsText);
     }
+    var annotationEvidence = [];
+    (patent.claimsAnnotations || []).forEach(function (annotation) {
+      if (!annotation || !annotation.text) return;
+      annotationEvidence.push("权利要求" + (annotation.key || "") + "：" + annotation.text + (annotation.comment ? "（IPR注释：" + annotation.comment + "）" : ""));
+    });
+    (patent.descriptionAnnotations || []).forEach(function (annotation) {
+      if (!annotation || !annotation.text) return;
+      annotationEvidence.push("说明书：" + annotation.text + (annotation.comment ? "（IPR注释：" + annotation.comment + "）" : ""));
+    });
+    if (annotationEvidence.length) parts.push("\n【IPR 标注摘录】\n" + annotationEvidence.join("\n"));
     return parts.join("\n");
   }
 
-  function buildMultiPatentContext(patents) {
+  function buildMultiPatentContext(patents, brief) {
     return patents.map(function (p, idx) {
-      return "===== 专利" + (idx + 1) + " =====\n" + buildPatentContext(p);
+      return "===== 专利" + (idx + 1) + " =====\n" + buildPatentContext(p, brief);
     }).join("\n\n");
   }
 
@@ -85,10 +99,10 @@
     return { content: fullContent, reasoning: fullReasoning, model: provider.model };
   }
 
-  async function generatePatentSummary(patent) {
+  async function generatePatentSummary(patent, brief) {
     try {
       if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
-      var context = buildPatentContext(patent);
+      var context = buildPatentContext(patent, brief);
       var messages = [
         { role: "system", content: SHARE_AI_PROMPTS.patentSummary },
         { role: "user", content: "请分析以下专利：\n\n" + context }
@@ -100,16 +114,17 @@
         reasoning: result.reasoning,
         model: result.model,
         generatedAt: new Date().toISOString(),
+        promptVersion: PROMPT_VERSION,
       };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
   }
 
-  async function generateTechnicalElements(patent) {
+  async function generateTechnicalElements(patent, brief) {
     try {
       if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
-      var context = buildPatentContext(patent);
+      var context = buildPatentContext(patent, brief);
       var messages = [
         { role: "system", content: SHARE_AI_PROMPTS.technicalElements },
         { role: "user", content: "请提取以下专利的技术要素：\n\n" + context }
@@ -128,18 +143,19 @@
         reasoning: result.reasoning,
         model: result.model,
         generatedAt: new Date().toISOString(),
+        promptVersion: PROMPT_VERSION,
       };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
   }
 
-  async function generateMultiPatentComparison(patents) {
+  async function generateMultiPatentComparison(patents, brief) {
     try {
       if (!patents || !patents.length) throw new Error("未选择要对比的专利");
       var patentList = Array.isArray(patents) ? patents : [patents];
       if (patentList.length < 2) throw new Error("需要至少2篇专利才能进行对比分析");
-      var context = buildMultiPatentContext(patentList);
+      var context = buildMultiPatentContext(patentList, brief);
       var messages = [
         { role: "system", content: SHARE_AI_PROMPTS.multiPatentComparison },
         { role: "user", content: "请对比分析以下多篇专利：\n\n" + context }
@@ -152,17 +168,18 @@
         model: result.model,
         patentIds: patentList.map(function(p) { return p.id; }),
         generatedAt: new Date().toISOString(),
+        promptVersion: PROMPT_VERSION,
       };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
   }
 
-  async function generateEmbodiments(patent) {
+  async function generateEmbodiments(patent, brief) {
     try {
       if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
       if (!patent.description) throw new Error("该专利缺少说明书内容，无法提取实施例");
-      var context = buildPatentContext(patent);
+      var context = buildPatentContext(patent, brief);
       var messages = [
         { role: "system", content: SHARE_AI_PROMPTS.embodiments },
         { role: "user", content: "请从以下专利中提取实施例及验证证据：\n\n" + context }
@@ -174,6 +191,7 @@
         reasoning: result.reasoning,
         model: result.model,
         generatedAt: new Date().toISOString(),
+        promptVersion: PROMPT_VERSION,
       };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
@@ -181,15 +199,15 @@
   }
 
   // 加工字段抽取：基于用户自定义提示词，抽取一个聚焦的结构化字段值
-  async function generateProcessedField(patent, field) {
+  async function generateProcessedField(patent, field, brief) {
     try {
       if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
       if (!field || typeof field !== "object") throw new Error("无效的加工字段");
       var prompt = cleanText(field.prompt);
       var label = cleanText(field.label) || "加工字段";
       if (!prompt) throw new Error("该字段未配置提示词，无法进行AI抽取");
-      var context = buildPatentContext(patent);
-      var systemPrompt = '你是一位资深专利分析师。请严格根据提供的专利内容回答问题。\n\n要求：\n- 结论必须基于提供的专利内容，不要编造未给出的细节\n- 语言精炼准确，适合研发人员阅读\n- 使用中文输出，专业术语可保留英文原文\n- 直接输出结论内容，不要添加标题或引导语\n- 如果是列表，用 "- " 开头每行一个要点';
+      var context = buildPatentContext(patent, brief);
+      var systemPrompt = '你是一位专利技术信息分析师。请严格根据提供的专利内容回答问题，不提供侵权、自由实施、无效或规避结论。\n\n要求：\n- 结论必须基于提供的专利内容，不要编造未给出的细节\n- 没有明确依据时写“未找到明确依据”\n- 语言精炼准确，适合研发人员阅读\n- 使用中文输出，专业术语可保留英文原文\n- 直接输出结论内容，不要添加标题或引导语\n- 如果是列表，用 "- " 开头每行一个要点';
       var userPrompt = "【抽取任务】" + label + "\n\n【抽取要求】\n" + prompt + "\n\n【专利内容】\n" + context;
       var messages = [
         { role: "system", content: systemPrompt },
@@ -202,6 +220,7 @@
         model: result.model,
         reasoning: result.reasoning,
         generatedAt: new Date().toISOString(),
+        promptVersion: PROMPT_VERSION,
       };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
@@ -256,5 +275,6 @@
     generateProcessedField: generateProcessedField,
     translatePatentText: translatePatentText,
     buildPatentContext: buildPatentContext,
+    promptVersion: PROMPT_VERSION,
   };
 })();

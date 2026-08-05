@@ -46,6 +46,16 @@
     };
   }
 
+  function normalizeProjectBrief(value) {
+    var source = value && typeof value === "object" ? value : {};
+    return {
+      audience: cleanText(source.audience).slice(0, 200) || "研发团队",
+      purpose: cleanText(source.purpose).slice(0, 300) || "技术分享",
+      focus: cleanText(source.focus).slice(0, 2000),
+      confidentiality: cleanText(source.confidentiality).slice(0, 100) || "内部使用",
+    };
+  }
+
   function normalizeAIAnalysis(value) {
     if (!value || typeof value !== "object") return {};
     var normalized = {};
@@ -59,6 +69,14 @@
         model: cleanText(item.model),
         generatedAt: cleanText(item.generatedAt) || now(),
         reviewState: item.reviewState === "accepted" ? "accepted" : "pending",
+        promptVersion: cleanText(item.promptVersion).slice(0, 100),
+        evidence: Array.isArray(item.evidence) ? item.evidence.map(function (e) {
+          return e && typeof e === "object" ? {
+            source: cleanText(e.source).slice(0, 100),
+            locator: cleanText(e.locator).slice(0, 300),
+            quote: cleanText(e.quote).slice(0, 3000),
+          } : null;
+        }).filter(Boolean) : [],
       };
     });
     return normalized;
@@ -108,6 +126,13 @@
         model: cleanText(f.model),
         generatedAt: cleanText(f.generatedAt),
         reviewState: f.reviewState === "accepted" ? "accepted" : "pending",
+        evidence: Array.isArray(f.evidence) ? f.evidence.map(function (e) {
+          return e && typeof e === "object" ? {
+            source: cleanText(e.source).slice(0, 100),
+            locator: cleanText(e.locator).slice(0, 300),
+            quote: cleanText(e.quote).slice(0, 3000),
+          } : null;
+        }).filter(Boolean) : [],
       };
     }).filter(function (f) { return f && (f.value || f.prompt); });
   }
@@ -119,6 +144,7 @@
       var type = cleanText(a.type);
       if (["underline", "highlight", "comment"].indexOf(type) < 0) return null;
       return {
+        id: cleanText(a.id) || makeId("anno"),
         key: cleanText(a.key),
         type: type,
         start: Math.max(0, parseInt(a.start, 10) || 0),
@@ -139,6 +165,7 @@
       updatedAt: now(),
       patents: [],
       sources: [],
+      brief: normalizeProjectBrief(),
       researchSummary: {},
       moduleConfig: defaultModules,
       aiAnalysis: {},
@@ -155,6 +182,7 @@
       updatedAt: cleanText(raw.updatedAt) || now(),
       patents: [],
       sources: [],
+      brief: normalizeProjectBrief(raw.brief),
       researchSummary: normalizeResearchSummary(raw.researchSummary),
       moduleConfig: raw.moduleConfig && typeof raw.moduleConfig === "object" ? clone(raw.moduleConfig) : {},
       aiAnalysis: raw.aiAnalysis && typeof raw.aiAnalysis === "object" ? clone(raw.aiAnalysis) : {},
@@ -477,6 +505,15 @@
     return clone(active.researchSummary);
   }
 
+  function setProjectBrief(brief) {
+    var active = ensureProject();
+    active.brief = normalizeProjectBrief(brief);
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return clone(active.brief);
+  }
+
   function setModuleMode(moduleId, mode) {
     var modules = window.PatentShareModules;
     if (!modules || !modules.setModuleMode) return false;
@@ -504,6 +541,7 @@
     if (annotation.field === "claims") {
       if (!Array.isArray(patent.claimsAnnotations)) patent.claimsAnnotations = [];
       patent.claimsAnnotations.push({
+        id: makeId("anno"),
         key: annotation.key || "",
         type: annotation.type,
         start: annotation.start || 0,
@@ -514,6 +552,7 @@
     } else if (annotation.field === "description") {
       if (!Array.isArray(patent.descriptionAnnotations)) patent.descriptionAnnotations = [];
       patent.descriptionAnnotations.push({
+        id: makeId("anno"),
         key: "",
         type: annotation.type,
         start: annotation.start || 0,
@@ -522,6 +561,21 @@
         comment: annotation.comment || "",
       });
     }
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function removeAnnotation(patentId, field, annotationId) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (p) { return p.id === patentId; });
+    if (!patent || !cleanText(annotationId)) return false;
+    var property = field === "claims" ? "claimsAnnotations" : (field === "description" ? "descriptionAnnotations" : "");
+    if (!property || !Array.isArray(patent[property])) return false;
+    var before = patent[property].length;
+    patent[property] = patent[property].filter(function (annotation) { return annotation.id !== annotationId; });
+    if (patent[property].length === before) return false;
     active.updatedAt = now();
     queuePersist();
     notify();
@@ -888,6 +942,7 @@
     if (updates.source === "ai" || updates.source === "manual") field.source = updates.source;
     if (updates.reviewState === "accepted") field.reviewState = "accepted";
     else if (updates.reviewState) field.reviewState = "pending";
+    if (Array.isArray(updates.evidence)) field.evidence = updates.evidence.slice(0, 20);
     active.updatedAt = now();
     queuePersist();
     notify();
@@ -919,7 +974,23 @@
       model: cleanText(analysisData.model),
       generatedAt: cleanText(analysisData.generatedAt) || now(),
       reviewState: analysisData.reviewState === "accepted" ? "accepted" : "pending",
+      promptVersion: cleanText(analysisData.promptVersion).slice(0, 100),
+      evidence: Array.isArray(analysisData.evidence) ? clone(analysisData.evidence).slice(0, 20) : [],
     };
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function updateAIAnalysis(patentId, analysisType, updates) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    var analysis = patent && patent.aiAnalysis && patent.aiAnalysis[analysisType];
+    if (!analysis || !updates || typeof updates !== "object") return false;
+    if (typeof updates.content === "string") analysis.content = cleanText(updates.content).slice(0, 200000);
+    if (updates.reviewState === "accepted") analysis.reviewState = "accepted";
+    else if (updates.reviewState) analysis.reviewState = "pending";
     active.updatedAt = now();
     queuePersist();
     notify();
@@ -956,7 +1027,22 @@
       patentIds: Array.isArray(analysisData.patentIds) ? analysisData.patentIds.slice() : [],
       generatedAt: cleanText(analysisData.generatedAt) || now(),
       reviewState: analysisData.reviewState === "accepted" ? "accepted" : "pending",
+      promptVersion: cleanText(analysisData.promptVersion).slice(0, 100),
+      evidence: Array.isArray(analysisData.evidence) ? clone(analysisData.evidence).slice(0, 20) : [],
     };
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function updateProjectAIAnalysis(analysisType, updates) {
+    var active = ensureProject();
+    var analysis = active.aiAnalysis && active.aiAnalysis[analysisType];
+    if (!analysis || !updates || typeof updates !== "object") return false;
+    if (typeof updates.content === "string") analysis.content = cleanText(updates.content).slice(0, 200000);
+    if (updates.reviewState === "accepted") analysis.reviewState = "accepted";
+    else if (updates.reviewState) analysis.reviewState = "pending";
     active.updatedAt = now();
     queuePersist();
     notify();
@@ -996,6 +1082,7 @@
     deleteProject: deleteProject,
     renameProject: renameProject,
     setResearchSummary: setResearchSummary,
+    setProjectBrief: setProjectBrief,
     setModuleConfig: setModuleConfig,
     setModuleMode: setModuleMode,
     addPatent: addPatent,
@@ -1015,11 +1102,14 @@
     updateProcessedField: updateProcessedField,
     removeProcessedField: removeProcessedField,
     setAIAnalysis: setAIAnalysis,
+    updateAIAnalysis: updateAIAnalysis,
     setPatentTranslation: setPatentTranslation,
     setProjectAIAnalysis: setProjectAIAnalysis,
+    updateProjectAIAnalysis: updateProjectAIAnalysis,
     removePatent: removePatent,
     setModuleOrder: setModuleOrder,
     addAnnotation: addAnnotation,
+    removeAnnotation: removeAnnotation,
     clearAnnotations: clearAnnotations,
     flush: flush,
     onChange: onChange,

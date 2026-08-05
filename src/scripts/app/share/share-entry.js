@@ -23,13 +23,13 @@
   var reviewPatentIndex = 0;
 
   var viewMeta = {
-    overview: { title: "项目概览", description: "围绕一个可分享的专利项目管理材料、模块和输出。" },
-    sources: { title: "材料来源", description: "从当前查询、审查档案、PDF 和表格逐步汇集可追溯的专利材料。" },
-    review: { title: "数据审核", description: "确认字段冲突、来源优先级、人工修订和说明书内容。" },
-    modules: { title: "分享模块", description: "选择必要模块的完整/精简/关闭模式；基础模块、研发洞察、附录分类管理。" },
-    insights: { title: "研发洞察", description: "AI自动生成技术问题-方案-效果分析、技术要素提取、多专利对比，或人工编辑研发结论。" },
-    preview: { title: "预览", description: "在隔离 iframe 中查看将要分享的离线页面。" },
-    export: { title: "导出", description: "完成敏感信息检查后保存单文件 HTML。" },
+    overview: { title: "项目设定", description: "明确分享对象、目的、技术关注点和内部使用边界。" },
+    sources: { title: "专利与材料", description: "从当前查询、审查档案、PDF 和表格汇集可追溯的专利材料。" },
+    review: { title: "内容加工与审核", description: "核对来源字段、制作分享字段、标注关键原文，并确认可对外呈现的内容。" },
+    insights: { title: "组合判断", description: "生成并审核单篇技术解读和多专利技术路线对比；所有 AI 内容先作为草稿。" },
+    modules: { title: "编排与展示", description: "选择研发分享中真正需要展示的内容，并调整加工模块在报告中的顺序。" },
+    preview: { title: "预览", description: "在隔离 iframe 中检查研发团队最终会看到的离线页面。" },
+    export: { title: "发布", description: "完成审核和敏感信息检查后保存单文件 HTML。" },
   };
 
   function byId(id) { return document.getElementById(id); }
@@ -54,8 +54,17 @@
       project.patents.forEach(function(p) { if (p.aiAnalysis && (p.aiAnalysis.summary || p.aiAnalysis.elements)) aiCount++; });
       if (project.aiAnalysis && project.aiAnalysis.comparison) aiCount++;
     }
-    var aiText = aiCount ? " · AI分析完成 " + aiCount + " 项" : "";
-    return storage + " · " + (count ? "已加入 " + count + " 篇专利" : "尚未加入专利") + aiText;
+    var pending = 0;
+    if (project && project.patents) {
+      project.patents.forEach(function (p) {
+        Object.keys(p.aiAnalysis || {}).forEach(function (key) { if (p.aiAnalysis[key] && p.aiAnalysis[key].reviewState !== "accepted") pending++; });
+        (p.processedFields || []).forEach(function (field) { if (field.source === "ai" && field.value && field.reviewState !== "accepted") pending++; });
+      });
+      Object.keys(project.aiAnalysis || {}).forEach(function (key) { if (project.aiAnalysis[key] && project.aiAnalysis[key].reviewState !== "accepted") pending++; });
+    }
+    var aiText = aiCount ? " · AI草稿 " + aiCount + " 项" : "";
+    var reviewText = pending ? " · 待审核 " + pending + " 项" : "";
+    return storage + " · " + (count ? "已加入 " + count + " 篇专利" : "尚未加入专利") + aiText + reviewText;
   }
 
   function updateProjectStatus() {
@@ -117,6 +126,35 @@
     rename.disabled = aiRunning;
     actions.appendChild(rename);
     container.appendChild(actions);
+
+    var brief = project.brief || {};
+    var briefPanel = makeElement("section", "share-project-brief");
+    briefPanel.appendChild(makeElement("h4", "", "分享设定"));
+    briefPanel.appendChild(makeElement("p", "share-module-hint", "这些设定会连同专利材料一起传给 AI，用于约束生成内容的对象和重点。"));
+    var briefGrid = makeElement("div", "share-brief-grid");
+    [
+      ["audience", "分享对象", brief.audience || "研发团队", "例如：电池材料研发组"],
+      ["purpose", "分享目的", brief.purpose || "技术分享", "例如：技术预研评审"],
+      ["focus", "技术关注点", brief.focus || "", "例如：界面材料、循环寿命、工艺边界"],
+      ["confidentiality", "使用边界", brief.confidentiality || "内部使用", "例如：内部使用，不构成法律意见"],
+    ].forEach(function (item) {
+      var label = makeElement("label", "share-research-label", item[1]);
+      var input = document.createElement(item[0] === "focus" ? "textarea" : "input");
+      input.className = "share-research-input";
+      input.id = "share-brief-" + item[0];
+      input.value = item[2];
+      input.placeholder = item[3];
+      if (item[0] === "focus") { input.rows = 2; input.maxLength = 2000; }
+      else input.maxLength = 300;
+      label.appendChild(input);
+      briefGrid.appendChild(label);
+    });
+    briefPanel.appendChild(briefGrid);
+    var saveBrief = makeElement("button", "share-secondary-action", "保存分享设定");
+    saveBrief.type = "button";
+    saveBrief.dataset.shareAction = "save-project-brief";
+    briefPanel.appendChild(saveBrief);
+    container.appendChild(briefPanel);
 
     renderProjectList(container, project);
 
@@ -952,34 +990,64 @@
     btn.dataset.patentId = patentId;
     btn.dataset.annoField = field;
     btn.dataset.annoKey = key;
+    btn.title = type === "clear" ? "清除本段所有标注" : "先选中正文，再" + label;
     btn.disabled = aiRunning;
     return btn;
+  }
+
+  function showAnnotationFeedback(action, message, isError) {
+    var bar = action && action.closest ? action.closest(".review-anno-bar") : null;
+    if (!bar) return;
+    var feedback = bar.querySelector(".review-anno-feedback");
+    if (!feedback) {
+      feedback = makeElement("span", "review-anno-feedback");
+      feedback.setAttribute("role", "status");
+      bar.appendChild(feedback);
+    }
+    feedback.classList.toggle("error", !!isError);
+    feedback.textContent = message;
+  }
+
+  function selectionOffsetsInText(container, range) {
+    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        return node.parentElement && node.parentElement.closest("[data-annotation-ui]") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    var start = 0;
+    var end = 0;
+    var offset = 0;
+    var foundStart = false;
+    var node;
+    while ((node = walker.nextNode())) {
+      var length = node.nodeValue.length;
+      if (node === range.startContainer) { start = offset + range.startOffset; foundStart = true; }
+      if (node === range.endContainer) { end = offset + range.endOffset; return foundStart ? { start: start, end: end } : null; }
+      offset += length;
+    }
+    return null;
   }
 
   // 将标注应用到文本，返回 HTML
   function applyAnnotations(text, annotations, key) {
     if (!text) return "";
-    var html = escapeHtmlForAnno(text);
-    if (!annotations || !Array.isArray(annotations) || !annotations.length) return html;
-    // 按 start 降序排列，从后往前插入标签
-    var sorted = annotations.filter(function(a) { return a.key === key; }).sort(function(a, b) { return (b.start || 0) - (a.start || 0); });
+    if (!annotations || !Array.isArray(annotations) || !annotations.length) return escapeHtmlForAnno(text);
+    var sorted = annotations.filter(function(a) { return a.key === key; }).sort(function(a, b) { return (a.start || 0) - (b.start || 0); });
+    var cursor = 0;
+    var html = "";
     sorted.forEach(function(anno) {
-      var start = anno.start || 0;
-      var end = anno.end || start;
-      if (start < 0 || end > html.length || start > end) return;
-      var before = html.slice(0, start);
-      var middle = html.slice(start, end);
-      var after = html.slice(end);
-      if (anno.type === "underline") {
-        middle = '<span class="anno-underline">' + middle + '</span>';
-      } else if (anno.type === "highlight") {
-        middle = '<mark class="anno-highlight">' + middle + '</mark>';
-      } else if (anno.type === "comment" && anno.comment) {
-        middle = '<span class="anno-comment" title="' + escapeHtmlForAnno(anno.comment) + '">' + middle + '<sup>注</sup></span>';
-      }
-      html = before + middle + after;
+      var start = Math.max(0, anno.start || 0);
+      var end = Math.min(text.length, anno.end || start);
+      if (start < cursor || start >= end) return;
+      html += escapeHtmlForAnno(text.slice(cursor, start));
+      var middle = escapeHtmlForAnno(text.slice(start, end));
+      if (anno.type === "underline") middle = '<span class="anno-underline">' + middle + '</span>';
+      else if (anno.type === "highlight") middle = '<mark class="anno-highlight">' + middle + '</mark>';
+      else if (anno.type === "comment" && anno.comment) middle = '<span class="anno-comment" title="' + escapeHtmlForAnno(anno.comment) + '">' + middle + '<sup data-annotation-ui="true">注</sup></span>';
+      html += middle;
+      cursor = end;
     });
-    return html;
+    return html + escapeHtmlForAnno(text.slice(cursor));
   }
 
   function escapeHtmlForAnno(text) {
@@ -1009,19 +1077,19 @@
     var registry = window.PatentShareModules;
     if (!registry) { renderPlaceholder(container, "modules", project); return; }
     var config = registry.resolveConfig(project.moduleConfig);
-    var hint = makeElement("p", "share-module-hint", "点击模块切换「完整 / 精简 / 关闭」模式。拖拽模块卡片可调整在分享页面中的显示顺序。配置自动保存并在预览与导出中生效。");
+    var hint = makeElement("p", "share-module-hint", "点击模块切换“完整 / 精简 / 关闭”。加工信息模块可拖拽排序，排序会在预览与导出中生效；基础原文模块保持固定阅读结构。");
     container.appendChild(hint);
 
     // 可视化布局编辑器：模拟最终分享 HTML 的版面结构
     var preview = makeElement("div", "share-module-visual");
-    preview.appendChild(makeElement("div", "share-module-visual-hint", "以下版面模拟最终分享网页的布局结构，各模块可点击切换或拖拽排序"));
+    preview.appendChild(makeElement("div", "share-module-visual-hint", "以下版面模拟最终分享网页的布局结构；仅加工信息模块支持拖拽排序"));
 
     // 模拟封面区
     var coverZone = makeElement("div", "share-module-zone cover-zone");
     coverZone.appendChild(makeElement("div", "share-module-zone-label", "封面区"));
     var allModules = registry.list();
     var basicModules = allModules.filter(function(m) { return m.category === "basic"; });
-    var processedModules = allModules.filter(function(m) { return m.category === "processed"; });
+    var processedModules = registry.orderByConfig ? registry.orderByConfig(allModules.filter(function(m) { return m.category === "processed"; }), config, "processed") : allModules.filter(function(m) { return m.category === "processed"; });
 
     // S1 封面单独放封面区
     var s1 = basicModules.find(function(m) { return m.id === "S1"; });
@@ -1078,7 +1146,7 @@
     var block = makeElement("div", "share-module-block" + (isOff ? " disabled" : ""));
     block.dataset.moduleId = module.id;
     block.dataset.moduleMode = mode;
-    block.draggable = !aiRunning;
+    block.draggable = !aiRunning && module.category === "processed";
 
     var dragHandle = makeElement("div", "share-module-drag-handle", "⋮⋮");
     dragHandle.title = "拖拽排序";
@@ -1108,7 +1176,7 @@
   }
 
   function bindModuleDragAndDrop(container) {
-    var dropZones = container.querySelectorAll(".share-module-drop-zone");
+    var dropZones = container.querySelectorAll(".share-module-drop-zone[data-zone='processed']");
     var dragged = null;
     dropZones.forEach(function(zone) {
       zone.addEventListener("dragstart", function(e) {
@@ -1190,91 +1258,99 @@
     container.appendChild(frame);
   }
 
-  function renderInsights(container, project) {
-    addHeading(container, viewMeta.insights, project.patents.length >= 2 ? "一键AI分析全部" : "AI生成专利分析", "ai-analyze-all");
-    addNotice(container);
-    if (aiRunning) {
-      container.appendChild(makeElement("div", "share-ai-loading", "AI正在分析中，请稍候..."));
-    }
-    var hasAI = window.PatentShareAI && window.PatentShareAI.getActiveAIProvider();
-    if (!hasAI) {
-      container.appendChild(makeElement("div", "share-inline-notice error", "未检测到可用的AI配置，请先在应用设置中配置AI接口。仍可使用下方人工编辑功能。"));
-    }
-    container.appendChild(makeElement("p", "share-module-hint", "可对每篇专利单独运行AI生成'问题-手段-效果'分析、技术要素提取；多专利项目可生成技术路线对比。AI结果会自动保存，可人工修改后导出。"));
+  function aiReviewLabel(analysis) {
+    return analysis && analysis.reviewState === "accepted" ? "已确认用于分享" : "AI 草稿，待人工审核";
+  }
 
-    if (project.patents.length === 0) {
+  function buildAIReviewCard(owner, scope, analysisType, label, analysis) {
+    if (!analysis) return null;
+    var card = makeElement("section", "share-ai-review-card");
+    var head = makeElement("div", "share-ai-review-head");
+    head.appendChild(makeElement("strong", "", label));
+    head.appendChild(makeElement("span", "share-processed-badge " + (analysis.reviewState === "accepted" ? "manual" : "ai"), aiReviewLabel(analysis)));
+    card.appendChild(head);
+    card.appendChild(makeElement("p", "share-ai-review-meta", "模型：" + (analysis.model || "未知") + " · 生成：" + (analysis.generatedAt || "").slice(0, 19) + (analysis.promptVersion ? " · 模板：" + analysis.promptVersion : "")));
+    var editor = document.createElement("textarea");
+    editor.className = "share-research-input share-ai-review-editor";
+    editor.rows = Math.min(14, Math.max(5, Math.ceil((analysis.content || "").length / 90)));
+    editor.maxLength = 200000;
+    editor.value = analysis.content || "";
+    editor.dataset.aiEditor = "true";
+    editor.dataset.aiScope = scope;
+    editor.dataset.aiType = analysisType;
+    if (owner && owner.id) editor.dataset.patentId = owner.id;
+    card.appendChild(editor);
+    var actions = makeElement("div", "share-ai-review-actions");
+    [["save-ai-analysis", "保存草稿"], [analysis.reviewState === "accepted" ? "return-ai-analysis" : "accept-ai-analysis", analysis.reviewState === "accepted" ? "退回草稿" : "确认用于分享"]].forEach(function (item) {
+      var button = makeElement("button", item[0] === "accept-ai-analysis" ? "share-primary-action" : "share-secondary-action", item[1]);
+      button.type = "button";
+      button.dataset.shareAction = item[0];
+      button.dataset.aiScope = scope;
+      button.dataset.aiType = analysisType;
+      if (owner && owner.id) button.dataset.patentId = owner.id;
+      button.disabled = aiRunning;
+      actions.appendChild(button);
+    });
+    card.appendChild(actions);
+    return card;
+  }
+
+  function renderInsights(container, project) {
+    addHeading(container, viewMeta.insights, project.patents.length >= 2 ? "生成全部草稿" : "生成技术解读草稿", "ai-analyze-all");
+    addNotice(container);
+    if (aiRunning) container.appendChild(makeElement("div", "share-ai-loading", "AI 正在生成草稿，请稍候..."));
+    var hasAI = window.PatentShareAI && window.PatentShareAI.getActiveAIProvider();
+    if (!hasAI) container.appendChild(makeElement("div", "share-inline-notice error", "未检测到可用的 AI 配置。仍可编辑人工结论，但无法生成新的 AI 草稿。"));
+    container.appendChild(makeElement("p", "share-module-hint", "每份 AI 内容都必须在这里阅读、编辑并确认后，才可进入正式分享。结论应能回到权利要求、说明书或 IPR 标注核验。"));
+
+    if (!project.patents.length) {
       var empty = makeElement("div", "share-empty-panel");
       empty.appendChild(makeElement("h4", "", "请先加入专利材料"));
-      empty.appendChild(makeElement("p", "", "加入专利后，可在此页面运行AI自动分析，或人工编辑研发结论。"));
+      empty.appendChild(makeElement("p", "", "加入专利后，可生成技术解读草稿并逐项审核。"));
       container.appendChild(empty);
-    } else {
-      project.patents.forEach(function(patent, idx) {
-        var patentCard = makeElement("article", "share-ai-patent-card");
-        var header = makeElement("div", "share-ai-patent-header");
-        header.appendChild(makeElement("h4", "", patent.patentNumber + " · " + (patent.title || "未提供标题")));
-        var btnGroup = makeElement("div", "share-ai-btn-group");
-        var sumBtn = makeElement("button", "share-secondary-action share-ai-btn", patent.aiAnalysis && patent.aiAnalysis.summary ? "重新生成摘要分析" : "AI生成摘要分析");
-        sumBtn.type = "button";
-        sumBtn.dataset.shareAction = "ai-summary";
-        sumBtn.dataset.patentId = patent.id;
-        sumBtn.disabled = aiRunning || !hasAI;
-        btnGroup.appendChild(sumBtn);
-        var elemBtn = makeElement("button", "share-secondary-action share-ai-btn", patent.aiAnalysis && patent.aiAnalysis.elements ? "重新提取技术要素" : "AI提取技术要素");
-        elemBtn.type = "button";
-        elemBtn.dataset.shareAction = "ai-elements";
-        elemBtn.dataset.patentId = patent.id;
-        elemBtn.disabled = aiRunning || !hasAI;
-        btnGroup.appendChild(elemBtn);
-        var embBtn = makeElement("button", "share-secondary-action share-ai-btn", patent.aiAnalysis && patent.aiAnalysis.embodiments ? "重新提取实施例" : "AI提取实施例");
-        embBtn.type = "button";
-        embBtn.dataset.shareAction = "ai-embodiments";
-        embBtn.dataset.patentId = patent.id;
-        embBtn.disabled = aiRunning || !hasAI || !patent.description;
-        if (!patent.description) embBtn.title = "需先导入说明书内容";
-        btnGroup.appendChild(embBtn);
-        header.appendChild(btnGroup);
-        patentCard.appendChild(header);
-
-        if (patent.aiAnalysis && patent.aiAnalysis.summary) {
-          var aiInfo = makeElement("div", "share-ai-status", "✓ AI摘要分析已生成 · 模型: " + (patent.aiAnalysis.summary.model || "unknown") + " · " + (patent.aiAnalysis.summary.generatedAt || ""));
-          patentCard.appendChild(aiInfo);
-        }
-        if (patent.aiAnalysis && patent.aiAnalysis.elements) {
-          var aiInfo2 = makeElement("div", "share-ai-status", "✓ 技术要素已提取 · 模型: " + (patent.aiAnalysis.elements.model || "unknown"));
-          patentCard.appendChild(aiInfo2);
-        }
-        if (patent.aiAnalysis && patent.aiAnalysis.embodiments) {
-          var aiInfo3 = makeElement("div", "share-ai-status", "✓ 实施例分析已生成 · 模型: " + (patent.aiAnalysis.embodiments.model || "unknown"));
-          patentCard.appendChild(aiInfo3);
-        }
-        patentCard.appendChild(makeElement("hr", "share-ai-divider"));
-        container.appendChild(patentCard);
-      });
-
-      if (project.patents.length >= 2) {
-        var compCard = makeElement("article", "share-ai-patent-card");
-        var compHeader = makeElement("div", "share-ai-patent-header");
-        compHeader.appendChild(makeElement("h4", "", "多专利组合分析"));
-        var compBtn = makeElement("button", "share-primary-action share-ai-btn", project.aiAnalysis && project.aiAnalysis.comparison ? "重新生成对比分析" : "AI生成多专利技术路线对比");
-        compBtn.type = "button";
-        compBtn.dataset.shareAction = "ai-comparison";
-        compBtn.disabled = aiRunning || !hasAI;
-        compHeader.appendChild(compBtn);
-        compCard.appendChild(compHeader);
-        if (project.aiAnalysis && project.aiAnalysis.comparison) {
-          compCard.appendChild(makeElement("div", "share-ai-status", "✓ 多专利对比已生成 · 模型: " + (project.aiAnalysis.comparison.model || "unknown") + " · 涉及" + (project.aiAnalysis.comparison.patentIds ? project.aiAnalysis.comparison.patentIds.length : project.patents.length) + "篇专利"));
-        }
-        compCard.appendChild(makeElement("hr", "share-ai-divider"));
-        container.appendChild(compCard);
-      }
     }
 
-    container.appendChild(makeElement("h4", "", "项目级研发结论（人工编辑）"));
+    project.patents.forEach(function (patent) {
+      var patentCard = makeElement("article", "share-ai-patent-card");
+      var header = makeElement("div", "share-ai-patent-header");
+      header.appendChild(makeElement("h4", "", patent.patentNumber + " · " + (patent.title || "未提供标题")));
+      var btnGroup = makeElement("div", "share-ai-btn-group");
+      [["summary", "技术解读"], ["elements", "技术要素"], ["embodiments", "实施例与验证"]].forEach(function (item) {
+        var button = makeElement("button", "share-secondary-action share-ai-btn", (patent.aiAnalysis && patent.aiAnalysis[item[0]] ? "重新生成" : "生成") + item[1] + "草稿");
+        button.type = "button";
+        button.dataset.shareAction = "ai-" + item[0];
+        button.dataset.patentId = patent.id;
+        button.disabled = aiRunning || !hasAI || (item[0] === "embodiments" && !patent.description);
+        if (item[0] === "embodiments" && !patent.description) button.title = "需先导入说明书内容";
+        btnGroup.appendChild(button);
+      });
+      header.appendChild(btnGroup);
+      patentCard.appendChild(header);
+      [["summary", "技术解读（问题、方案、效果与待确认事项）"], ["elements", "技术要素与参数"], ["embodiments", "实施例与验证"]].forEach(function (item) {
+        var reviewCard = buildAIReviewCard(patent, "patent", item[0], item[1], patent.aiAnalysis && patent.aiAnalysis[item[0]]);
+        if (reviewCard) patentCard.appendChild(reviewCard);
+      });
+      container.appendChild(patentCard);
+    });
+
+    if (project.patents.length >= 2) {
+      var compCard = makeElement("article", "share-ai-patent-card");
+      var compHeader = makeElement("div", "share-ai-patent-header");
+      compHeader.appendChild(makeElement("h4", "", "多专利技术路线对比"));
+      var compBtn = makeElement("button", "share-primary-action share-ai-btn", project.aiAnalysis && project.aiAnalysis.comparison ? "重新生成对比草稿" : "生成对比草稿");
+      compBtn.type = "button";
+      compBtn.dataset.shareAction = "ai-comparison";
+      compBtn.disabled = aiRunning || !hasAI;
+      compHeader.appendChild(compBtn);
+      compCard.appendChild(compHeader);
+      var comparisonReview = buildAIReviewCard(null, "project", "comparison", "技术路线对比", project.aiAnalysis && project.aiAnalysis.comparison);
+      if (comparisonReview) compCard.appendChild(comparisonReview);
+      container.appendChild(compCard);
+    }
+
+    container.appendChild(makeElement("h4", "", "项目级结论（人工确认）"));
     var summary = project.researchSummary || {};
-    var fields = [
-      ["problem", "技术问题（项目整体）"], ["approach", "技术手段要点"], ["effect", "技术效果总结"], ["openQuestions", "待验证问题/研发启发"],
-    ];
-    fields.forEach(function (item) {
+    [["problem", "技术问题（项目整体）"], ["approach", "技术手段要点"], ["effect", "技术效果总结"], ["openQuestions", "待验证问题与下一步"]].forEach(function (item) {
       var label = makeElement("label", "share-research-label", item[1]);
       var input = document.createElement("textarea");
       input.className = "share-research-input";
@@ -1285,7 +1361,7 @@
       label.appendChild(input);
       container.appendChild(label);
     });
-    var save = makeElement("button", "share-primary-action", "保存研发结论");
+    var save = makeElement("button", "share-primary-action", "保存项目级结论");
     save.type = "button";
     save.dataset.shareAction = "save-research-summary";
     save.disabled = aiRunning;
@@ -1302,8 +1378,8 @@
     summary.appendChild(makeElement("strong", "", "HTML 导出检查"));
     summary.appendChild(makeElement("p", "", "" + project.patents.length + " 篇专利 · " + Math.ceil(result.size / 1024) + " KB · 离线 CSS 已内联，无外部依赖"));
     container.appendChild(summary);
-    var hardBlockFindings = result.findings.filter(function (f) { return /密钥|Token|Cookie/.test(f); });
-    var softWarningFindings = result.findings.filter(function (f) { return !/密钥|Token|Cookie/.test(f); });
+    var hardBlockFindings = result.findings.filter(function (f) { return /密钥|Token|Cookie|未审核 AI/.test(f); });
+    var softWarningFindings = result.findings.filter(function (f) { return !/密钥|Token|Cookie|未审核 AI/.test(f); });
     var canExport = project.patents.length > 0 && !aiRunning && hardBlockFindings.length === 0;
     var action = makeElement("button", "share-primary-action", "保存 HTML");
     action.type = "button";
@@ -1588,14 +1664,14 @@
       return;
     }
     var result = renderer.render(project);
-    // 安全扫描：密钥/Token 类硬阻断；本机路径/本地地址类仅警告，确认后允许导出
-    var hardBlock = result.findings.some(function (f) { return /密钥|Token|Cookie/.test(f); });
+    // 安全扫描和 AI 审核：密钥、令牌及未审核 AI 内容均硬阻断；路径类仅警告。
+    var hardBlock = result.findings.some(function (f) { return /密钥|Token|Cookie|未审核 AI/.test(f); });
     if (hardBlock) {
       setNotice("导出已阻止：" + result.findings.join("；"), true);
       render();
       return;
     }
-    var softWarnings = result.findings.filter(function (f) { return !/密钥|Token|Cookie/.test(f); });
+    var softWarnings = result.findings.filter(function (f) { return !/密钥|Token|Cookie|未审核 AI/.test(f); });
     function doExport() {
       var baseName = (project.name || "patent-share").replace(/[<>:"/\\|?*]/g, "-").trim().slice(0, 60) || "patent-share";
       var bridge = window.electronAPI && window.electronAPI.saveShareHtml;
@@ -1643,16 +1719,16 @@
 
     var promise;
     if (type === "summary") {
-      promise = AI.generatePatentSummary(patent).then(function(result) {
+      promise = AI.generatePatentSummary(patent, project.brief).then(function(result) {
         if (result.ok) {
           window.PatentShareStore.setAIAnalysis(patentId, "summary", result);
-          setNotice("已生成" + patent.patentNumber + "的技术问题-手段-效果分析。", false);
+          setNotice("已生成" + patent.patentNumber + "的技术解读草稿，请审核后确认用于分享。", false);
         } else {
           setNotice("AI分析失败: " + (result.error || "未知错误"), true);
         }
       });
     } else if (type === "elements") {
-      promise = AI.generateTechnicalElements(patent).then(function(result) {
+      promise = AI.generateTechnicalElements(patent, project.brief).then(function(result) {
         if (result.ok) {
           window.PatentShareStore.setAIAnalysis(patentId, "elements", result);
           setNotice("已提取" + patent.patentNumber + "的技术要素和系统结构。", false);
@@ -1661,7 +1737,7 @@
         }
       });
     } else if (type === "embodiments") {
-      promise = AI.generateEmbodiments(patent).then(function(result) {
+      promise = AI.generateEmbodiments(patent, project.brief).then(function(result) {
         if (result.ok) {
           window.PatentShareStore.setAIAnalysis(patentId, "embodiments", result);
           setNotice("已生成" + patent.patentNumber + "的实施例分析。", false);
@@ -1691,16 +1767,16 @@
     aiRunning = true;
     setNotice("AI正在抽取「" + field.label + "」，请稍候...", false);
     render();
-    AI.generateProcessedField(patent, field).then(function (result) {
+    AI.generateProcessedField(patent, field, project.brief).then(function (result) {
       if (result.ok) {
         window.PatentShareStore.updateProcessedField(patentId, fieldId, {
           value: result.value,
           source: "ai",
           model: result.model,
           generatedAt: result.generatedAt,
-          reviewState: "accepted",
+          reviewState: "pending",
         });
-        setNotice("AI已抽取「" + field.label + "」内容。", false);
+        setNotice("AI已抽取「" + field.label + "」内容，请在内容加工与审核中确认后分享。", false);
       } else {
         setNotice("AI抽取失败: " + (result.error || "未知错误"), true);
       }
@@ -1722,7 +1798,7 @@
     setNotice("AI正在进行多专利对比分析（" + project.patents.length + "篇），请稍候...", false);
     render();
 
-    AI.generateMultiPatentComparison(project.patents).then(function(result) {
+    AI.generateMultiPatentComparison(project.patents, project.brief).then(function(result) {
       if (result.ok) {
         window.PatentShareStore.setProjectAIAnalysis("comparison", result);
         setNotice("已生成" + project.patents.length + "篇专利的技术路线对比分析。", false);
@@ -1744,33 +1820,38 @@
     var provider = AI.getActiveAIProvider();
     if (!provider) { setNotice("未检测到可用的AI配置，请先在设置中配置AI接口。", true); render(); return; }
     aiRunning = true;
-    var total = project.patents.length + (project.patents.length >= 2 ? 1 : 0);
+    var total = project.patents.length * 2 + (project.patents.length >= 2 ? 1 : 0);
     var completed = 0;
+    var failed = 0;
     setNotice("AI批量分析开始：共" + total + "项任务（每篇专利摘要分析+技术要素" + (project.patents.length >= 2 ? "+多专利对比" : "") + "）...", false);
     render();
 
     var tasks = project.patents.map(function(patent) {
-      return AI.generatePatentSummary(patent).then(function(result) {
+      return AI.generatePatentSummary(patent, project.brief).then(function(result) {
         if (result.ok) window.PatentShareStore.setAIAnalysis(patent.id, "summary", result);
+        else failed++;
         completed++;
         setNotice("AI批量分析进度: " + completed + "/" + total + "...", false);
-        return AI.generateTechnicalElements(patent);
+        return AI.generateTechnicalElements(patent, project.brief);
       }).then(function(result) {
         if (result.ok) window.PatentShareStore.setAIAnalysis(patent.id, "elements", result);
+        else failed++;
         completed++;
         setNotice("AI批量分析进度: " + completed + "/" + total + "...", false);
       });
     });
     if (project.patents.length >= 2) {
       tasks.push(Promise.resolve().then(function() {
-        return AI.generateMultiPatentComparison(project.patents);
+        return AI.generateMultiPatentComparison(project.patents, project.brief);
       }).then(function(result) {
         if (result.ok) window.PatentShareStore.setProjectAIAnalysis("comparison", result);
+        else failed++;
         completed++;
       }));
     }
     Promise.all(tasks).then(function() {
-      setNotice("AI批量分析全部完成！共处理 " + project.patents.length + " 篇专利" + (project.patents.length >= 2 ? "，含1项组合对比" : "") + "。", false);
+      var resultText = failed ? "完成，其中" + failed + "项失败" : "全部完成";
+      setNotice("AI批量分析" + resultText + "。所有成功结果仍需人工审核后才会进入分享。", failed > 0);
     }).catch(function(err) {
       setNotice("AI批量分析部分出错: " + (err && err.message ? err.message : String(err)), true);
     }).then(function() {
@@ -1803,6 +1884,10 @@
       render();
     });
     var view = byId("share-workspace-view");
+    if (view) view.addEventListener("mousedown", function (event) {
+      var annoButton = event.target.closest ? event.target.closest("[data-share-action='annotate-text']") : null;
+      if (annoButton && annoButton.dataset.annoType !== "clear") event.preventDefault();
+    });
     if (view) view.addEventListener("click", function (event) {
       var action = event.target.closest ? event.target.closest("[data-share-action]") : null;
       if (!action) return;
@@ -1831,30 +1916,34 @@
           if (window.PatentShareStore.clearAnnotations) {
             window.PatentShareStore.clearAnnotations(action.dataset.patentId, annoField, annoKey);
             setNotice("已清除该区域标注。", false);
+            showAnnotationFeedback(action, "已清除本段标注。", false);
             render();
           }
           return;
         }
         if (!sel || sel.isCollapsed || !sel.rangeCount) {
           setNotice("请先选中文本再点击标注按钮。", true);
+          showAnnotationFeedback(action, "请先选中正文，再添加标注。", true);
           return;
         }
         var range = sel.getRangeAt(0);
         // 确保选区在标注文本元素内
         if (!annoTextEl.contains(range.commonAncestorContainer)) {
           setNotice("请选中该区域内的文本再标注。", true);
+          showAnnotationFeedback(action, "选区必须位于当前正文区域。", true);
           return;
         }
-        // 计算选区在纯文本中的位置
-        var fullText = annoTextEl.textContent || "";
         var selectedText = range.toString();
-        var startIdx = fullText.indexOf(selectedText);
-        if (startIdx < 0) { setNotice("无法定位选中文本。", true); return; }
-        var endIdx = startIdx + selectedText.length;
+        var offsets = selectionOffsetsInText(annoTextEl, range);
+        if (!offsets || offsets.start >= offsets.end) {
+          setNotice("无法定位选中文本。", true);
+          showAnnotationFeedback(action, "无法定位选区，请重新选择。", true);
+          return;
+        }
         var comment = "";
         if (annoType === "comment") {
           PatentShareUI.prompt("请输入注释内容", "").then(function (input) {
-            if (!input) { setNotice("未输入注释内容。", true); return; }
+            if (!input) { setNotice("未输入注释内容。", true); showAnnotationFeedback(action, "未保存：请填写注释内容。", true); return; }
             comment = input;
             doSaveAnnotation();
           });
@@ -1865,9 +1954,10 @@
           if (window.PatentShareStore.addAnnotation) {
             window.PatentShareStore.addAnnotation(action.dataset.patentId, {
               field: annoField, key: annoKey, type: annoType,
-              start: startIdx, end: endIdx, text: selectedText, comment: comment,
+              start: offsets.start, end: offsets.end, text: selectedText, comment: comment,
             });
             setNotice("标注已保存。", false);
+            showAnnotationFeedback(action, "标注已保存。", false);
             render();
           }
         }
@@ -1887,6 +1977,16 @@
       if (actionName === "import-pdf") startPdfImport();
       if (actionName === "refresh-preview") render();
       if (actionName === "save-html") saveHtml();
+      if (actionName === "save-project-brief") {
+        window.PatentShareStore.setProjectBrief({
+          audience: byId("share-brief-audience") ? byId("share-brief-audience").value : "",
+          purpose: byId("share-brief-purpose") ? byId("share-brief-purpose").value : "",
+          focus: byId("share-brief-focus") ? byId("share-brief-focus").value : "",
+          confidentiality: byId("share-brief-confidentiality") ? byId("share-brief-confidentiality").value : "",
+        });
+        setNotice("分享设定已保存，后续 AI 草稿会按此对象和重点生成。", false);
+        render();
+      }
       if (actionName === "save-research-summary") {
         window.PatentShareStore.setResearchSummary({
           problem: byId("share-research-problem") ? byId("share-research-problem").value : "",
@@ -1894,7 +1994,16 @@
           effect: byId("share-research-effect") ? byId("share-research-effect").value : "",
           openQuestions: byId("share-research-openQuestions") ? byId("share-research-openQuestions").value : "",
         });
-        setNotice("研发结论已保存；请在'分享模块'启用 R1/R6 后导出。", false);
+        setNotice("项目级结论已保存；请在“编排与展示”中启用相应内容后导出。", false);
+        render();
+      }
+      if ((actionName === "save-ai-analysis" || actionName === "accept-ai-analysis" || actionName === "return-ai-analysis") && action.dataset.aiType) {
+        var editor = view.querySelector("[data-ai-editor='true'][data-ai-scope='" + action.dataset.aiScope + "'][data-ai-type='" + action.dataset.aiType + "']" + (action.dataset.patentId ? "[data-patent-id='" + action.dataset.patentId + "']" : ""));
+        var updates = {};
+        if (actionName === "save-ai-analysis") updates.content = editor ? editor.value : "";
+        else updates.reviewState = actionName === "accept-ai-analysis" ? "accepted" : "pending";
+        var changed = action.dataset.aiScope === "project" ? window.PatentShareStore.updateProjectAIAnalysis(action.dataset.aiType, updates) : window.PatentShareStore.updateAIAnalysis(action.dataset.patentId, action.dataset.aiType, updates);
+        setNotice(changed ? (actionName === "accept-ai-analysis" ? "已确认该内容可用于分享。" : actionName === "return-ai-analysis" ? "内容已退回草稿状态。" : "AI 草稿已保存。") : "无法更新该 AI 内容。", !changed);
         render();
       }
       if (actionName === "ai-analyze-all") runAIAnalyzeAll();
