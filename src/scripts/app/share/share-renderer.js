@@ -100,6 +100,24 @@
     return conflicts;
   }
 
+  function findUnreviewedAI(project) {
+    var pending = [];
+    (project && Array.isArray(project.patents) ? project.patents : []).forEach(function (record) {
+      Object.keys(record.aiAnalysis && typeof record.aiAnalysis === "object" ? record.aiAnalysis : {}).forEach(function (type) {
+        var item = record.aiAnalysis[type];
+        if (item && item.content && item.reviewState !== "accepted") pending.push({ patentNumber: record.patentNumber, label: type });
+      });
+      (record.processedFields || []).forEach(function (field) {
+        if (field && field.source === "ai" && field.value && field.reviewState !== "accepted") pending.push({ patentNumber: record.patentNumber, label: field.label || "加工字段" });
+      });
+    });
+    Object.keys(project && project.aiAnalysis && typeof project.aiAnalysis === "object" ? project.aiAnalysis : {}).forEach(function (type) {
+      var item = project.aiAnalysis[type];
+      if (item && item.content && item.reviewState !== "accepted") pending.push({ patentNumber: "项目级", label: type });
+    });
+    return pending;
+  }
+
   function fieldValueHtml(record, name, label, fullRow) {
     var item = field(record, name);
     var rowClass = fullRow ? " field-item full-row" : " field-item";
@@ -107,22 +125,22 @@
     return '<div class="' + rowClass.trim() + '"><span class="fl">' + escapeHtml(label) + '</span><span class="fv">' + escapeHtml(item.value) + '</span></div>';
   }
 
-  // 将标注应用到已转义的纯文本 HTML，返回带标注标签的 HTML。
+  // 按原始文本偏移量应用标注。偏移量不能在 HTML 转义后计算，否则特殊字符会导致位置漂移。
   // annotations: [{ key, type, start, end, text, comment }]
   // key: 仅匹配该 key 的标注（claims 用 claim.number，description 用空串）
-  function applyAnnotationsToHtml(escapedHtml, annotations, key) {
-    if (!escapedHtml) return "";
-    if (!annotations || !Array.isArray(annotations) || !annotations.length) return escapedHtml;
+  function applyAnnotationsToHtml(text, annotations, key) {
+    if (!text) return "";
+    if (!annotations || !Array.isArray(annotations) || !annotations.length) return escapeHtml(text);
     var sorted = annotations.filter(function (a) { return a && a.key === (key || ""); })
       .sort(function (a, b) { return (b.start || 0) - (a.start || 0); });
-    var html = escapedHtml;
+    var html = "";
+    var cursor = 0;
     sorted.forEach(function (anno) {
-      var start = anno.start || 0;
-      var end = anno.end || start;
-      if (start < 0 || end > html.length || start > end) return;
-      var before = html.slice(0, start);
-      var middle = html.slice(start, end);
-      var after = html.slice(end);
+      var start = Math.max(0, anno.start || 0);
+      var end = Math.min(text.length, anno.end || start);
+      if (start < cursor || start >= end) return;
+      html += escapeHtml(text.slice(cursor, start));
+      var middle = escapeHtml(text.slice(start, end));
       if (anno.type === "underline") {
         middle = '<span class="anno-underline">' + middle + '</span>';
       } else if (anno.type === "highlight") {
@@ -131,9 +149,10 @@
         middle = '<span class="anno-comment" title="' + escapeHtml(anno.comment) + '">' + middle +
           '<sup>注释</sup></span>';
       }
-      html = before + middle + after;
+      html += middle;
+      cursor = end;
     });
-    return html;
+    return html + escapeHtml(text.slice(cursor));
   }
 
   function renderClaimsHtml(claims, config, annotations) {
@@ -156,7 +175,7 @@
       html += '<div class="claim-item ' + typeClass + '" id="' + claimId + '">';
       if (claim.type === "independent") html += '<span class="claim-type independent">独立</span>';
       html += '<span class="claim-num">' + escapeHtml(claim.number || "") + '.</span> ';
-      html += applyAnnotationsToHtml(escapeHtml(claim.text || ""), annos, claim.number || "");
+      html += applyAnnotationsToHtml(claim.text || "", annos, claim.number || "");
       if (claim.references && claim.references.length) {
         html += '<div class="claim-refs">引用权项：';
         html += claim.references.map(function (ref) {
@@ -254,7 +273,7 @@
     fields.forEach(function (f) {
       if (!f.value) return;
       var isAI = f.source === "ai";
-      var badge = isAI ? '<span class="pf-badge ai">AI 抽取</span>' : '<span class="pf-badge manual">手工录入</span>';
+      var badge = isAI ? '<span class="pf-badge ai">' + (f.reviewState === "accepted" ? "AI 抽取，已确认" : "AI 草稿，待审核") + '</span>' : '<span class="pf-badge manual">手工录入</span>';
       html += '<div class="pf-card">';
       html += '<div class="pf-head"><span class="pf-label">' + escapeHtml(f.label) + '</span>' + badge + '</div>';
       var value = f.value;
@@ -458,7 +477,7 @@
         } else {
           var mode = moduleMode(config, "S5");
           var origText = mode === "lite" && description.length > 3000 ? description.slice(0, 3000) + "\n\n...（内容过长，已截断）" : description;
-          html += '<div class="bilingual-col original">' + applyAnnotationsToHtml(escapeHtml(origText), record.descriptionAnnotations, "") + '</div>';
+          html += '<div class="bilingual-col original">' + applyAnnotationsToHtml(origText, record.descriptionAnnotations, "") + '</div>';
           html += '<div class="translate-hint">尚未生成中文翻译。可在分享工作台「数据审核」中点击"翻译说明书"生成双栏对照。</div>';
         }
       }
@@ -507,101 +526,68 @@
     return html;
   }
 
-  // 加工信息面板：processedFields + AI分析模块
+  function processedCard(title, content) {
+    return '<div class="card"><div class="card-body"><div class="section-title"><span class="bar"></span>' + title + '</div>' + content + '</div></div>';
+  }
+
+  function renderProcessedModule(record, config, project, moduleId, researchRendered) {
+    var mode = moduleMode(config, moduleId);
+    if (moduleId === "R1") {
+      var result = "";
+      if (record === project.patents[0] && !researchRendered.value) { result += renderProjectResearchBlocks(project, config); researchRendered.value = true; }
+      if (record.aiAnalysis && record.aiAnalysis.summary) result += processedCard("技术解读（AI）", renderAISummary(record, null, record.aiAnalysis || {}, mode));
+      return result;
+    }
+    if (moduleId === "R2") return processedCard("技术要素与系统结构", renderTechElements(record.aiAnalysis && record.aiAnalysis.elements, mode));
+    if (moduleId === "R3") {
+      var elements = record.aiAnalysis && record.aiAnalysis.elements;
+      var params = '<p class="missing">请先生成并审核技术要素草稿，关键参数将据此归纳。</p>';
+      if (elements && elements.parsed && elements.parsed.parameters && elements.parsed.parameters.length) {
+        params = '<table class="data-table"><tr><th>参数</th><th>范围/取值</th><th>单位</th><th>作用</th></tr>';
+        elements.parsed.parameters.forEach(function (p) { params += '<tr><td>' + escapeHtml(p.name || "") + '</td><td>' + escapeHtml(p.range || "") + '</td><td>' + escapeHtml(p.unit || "") + '</td><td>' + escapeHtml(p.effect || "") + '</td></tr>'; });
+        params += '</table><div class="ai-meta">来源：技术要素 AI 提取</div>';
+      }
+      return processedCard("关键参数与边界条件", params);
+    }
+    if (moduleId === "R4") {
+      var emb = record.aiAnalysis && record.aiAnalysis.embodiments;
+      var embHtml = '<p class="missing">尚未生成实施例分析。需要先导入说明书内容。</p>';
+      if (emb && emb.content) {
+        var content = mode === "lite" && emb.content.length > 2000 ? emb.content.slice(0, 2000) + "\n\n...（内容过长，已截断）" : emb.content;
+        embHtml = '<div class="ai-block"><span class="ai-tag">AI</span>' + renderMarkdownSimple(content) + '<div class="ai-meta">' + escapeHtml(emb.model || "AI") + ' · ' + escapeHtml(emb.generatedAt ? emb.generatedAt.slice(0, 10) : "") + '</div></div>';
+      }
+      return processedCard("实施例与验证证据", embHtml);
+    }
+    if (moduleId === "R5") return record === project.patents[0] && project.patents.length >= 2 ? processedCard("多专利对比", renderMultiPatentComparison(project, project.aiAnalysis, mode)) : "";
+    if (moduleId === "R6") {
+      if (record !== project.patents[0] || researchRendered.value) return "";
+      researchRendered.value = true;
+      return renderProjectResearchBlocks(project, config);
+    }
+    if (moduleId === "R7") {
+      var sources = Array.isArray(record.ocrSources) ? record.ocrSources : [];
+      var ocr = sources.length ? sources.map(function (source) {
+        var excerpt = source.text || source.markdown || "";
+        if (mode === "lite" && excerpt.length > 4000) excerpt = excerpt.slice(0, 4000) + "…";
+        return '<div class="ai-meta">' + escapeHtml(source.fileName || "PDF") + ' · ' + escapeHtml(source.engine || "OCR") + '</div><pre class="bilingual-col" style="max-height:340px;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace">' + escapeHtml(excerpt) + '</pre>';
+      }).join("") : '<p class="missing">尚未关联 PDF OCR 材料</p>';
+      return processedCard("OCR 原文摘录", ocr);
+    }
+    if (moduleId === "R8") return processedCard("引证文献", renderCitations(record.citations, mode));
+    if (moduleId === "R9") return processedCard("同族与地域布局", renderFamily(record.family, mode));
+    return "";
+  }
+
+  // 加工信息面板：手工字段固定在顶部，R 系列模块严格按照 moduleOrder 输出。
   function renderProcessedPanel(record, config, project) {
     var html = '<div class="panel" data-panel="processed">';
-    // 项目级多专利对比放在第一篇专利的加工信息中
-    if (record === project.patents[0] && moduleEnabled(config, "R5") && project.patents.length >= 2) {
-      html += '<div class="card"><div class="card-body">';
-      html += '<div class="section-title"><span class="bar"></span>多专利对比</div>';
-      html += renderMultiPatentComparison(project, project.aiAnalysis, moduleMode(config, "R5"));
-      html += '</div></div>';
-    }
-    if (record.processedFields && record.processedFields.length) {
-      html += '<div class="card"><div class="card-body">';
-      html += '<div class="section-title"><span class="bar"></span>加工字段</div>';
-      html += renderProcessedFields(record, "full");
-      html += '</div></div>';
-    }
-    // 项目级研发结论（R1/R6）挂在第一篇专利下
-    if (record === project.patents[0]) {
-      html += renderProjectResearchBlocks(project, config);
-    }
-    if (moduleEnabled(config, "R1") && record.aiAnalysis && record.aiAnalysis.summary) {
-      html += '<div class="card"><div class="card-body">';
-      html += '<div class="section-title"><span class="bar"></span>技术问题-方案-效果（AI）</div>';
-      html += renderAISummary(record, null, record.aiAnalysis || {}, moduleMode(config, "R1"));
-      html += '</div></div>';
-    }
-    if (moduleEnabled(config, "R2")) {
-      html += '<div class="card"><div class="card-body">';
-      html += '<div class="section-title"><span class="bar"></span>技术要素与系统结构</div>';
-      html += renderTechElements(record.aiAnalysis && record.aiAnalysis.elements, moduleMode(config, "R2"));
-      html += '</div></div>';
-    }
-    if (moduleEnabled(config, "R3")) {
-      html += '<div class="card"><div class="card-body">';
-      html += '<div class="section-title"><span class="bar"></span>关键参数与边界条件</div>';
-      var elementsForParams = record.aiAnalysis && record.aiAnalysis.elements;
-      if (elementsForParams && elementsForParams.parsed && elementsForParams.parsed.parameters && elementsForParams.parsed.parameters.length) {
-        html += '<table class="data-table"><tr><th>参数</th><th>范围/取值</th><th>单位</th><th>作用</th></tr>';
-        elementsForParams.parsed.parameters.forEach(function (p) {
-          html += '<tr><td>' + escapeHtml(p.name || "") + '</td><td>' + escapeHtml(p.range || "") + '</td><td>' + escapeHtml(p.unit || "") + '</td><td>' + escapeHtml(p.effect || "") + '</td></tr>';
-        });
-        html += '</table><div class="ai-meta">来源：技术要素AI提取</div>';
-      } else {
-        html += '<p class="missing">请先运行AI技术要素提取，关键参数将自动归纳。</p>';
-      }
-      html += '</div></div>';
-    }
-    if (moduleEnabled(config, "R4")) {
-      html += '<div class="card"><div class="card-body">';
-      html += '<div class="section-title"><span class="bar"></span>实施例与验证证据</div>';
-      if (record.aiAnalysis && record.aiAnalysis.embodiments && record.aiAnalysis.embodiments.content) {
-        var emb = record.aiAnalysis.embodiments;
-        var embContent = emb.content;
-        if (moduleMode(config, "R4") === "lite" && embContent.length > 2000) embContent = embContent.slice(0, 2000) + "\n\n...（内容过长，已截断）";
-        html += '<div class="ai-block"><span class="ai-tag">AI</span>' + renderMarkdownSimple(embContent) + '<div class="ai-meta">' + escapeHtml(emb.model || "AI") + ' · ' + escapeHtml(emb.generatedAt ? emb.generatedAt.slice(0, 10) : "") + '</div></div>';
-      } else {
-        html += '<p class="missing">尚未生成实施例分析。请运行R4实施例分析（需要已导入说明书）。</p>';
-      }
-      html += '</div></div>';
-    }
-    // R6 已在 renderProjectResearchBlocks 中渲染（项目级，挂在第一篇专利下）
-    if (moduleEnabled(config, "R8")) {
-      html += '<div class="card"><div class="card-body">';
-      html += '<div class="section-title"><span class="bar"></span>引证文献</div>';
-      html += renderCitations(record.citations, moduleMode(config, "R8"));
-      html += '</div></div>';
-    }
-    if (moduleEnabled(config, "R9")) {
-      html += '<div class="card"><div class="card-body">';
-      html += '<div class="section-title"><span class="bar"></span>同族与地域布局</div>';
-      html += renderFamily(record.family, moduleMode(config, "R9"));
-      html += '</div></div>';
-    }
-    if (moduleEnabled(config, "R7")) {
-      html += '<div class="card"><div class="card-body">';
-      html += '<div class="section-title"><span class="bar"></span>OCR 原文摘录</div>';
-      var ocrSources = Array.isArray(record.ocrSources) ? record.ocrSources : [];
-      var ocrHtml = '';
-      if (ocrSources.length) ocrSources.forEach(function (source) {
-        var excerpt = source.text || source.markdown || "";
-        if (moduleMode(config, "R7") === "lite" && excerpt.length > 4000) excerpt = excerpt.slice(0, 4000) + "…";
-        ocrHtml += '<div class="ai-meta">' + escapeHtml(source.fileName || "PDF") + ' · ' + escapeHtml(source.engine || "OCR") + '</div><pre class="bilingual-col" style="max-height:340px;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace">' + escapeHtml(excerpt) + '</pre>';
-      });
-      else ocrHtml = '<p class="missing">尚未关联 PDF OCR 材料</p>';
-      html += ocrHtml;
-      html += '</div></div>';
-    }
-    var hasAnyProcessed = (record.processedFields && record.processedFields.length) ||
-      (moduleEnabled(config, "R1") && record.aiAnalysis && record.aiAnalysis.summary) ||
-      moduleEnabled(config, "R2") || moduleEnabled(config, "R3") || moduleEnabled(config, "R4") ||
-      moduleEnabled(config, "R8") || moduleEnabled(config, "R9") || moduleEnabled(config, "R7") ||
-      (record === project.patents[0] && (moduleEnabled(config, "R5") || moduleEnabled(config, "R6")));
-    if (!hasAnyProcessed) {
-      html += '<p class="missing">尚未添加加工信息。可在「数据审核」中添加加工字段或运行AI抽取，或在「分享模块」中启用 R 系列模块。</p>';
-    }
+    if (record.processedFields && record.processedFields.length) html += processedCard("加工字段", renderProcessedFields(record, "full"));
+    var defaultOrder = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9"];
+    var order = config.moduleOrder && Array.isArray(config.moduleOrder.processed) ? config.moduleOrder.processed : defaultOrder;
+    var researchRendered = { value: false };
+    order.forEach(function (moduleId) { if (moduleEnabled(config, moduleId)) html += renderProcessedModule(record, config, project, moduleId, researchRendered); });
+    var hasAnyProcessed = (record.processedFields && record.processedFields.length) || order.some(function (id) { return moduleEnabled(config, id); });
+    if (!hasAnyProcessed) html += '<p class="missing">尚未添加加工信息。可在“内容加工与审核”中添加字段或运行 AI 草稿，并在“编排与展示”中启用 R 系列模块。</p>';
     html += '</div>';
     return html;
   }
@@ -685,8 +671,10 @@
     var findings = scanSensitive(input, html);
     var conflicts = findPendingConflicts(input);
     if (conflicts.length) findings.push("存在 " + conflicts.length + " 个未确认字段冲突");
+    var unreviewedAI = findUnreviewedAI(input);
+    if (unreviewedAI.length) findings.push("存在 " + unreviewedAI.length + " 项未审核 AI 内容");
     return { html: html, config: config, findings: findings, size: html.length };
   }
 
-  window.PatentShareRenderer = { render: render, scanSensitive: scanSensitive, findPendingConflicts: findPendingConflicts, escapeHtml: escapeHtml, escapeJson: escapeJson, renderMarkdownSimple: renderMarkdownSimple };
+  window.PatentShareRenderer = { render: render, scanSensitive: scanSensitive, findPendingConflicts: findPendingConflicts, findUnreviewedAI: findUnreviewedAI, escapeHtml: escapeHtml, escapeJson: escapeJson, renderMarkdownSimple: renderMarkdownSimple };
 })();

@@ -236,6 +236,53 @@ test('manual research summary is isolated and rendered only when R1 is enabled',
   assert.equal(enabled.html.includes('优化层压结构'), true);
 });
 
+test('AI drafts block share export until an IPR reviewer confirms them', () => {
+  const { PatentShareStore, PatentShareModules, PatentShareRenderer } = loadShareModules();
+  PatentShareStore.addPatent({ id: 'p1', patentNumber: 'US1', title: 'AI review', source: { type: 'manual', label: 'Manual' } });
+  PatentShareStore.setAIAnalysis('p1', 'summary', { content: 'AI draft content', model: 'test-model' });
+  const config = PatentShareModules.defaultConfig();
+  config.modules.R1 = 'full';
+  let rendered = PatentShareRenderer.render({ ...PatentShareStore.getSnapshot(), moduleConfig: config });
+  assert.equal(rendered.findings.some((finding) => finding.includes('未审核 AI')), true);
+  assert.equal(PatentShareStore.updateAIAnalysis('p1', 'summary', { reviewState: 'accepted' }), true);
+  rendered = PatentShareRenderer.render({ ...PatentShareStore.getSnapshot(), moduleConfig: config });
+  assert.equal(rendered.findings.some((finding) => finding.includes('未审核 AI')), false);
+});
+
+test('processed module order is persisted and changes export order', () => {
+  const { PatentShareStore, PatentShareModules, PatentShareRenderer } = loadShareModules();
+  PatentShareStore.addPatent({
+    id: 'p1', patentNumber: 'US1', title: 'Ordered modules', source: { type: 'manual', label: 'Manual' },
+    aiAnalysis: {
+      summary: { content: 'Summary draft', reviewState: 'accepted' },
+      elements: { content: '{"components":[]}', parsed: { components: [] }, reviewState: 'accepted' },
+    },
+  });
+  const config = PatentShareModules.defaultConfig();
+  config.modules.R1 = 'full';
+  config.modules.R2 = 'full';
+  config.moduleOrder.processed = ['R2', 'R1'];
+  PatentShareStore.setModuleConfig(config);
+  const snapshot = PatentShareStore.getSnapshot();
+  assert.deepEqual([...snapshot.moduleConfig.moduleOrder.processed.slice(0, 2)], ['R2', 'R1']);
+  const rendered = PatentShareRenderer.render(snapshot);
+  assert.equal(rendered.html.indexOf('技术要素与系统结构') < rendered.html.indexOf('技术解读（AI）'), true);
+});
+
+test('annotations use raw text offsets when content includes HTML-sensitive characters', () => {
+  const { PatentShareModules, PatentShareRenderer } = loadShareModules();
+  const config = PatentShareModules.defaultConfig();
+  const rendered = PatentShareRenderer.render({
+    name: 'Annotations', moduleConfig: config,
+    patents: [{
+      patentNumber: 'US1', title: 'Claim annotation', source: { type: 'manual', label: 'Manual' },
+      claims: [{ number: '1', text: 'A & B', type: 'independent' }],
+      claimsAnnotations: [{ id: 'a1', key: '1', type: 'highlight', start: 2, end: 3, text: '&' }],
+    }],
+  });
+  assert.equal(rendered.html.includes('<mark class="anno-highlight">&amp;</mark>'), true);
+});
+
 test('store degrades to session memory when IndexedDB is unavailable', async () => {
   const { PatentShareStore } = loadShareModules();
   const initialized = await PatentShareStore.initialize();

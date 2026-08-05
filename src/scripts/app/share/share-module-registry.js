@@ -28,16 +28,16 @@
     { id: "R9", label: "同族与地域", description: "同族专利布局、重点国家与申请节奏。", required: false, defaultMode: "off", category: "processed" },
   ];
 
-  // 加工字段预设模板：用户可一键添加，每个模板自带提示词约束
+  // 加工字段预设模板：面向研发沟通，不默认输出侵权、FTO 或规避结论。
   var FIELD_PRESETS = [
-    { label: "技术问题", prompt: "请用2-4句话精炼概括本专利要解决的核心技术问题，以及现有技术存在的主要痛点。直接输出结论，不要标题和编号。", type: "text" },
-    { label: "技术方案", prompt: "请用3-6个要点概括本专利的核心技术方案，每个要点说明采用了什么结构/步骤及其作用。直接输出要点列表，不要总标题。", type: "list" },
-    { label: "技术效果", prompt: "请对应技术方案，用3-5个要点说明本专利带来的具体技术效果或优势，尽可能量化。直接输出要点列表，不要总标题。", type: "list" },
-    { label: "核心创新点", prompt: "请提炼本专利最值得研发关注的1-3个核心创新点，每个创新点一句话说明。直接输出列表，不要总标题。", type: "list" },
-    { label: "权利要求保护范围", prompt: "请分析独立权利要求的必要技术特征，判断保护范围是宽/中/窄并说明理由，2-3句话。直接输出结论。", type: "text" },
-    { label: "研发启发", prompt: "请总结该专利对研发团队的3-5点启示，包括可借鉴思路、值得关注的技术点和可能的设计绕开方向。直接输出要点列表。", type: "list" },
-    { label: "实施例要点", prompt: "请从说明书中提取2-3个关键实施例，每个实施例说明其构成、工作原理和验证的效果。直接输出要点列表。", type: "list" },
-    { label: "风险与规避", prompt: "请分析该专利可能带来的技术风险（侵权/自由实施），以及建议的规避方向。3-5个要点，仅作技术讨论。直接输出列表。", type: "list" },
+    { label: "一句话技术结论", prompt: "用一句不超过60字的话说明该专利的核心技术思路和适用对象。没有明确依据时写“未找到明确依据”。", type: "text" },
+    { label: "技术问题", prompt: "用2-4句话概括本专利要解决的具体技术问题和现有技术痛点。每个判断必须能对应摘要、权利要求或说明书；无法确认时明确说明。", type: "text" },
+    { label: "核心方案", prompt: "用3-6个要点概括核心结构、步骤或模块及其作用。不要推断专利未披露的实现细节。", type: "list" },
+    { label: "关键要素与参数", prompt: "列出研发复现或评审最需要关注的部件、材料、步骤、数值范围和边界条件；仅列专利明确披露的内容。", type: "list" },
+    { label: "技术效果与证据", prompt: "区分“专利主张的效果”和“实施例或测试已验证的效果”。没有实验数据时明确写“未见公开验证数据”，不要补充数值。", type: "list" },
+    { label: "独立权项必要特征", prompt: "仅列出独立权利要求中明确出现的必要技术特征，不判断保护范围宽窄，不给出侵权、FTO 或规避结论。", type: "list" },
+    { label: "研发相关性与待验证", prompt: "从技术讨论角度列出值得内部研发验证的假设、实验条件或信息缺口。不得给出侵权、自由实施或规避结论。", type: "list" },
+    { label: "实施例与验证要点", prompt: "提取公开实施例、对比条件和验证结果；专利未公开具体数据时明确说明。", type: "list" },
   ];
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -45,7 +45,7 @@
   function defaultConfig() {
     var modules = {};
     MODULES.forEach(function (module) { modules[module.id] = module.defaultMode; });
-    return { preset: "research-basic", modules: modules, patentOverrides: {} };
+    return { preset: "research-basic", modules: modules, patentOverrides: {}, moduleOrder: { processed: MODULES.filter(function (m) { return m.category === "processed"; }).map(function (m) { return m.id; }) } };
   }
 
   function resolveConfig(projectConfig) {
@@ -57,7 +57,29 @@
       if (config.modules[id] && ["full", "lite", "off"].indexOf(incoming[id]) >= 0) config.modules[id] = incoming[id];
     });
     config.patentOverrides = input.patentOverrides && typeof input.patentOverrides === "object" ? clone(input.patentOverrides) : {};
+    var processedIds = MODULES.filter(function (m) { return m.category === "processed"; }).map(function (m) { return m.id; });
+    var requestedOrder = input.moduleOrder && Array.isArray(input.moduleOrder.processed) ? input.moduleOrder.processed : [];
+    var seen = {};
+    config.moduleOrder = { processed: requestedOrder.filter(function (id) {
+      if (processedIds.indexOf(id) < 0 || seen[id]) return false;
+      seen[id] = true;
+      return true;
+    }) };
+    processedIds.forEach(function (id) { if (!seen[id]) config.moduleOrder.processed.push(id); });
     return config;
+  }
+
+  function orderByConfig(modules, config, zone) {
+    var list = Array.isArray(modules) ? modules.slice() : [];
+    var requested = config && config.moduleOrder && Array.isArray(config.moduleOrder[zone]) ? config.moduleOrder[zone] : [];
+    if (!requested.length) return list;
+    var position = {};
+    requested.forEach(function (id, index) { position[id] = index; });
+    return list.sort(function (a, b) {
+      var left = Object.prototype.hasOwnProperty.call(position, a.id) ? position[a.id] : Number.MAX_SAFE_INTEGER;
+      var right = Object.prototype.hasOwnProperty.call(position, b.id) ? position[b.id] : Number.MAX_SAFE_INTEGER;
+      return left - right;
+    });
   }
 
   function setModuleMode(projectConfig, moduleId, mode) {
@@ -91,6 +113,7 @@
     defaultConfig: defaultConfig,
     resolveConfig: resolveConfig,
     setModuleMode: setModuleMode,
+    orderByConfig: orderByConfig,
     fieldPresets: function () { return clone(FIELD_PRESETS); },
   };
 })();
