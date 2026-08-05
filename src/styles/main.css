@@ -9040,6 +9040,21 @@ body {
   background: var(--accent);
   color: #fff;
 }
+/* 主应用专利详情页「加入分享项目」注入按钮：绿色系，与分享工作台主题一致 */
+.pd-header-link.pd-share-add-btn {
+  color: #16a34a;
+  border-color: #16a34a;
+  background: #e8f5ed;
+  font-weight: 600;
+}
+.pd-header-link.pd-share-add-btn:hover {
+  background: #16a34a;
+  color: #fff;
+}
+.pd-header-link.pd-share-add-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
 .pd-gp-link {
   display: inline-flex;

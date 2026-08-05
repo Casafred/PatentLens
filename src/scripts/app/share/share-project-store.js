@@ -197,6 +197,12 @@
       safeRecord.source = safeRecord.source && typeof safeRecord.source === "object" ? safeRecord.source : {};
       safeRecord.aiAnalysis = normalizeAIAnalysis(safeRecord.aiAnalysis);
       safeRecord.processedFields = normalizeProcessedFields(safeRecord.processedFields);
+      safeRecord.claimsTranslation = cleanText(safeRecord.claimsTranslation).slice(0, 200000);
+      safeRecord.descriptionTranslation = cleanText(safeRecord.descriptionTranslation).slice(0, 500000);
+      safeRecord.translationMeta = safeRecord.translationMeta && typeof safeRecord.translationMeta === "object" ? {
+        model: cleanText(safeRecord.translationMeta.model),
+        generatedAt: cleanText(safeRecord.translationMeta.generatedAt),
+      } : {};
       normalized.patents.push(safeRecord);
     });
     (Array.isArray(raw.sources) ? raw.sources : []).forEach(function (source) {
@@ -391,6 +397,47 @@
     queuePersist();
     notify();
     return true;
+  }
+
+  function deleteProject(projectId) {
+    var id = cleanText(projectId);
+    if (!id) return Promise.resolve({ ok: false, reason: "invalid-project" });
+    if (persistence.mode !== "indexeddb") {
+      // 内存模式下仅能删除当前项目：清空并新建
+      if (ensureProject().id === id) {
+        project = createProject();
+        queuePersist();
+        notify();
+        return Promise.resolve({ ok: true });
+      }
+      return Promise.resolve({ ok: false, reason: "project-not-available" });
+    }
+    return flush().then(function () {
+      return openDatabase().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction([PROJECT_STORE, META_STORE], "readwrite");
+          tx.objectStore(PROJECT_STORE).delete(id);
+          // 若删除的是当前激活项目，清空激活指针（后续 ensureProject 会新建空项目）
+          if (ensureProject().id === id) {
+            tx.objectStore(META_STORE).delete(ACTIVE_PROJECT_KEY);
+          }
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = function () { reject(tx.error || new Error("IndexedDB delete failed")); };
+          tx.onabort = function () { reject(tx.error || new Error("IndexedDB delete aborted")); };
+        }).then(function () {
+          if (ensureProject().id === id) {
+            project = createProject();
+          }
+          queuePersist();
+          notify();
+          return { ok: true };
+        }).finally(function () { db.close(); });
+      });
+    }).catch(function (error) {
+      persistence = { mode: "error", error: error && error.message ? error.message : "IndexedDB delete failed" };
+      notify();
+      return { ok: false, reason: "storage-error" };
+    });
   }
 
   function setModuleConfig(config) {
@@ -803,6 +850,25 @@
     return true;
   }
 
+  // 保存权利要求/说明书的中文翻译，供分享HTML双栏对照使用
+  function setPatentTranslation(patentId, kind, translation, meta) {
+    var active = ensureProject();
+    var patent = active.patents.find(function (item) { return item.id === patentId; });
+    if (!patent) return false;
+    var text = cleanText(translation);
+    if (kind === "claims") patent.claimsTranslation = text.slice(0, 200000);
+    else if (kind === "description") patent.descriptionTranslation = text.slice(0, 500000);
+    else return false;
+    patent.translationMeta = {
+      model: cleanText(meta && meta.model),
+      generatedAt: cleanText(meta && meta.generatedAt) || now(),
+    };
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
   function setProjectAIAnalysis(analysisType, analysisData) {
     var active = ensureProject();
     if (!cleanText(analysisType) || !analysisData) return false;
@@ -851,6 +917,7 @@
     newProject: newProject,
     listProjects: listProjects,
     selectProject: selectProject,
+    deleteProject: deleteProject,
     renameProject: renameProject,
     setResearchSummary: setResearchSummary,
     setModuleConfig: setModuleConfig,
@@ -872,6 +939,7 @@
     updateProcessedField: updateProcessedField,
     removeProcessedField: removeProcessedField,
     setAIAnalysis: setAIAnalysis,
+    setPatentTranslation: setPatentTranslation,
     setProjectAIAnalysis: setProjectAIAnalysis,
     removePatent: removePatent,
     flush: flush,

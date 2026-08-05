@@ -160,6 +160,13 @@
         open.dataset.shareAction = "open-project";
         open.dataset.projectId = item.id;
         row.appendChild(open);
+        var del = makeElement("button", "share-source-remove", "删除");
+        del.type = "button";
+        del.disabled = aiRunning;
+        del.dataset.shareAction = "delete-project";
+        del.dataset.projectId = item.id;
+        del.dataset.projectName = item.name || "未命名分享项目";
+        row.appendChild(del);
         list.appendChild(row);
       });
     }).catch(function () {
@@ -190,6 +197,23 @@
     pdfButton.disabled = aiRunning;
     buttonGroup.appendChild(pdfButton);
     container.appendChild(buttonGroup);
+    // 按专利号搜索加入：复用主应用 GP 查询能力，支持批量
+    var searchPanel = makeElement("div", "share-search-panel");
+    searchPanel.appendChild(makeElement("h4", "", "按专利号搜索加入"));
+    var searchHint = makeElement("p", "share-search-hint", "输入专利号（如 US12030161B2、EP4252965A3），每行一个，支持批量查询并加入当前项目。最多 10 篇，串行查询避免限流。");
+    searchPanel.appendChild(searchHint);
+    var searchInput = makeElement("textarea", "share-search-input");
+    searchInput.id = "share-patent-search-input";
+    searchInput.placeholder = "US12030161B2\nEP4252965A3\n...";
+    searchInput.rows = 3;
+    searchInput.disabled = aiRunning;
+    searchPanel.appendChild(searchInput);
+    var searchBtn = makeElement("button", "share-primary-action", "查询并加入");
+    searchBtn.type = "button";
+    searchBtn.dataset.shareAction = "search-add-patents";
+    searchBtn.disabled = aiRunning;
+    searchPanel.appendChild(searchBtn);
+    container.appendChild(searchPanel);
     if (project.patents.length === 0) {
       var empty = makeElement("div", "share-empty-panel");
       empty.appendChild(makeElement("h4", "", "尚无材料来源"));
@@ -242,13 +266,98 @@
       manual: "人工确认",
       excel: "Excel/CSV",
       csv: "CSV",
-      google_patents: "Google Patents",
+      google_patents: "专利原文",
       dossier: "审查档案",
       pdf_text: "PDF 文本层",
       ocr: "OCR",
       ai: "AI生成",
     };
     return (labels[field.source] || field.source) + (field.reviewState === "conflict" ? " · 待确认冲突" : "");
+  }
+
+  // 按专利号搜索加入：复用主应用 fetchPatentWithRetry 抓取 GP 原文，转成分享快照后入库
+  function searchAndAddPatents() {
+    var store = window.PatentShareStore;
+    var adapter = window.PatentShareSources;
+    if (!store || !adapter || !adapter.snapshotFromGpData) return;
+    if (store.getPersistenceState().mode === "loading") {
+      setNotice("正在恢复本机分享项目，请稍候再搜索。", true);
+      render();
+      return;
+    }
+    var fetchFn = window.fetchPatentWithRetry;
+    if (typeof fetchFn !== "function") {
+      setNotice("当前环境不支持专利号搜索，请使用桌面版或在主应用查询后加入。", true);
+      render();
+      return;
+    }
+    var input = byId("share-patent-search-input");
+    var raw = input ? input.value : "";
+    var lines = String(raw || "").split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+    var numbers = [];
+    lines.forEach(function (line) {
+      var num = line.toUpperCase().replace(/[\s\/]/g, "");
+      if (num && numbers.indexOf(num) < 0) numbers.push(num);
+    });
+    if (!numbers.length) {
+      setNotice("请输入至少一个专利号。", true);
+      render();
+      return;
+    }
+    if (numbers.length > 10) {
+      numbers = numbers.slice(0, 10);
+      setNotice("已截取前 10 个专利号进行查询。", true);
+    }
+    aiRunning = true;
+    var succeeded = 0, failed = 0, duplicated = 0;
+    var i = 0;
+    setNotice("开始查询 " + numbers.length + " 篇专利，请稍候...", false);
+    render();
+    function next() {
+      if (i >= numbers.length) {
+        aiRunning = false;
+        var msg = "查询完成：成功加入 " + succeeded + " 篇";
+        if (duplicated) msg += "，已存在 " + duplicated + " 篇";
+        if (failed) msg += "，失败 " + failed + " 篇";
+        setNotice(msg + "。", failed > 0);
+        activeView = "sources";
+        render();
+        return;
+      }
+      var pn = numbers[i];
+      i++;
+      setNotice("正在查询第 " + i + "/" + numbers.length + " 篇：" + pn, false);
+      render();
+      fetchFn(pn, 2).then(function (json) {
+        var data = json && json.data;
+        if (!data || data.data_source === "Espacenet") {
+          failed++;
+          setNotice(pn + " 未查询到原文（可能需降级到 Espacenet，请到主应用查询）。", true);
+        } else {
+          var record = adapter.snapshotFromGpData(data);
+          if (!record) {
+            failed++;
+          } else {
+            var result = store.addPatent(record);
+            if (result.ok) succeeded++;
+            else if (result.reason === "duplicate") duplicated++;
+            else failed++;
+          }
+        }
+        render();
+      }).catch(function () {
+        failed++;
+        setNotice(pn + " 查询失败。", true);
+        render();
+      }).then(function () {
+        if (i < numbers.length) {
+          setTimeout(next, 1200);
+        } else {
+          next();
+        }
+      });
+    }
+    next();
   }
 
   function startSpreadsheetImport() {
@@ -473,6 +582,17 @@
       claimEdit.dataset.patentId = patent.id;
       claimEdit.disabled = aiRunning;
       claimRow.appendChild(claimEdit);
+      if (claimList.length) {
+        var trClaimsBtn = makeElement("button", "share-field-edit", patent.claimsTranslation ? "重新翻译" : "翻译为中文");
+        trClaimsBtn.type = "button";
+        trClaimsBtn.dataset.shareAction = "translate-claims";
+        trClaimsBtn.dataset.patentId = patent.id;
+        trClaimsBtn.disabled = aiRunning;
+        claimRow.appendChild(trClaimsBtn);
+        if (patent.claimsTranslation) {
+          claimVal.appendChild(makeElement("span", "share-processed-badge ai", "已翻译"));
+        }
+      }
       card.appendChild(claimRow);
 
       if (patent.description) {
@@ -480,6 +600,15 @@
         var truncated = patent.description.length > 300 ? patent.description.slice(0, 300) + "..." : patent.description;
         descPreview.appendChild(makeElement("span", "share-review-field-label", "说明书预览"));
         descPreview.appendChild(makeElement("div", "share-review-field-value", truncated));
+        var trDescBtn = makeElement("button", "share-field-edit", patent.descriptionTranslation ? "重新翻译说明书" : "翻译说明书");
+        trDescBtn.type = "button";
+        trDescBtn.dataset.shareAction = "translate-description";
+        trDescBtn.dataset.patentId = patent.id;
+        trDescBtn.disabled = aiRunning;
+        descPreview.appendChild(trDescBtn);
+        if (patent.descriptionTranslation) {
+          descPreview.appendChild(makeElement("span", "share-processed-badge ai", "已翻译"));
+        }
         card.appendChild(descPreview);
       }
 
@@ -929,30 +1058,35 @@
     aiRunning = false;
   }
 
-  function addCurrentPatent() {
+  // 把当前主应用打开的专利加入激活分享项目。quiet=true 时仅返回结果不触发 UI 渲染
+  // （供主应用专利详情页"加入分享项目"按钮调用）。
+  function addCurrentPatent(options) {
+    var quiet = options && options.quiet;
     var adapter = window.PatentShareSources;
     var store = window.PatentShareStore;
-    if (store && store.getPersistenceState && store.getPersistenceState().mode === "loading") {
-      setNotice("正在恢复本机分享项目，请稍候再加入材料。", true);
-      render();
-      return;
+    if (!store) return { ok: false, reason: "store-unavailable" };
+    if (store.getPersistenceState && store.getPersistenceState().mode === "loading") {
+      if (!quiet) { setNotice("正在恢复本机分享项目，请稍候再加入材料。", true); render(); }
+      return { ok: false, reason: "loading" };
     }
     var record = adapter && adapter.currentPatentSnapshot ? adapter.currentPatentSnapshot() : null;
     if (!record) {
-      setNotice("未检测到当前专利原文。请先切换到「专利原文」查询并打开一篇专利，再回到分享工作台。", true);
-      render();
-      return;
+      if (!quiet) { setNotice("未检测到当前专利原文。请先切换到「专利原文」查询并打开一篇专利，再回到分享工作台。", true); render(); }
+      return { ok: false, reason: "no-current-patent" };
     }
     var result = store.addPatent(record);
-    if (!result.ok && result.reason === "duplicate") {
-      setNotice("该专利已在当前分享项目中，无需重复加入。", true);
-    } else if (!result.ok) {
-      setNotice("当前专利数据不完整，暂时无法加入分享项目。", true);
-    } else {
-      setNotice("已复制当前专利原文快照（含说明书、权利要求引用、分类号等完整字段）。后续可在「研发洞察」运行AI分析。", false);
-      activeView = "sources";
+    if (!quiet) {
+      if (!result.ok && result.reason === "duplicate") {
+        setNotice("该专利已在当前分享项目中，无需重复加入。", true);
+      } else if (!result.ok) {
+        setNotice("当前专利数据不完整，暂时无法加入分享项目。", true);
+      } else {
+        setNotice("已复制当前专利原文快照（含说明书、权利要求引用、分类号等完整字段）。后续可在「研发洞察」运行AI分析。", false);
+        activeView = "sources";
+      }
+      render();
     }
-    render();
+    return { ok: !!result.ok, reason: result.reason, patentNumber: record.patentNumber, projectId: currentProject().id, projectName: currentProject().name };
   }
 
   function newProject() {
@@ -993,6 +1127,63 @@
       if (!result || !result.ok) setNotice("未能打开该项目；它可能已不可用。", true);
       else setNotice("已打开分享项目：" + result.project.name + "。", false);
       activeView = "overview";
+      render();
+    });
+  }
+
+  function deleteProject(projectId, projectName) {
+    var store = window.PatentShareStore;
+    if (!store || !store.deleteProject) return;
+    if (store.getPersistenceState().mode === "loading") {
+      setNotice("正在恢复本机分享项目，请稍候再删除。", true);
+      render();
+      return;
+    }
+    PatentShareUI.confirm('确定要删除分享项目"' + (projectName || "未命名") + '"吗？该项目的所有专利与加工字段将被永久删除，此操作不可撤销。').then(function (confirmed) {
+      if (!confirmed) return;
+      setNotice("正在删除分享项目...", false);
+      render();
+      store.deleteProject(projectId).then(function (result) {
+        if (result && result.ok) {
+          setNotice("已删除分享项目。", false);
+          activeView = "overview";
+        } else {
+          setNotice("删除失败：" + (result && result.reason ? result.reason : "未知错误"), true);
+        }
+        render();
+      });
+    });
+  }
+
+  function runTranslate(patentId, kind) {
+    var AI = window.PatentShareAI;
+    var project = currentProject();
+    if (!AI || !AI.translatePatentText || !project || aiRunning) return;
+    var patent = project.patents.find(function (p) { return p.id === patentId; });
+    if (!patent) { setNotice("未找到目标专利。", true); render(); return; }
+    var text = "";
+    var label = kind === "claims" ? "权利要求" : "说明书";
+    if (kind === "claims") {
+      if (!patent.claims || !patent.claims.length) { setNotice("该专利没有权利要求内容，无法翻译。", true); render(); return; }
+      text = patent.claims.map(function (c) { return (c.number ? c.number + ". " : "") + (c.text || ""); }).join("\n\n");
+    } else {
+      if (!patent.description) { setNotice("该专利没有说明书内容，无法翻译。", true); render(); return; }
+      text = patent.description;
+    }
+    aiRunning = true;
+    setNotice("AI正在翻译" + label + "，内容较长时请耐心等候...", false);
+    render();
+    AI.translatePatentText(text, kind).then(function (result) {
+      if (result.ok) {
+        window.PatentShareStore.setPatentTranslation(patentId, kind, result.content, { model: result.model, generatedAt: result.generatedAt });
+        setNotice("已生成" + label + "中文翻译，分享HTML将以双栏对照展示。", false);
+      } else {
+        setNotice(label + "翻译失败：" + (result.error || "未知错误"), true);
+      }
+    }).catch(function (err) {
+      setNotice(label + "翻译出错：" + (err && err.message ? err.message : String(err)), true);
+    }).then(function () {
+      aiRunning = false;
       render();
     });
   }
@@ -1213,6 +1404,7 @@
       if (!action) return;
       var actionName = action.dataset.shareAction;
       if (actionName === "add-current") addCurrentPatent();
+      if (actionName === "search-add-patents") searchAndAddPatents();
       if (actionName === "import-csv") startSpreadsheetImport();
       if (actionName === "import-pdf") startPdfImport();
       if (actionName === "refresh-preview") render();
@@ -1233,6 +1425,9 @@
       if (actionName === "ai-embodiments" && action.dataset.patentId) runAIAnalysis(action.dataset.patentId, "embodiments");
       if (actionName === "ai-comparison") runAIComparison();
       if (actionName === "open-project") openProject(action.dataset.projectId);
+      if (actionName === "delete-project" && action.dataset.projectId) deleteProject(action.dataset.projectId, action.dataset.projectName);
+      if (actionName === "translate-claims" && action.dataset.patentId) runTranslate(action.dataset.patentId, "claims");
+      if (actionName === "translate-description" && action.dataset.patentId) runTranslate(action.dataset.patentId, "description");
       if (actionName === "select-field-candidate") {
         if (window.PatentShareStore.getPersistenceState().mode === "loading") {
           setNotice("正在恢复本机分享项目，请稍候再审核。", true);
@@ -1645,6 +1840,18 @@
     open: openWorkspace,
     close: closeWorkspace,
     isOpen: function () { return workspaceOpen; },
+    // 供主应用专利详情页"加入分享项目"按钮外部调用：
+    //   PatentShareWorkspace.addCurrentPatent() -> Promise<{ok, reason, patentNumber, projectId, projectName}>
+    //   options.quiet=true 时不弹通知；options.open=true 时加入后自动打开工作台。
+    addCurrentPatent: function (options) {
+      var result = addCurrentPatent(options || {});
+      // addCurrentPatent 是同步的（已通过 store.addPatent 入库），但为便于调用方使用 await，包装为 Promise。
+      var shouldOpen = options && options.open && result.ok;
+      return Promise.resolve(result).then(function (r) {
+        if (shouldOpen) openWorkspace();
+        return r;
+      });
+    },
   };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

@@ -208,6 +208,43 @@
     }
   }
 
+  // 调用翻译模型将权利要求/说明书翻译为中文。kind: "claims" | "description"
+  // 优先使用翻译专用 provider（getTranslateProvider），回退到当前 provider。
+  async function translatePatentText(text, kind) {
+    try {
+      var content = cleanText(text);
+      if (!content) throw new Error("没有可翻译的内容");
+      if (!window.AI || !window.AI.streamChat) throw new Error("AI 模块未就绪");
+      var config = window.AI.loadAIConfig();
+      var tp = window.AI.getTranslateProvider ? window.AI.getTranslateProvider(config) : getActiveAIProvider();
+      if (!tp || !tp.apiKey) throw new Error("请先在 AI 设置中配置有效的 API Key");
+      var kindLabel = kind === "claims" ? "权利要求" : (kind === "description" ? "说明书" : "专利文本");
+      var systemPrompt = '你是一位专业的专利文献翻译专家。请将以下' + kindLabel + '文本翻译为中文。要求：\n- 保持专利术语的准确性，专业术语可在括号内保留英文原文\n- 保留所有权利要求编号、附图标记和数字标记\n- 翻译要流畅自然，符合中文技术文档表达习惯\n- 只返回翻译结果，不要添加解释、注释或引导语\n- 若原文已是中文，原样返回';
+      var messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: content }
+      ];
+      var fullContent = "";
+      var stream = window.AI.streamChat(
+        tp.type,
+        tp.apiKey,
+        tp.baseUrl,
+        { model: tp.model, messages: messages, temperature: 0.3, maxTokens: 32768 }
+      );
+      for await (var chunk of stream) {
+        if (chunk.content) fullContent += chunk.content;
+      }
+      return {
+        ok: true,
+        content: fullContent,
+        model: tp.model,
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  }
+
   function cleanText(value) { return typeof value === "string" ? value.trim() : ""; }
 
   window.PatentShareAI = {
@@ -217,6 +254,7 @@
     generateEmbodiments: generateEmbodiments,
     generateMultiPatentComparison: generateMultiPatentComparison,
     generateProcessedField: generateProcessedField,
+    translatePatentText: translatePatentText,
     buildPatentContext: buildPatentContext,
   };
 })();
