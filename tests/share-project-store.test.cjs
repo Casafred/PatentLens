@@ -283,6 +283,60 @@ test('annotations use raw text offsets when content includes HTML-sensitive char
   assert.equal(rendered.html.includes('<mark class="anno-highlight">&amp;</mark>'), true);
 });
 
+test('dependent-claim annotations use raw text offsets like independent claims', () => {
+  const { PatentShareModules, PatentShareRenderer } = loadShareModules();
+  const config = PatentShareModules.defaultConfig();
+  // S4 defaults to "lite", which strips dependent claims; switch to "full" so the
+  // dependent claim is actually rendered and its annotation offsets are exercised.
+  config.modules.S4 = 'full';
+  const rendered = PatentShareRenderer.render({
+    name: 'Dependent annotations', moduleConfig: config,
+    patents: [{
+      patentNumber: 'US1', title: 'Dep claim', source: { type: 'manual', label: 'Manual' },
+      claims: [
+        { number: '1', text: 'Independent base', type: 'independent' },
+        { number: '2', text: 'A & B C', type: 'dependent' },
+      ],
+      // Highlight the 'B' which sits after an HTML-sensitive '&' in the raw text.
+      // Offsets must be computed against raw text; if applied to escaped text the
+      // highlight would land on 'm' (inside &amp;) instead of 'B'.
+      claimsAnnotations: [{ id: 'a1', key: '2', type: 'highlight', start: 4, end: 5, text: 'B' }],
+    }],
+  });
+  assert.equal(rendered.html.includes('<mark class="anno-highlight">B</mark>'), true);
+  assert.equal(rendered.html.includes('<mark class="anno-highlight">m</mark>'), false);
+});
+
+test('removeAnnotation deletes a single annotation while preserving the others', () => {
+  const { PatentShareStore } = loadShareModules();
+  PatentShareStore.addPatent({
+    id: 'patent_1', patentNumber: 'US1', title: 'Anno patent', source: { type: 'manual', label: 'Manual' },
+  });
+  PatentShareStore.addAnnotation('patent_1', { field: 'claims', key: '1', type: 'underline', start: 0, end: 3, text: 'abc' });
+  PatentShareStore.addAnnotation('patent_1', { field: 'claims', key: '1', type: 'highlight', start: 5, end: 8, text: 'def' });
+
+  let snapshot = PatentShareStore.getSnapshot();
+  assert.equal(snapshot.patents[0].claimsAnnotations.length, 2);
+  const firstId = snapshot.patents[0].claimsAnnotations[0].id;
+
+  // Removing a non-existent id is a no-op.
+  assert.equal(PatentShareStore.removeAnnotation('patent_1', 'claims', 'missing_id'), false);
+  assert.equal(PatentShareStore.getSnapshot().patents[0].claimsAnnotations.length, 2);
+
+  // Remove only the first annotation; the second must remain intact with its own id.
+  assert.equal(PatentShareStore.removeAnnotation('patent_1', 'claims', firstId), true);
+  snapshot = PatentShareStore.getSnapshot();
+  assert.equal(snapshot.patents[0].claimsAnnotations.length, 1);
+  assert.equal(snapshot.patents[0].claimsAnnotations[0].text, 'def');
+  assert.equal(snapshot.patents[0].claimsAnnotations[0].id !== firstId, true);
+
+  // Removing the last annotation leaves an empty array (not undefined), so the
+  // per-annotation deletion entry renders nothing afterwards.
+  const lastId = snapshot.patents[0].claimsAnnotations[0].id;
+  assert.equal(PatentShareStore.removeAnnotation('patent_1', 'claims', lastId), true);
+  assert.equal(PatentShareStore.getSnapshot().patents[0].claimsAnnotations.length, 0);
+});
+
 test('store degrades to session memory when IndexedDB is unavailable', async () => {
   const { PatentShareStore } = loadShareModules();
   const initialized = await PatentShareStore.initialize();

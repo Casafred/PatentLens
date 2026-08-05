@@ -31,5 +31,14 @@
 ## 后续建议
 
 - 在 Electron 中手动确认：项目设定保存、AI 草稿编辑/确认/退回、未审核阻断、R2/R1 拖拽顺序、带 `&` 和重复文本的划线标注。
-- 若继续优化，优先补充分享工作台的 Electron 交互测试和逐条标注删除入口。
+- 逐条标注删除入口已完成（见下节）；如继续优化，可补充完整的 Electron 自动化交互测试覆盖标注删除流程。
 - 本轮明确不做 P2：协作、版本历史、多格式导出、组织模板、负责人/任务治理均未扩展。
+
+## 本轮接手完成（2026-08-05）
+
+- 逐条标注删除入口：在「内容加工与审核」的权利要求/说明书每段标注工具条下方，列出该段已有标注（类型徽标 + 文本片段 + 注释摘要 + 删除按钮），调用既有 `PatentShareStore.removeAnnotation(patentId, field, annotationId)` 逐条删除，删除前弹确认框，与其它破坏性操作一致。空列表不渲染。
+- 标注偏移回归修复：`share-renderer.js` 中从属权利要求原先把 `escapeHtml(text)` 再交给 `applyAnnotationsToHtml`，导致偏移按转义后长度计算、特殊字符后定位漂移；改为与独立权项一致的原始文本输入。
+- 新增 2 个 Node 级 characterization 测试（35→37 通过）：`removeAnnotation` 单条删除保留其余、从属权项标注按原始文本偏移；后者在未应用修复时会失败，作为回归守卫。
+- 验证：`node --check` 通过；`npm run verify:web-app` 通过（未触及冻结的 `web-app.js`）；`npm test` 37/37 通过；`git diff --check` 通过。
+- 改动文件：`src/scripts/app/share/share-entry.js`、`src/scripts/app/share/share-renderer.js`、`src/styles/main.css`、`src/web.html`（缓存版本号）、`tests/share-project-store.test.cjs`。
+- 仍需人工在 Electron 中确认：逐条标注删除按钮的交互与渲染、删除后段落标注即时刷新。

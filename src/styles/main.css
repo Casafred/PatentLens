@@ -12201,6 +12201,71 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 }
 .review-anno-feedback.error { color: #dc2626; }
 
+/* 逐条标注删除列表：每条标注一行，展示类型、文本片段与独立删除按钮 */
+.review-anno-list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.review-anno-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--bg-secondary, #f8faf8);
+  border: 1px solid var(--border-soft, #e8f1ec);
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.review-anno-item-type {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 11px;
+}
+.review-anno-item-type.type-underline { background: #fee2e2; color: #dc2626; }
+.review-anno-item-type.type-highlight { background: #fef3c7; color: #b45309; }
+.review-anno-item-type.type-comment { background: #dbeafe; color: #2563eb; }
+.review-anno-item-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary, #14211a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.review-anno-item-comment {
+  flex-shrink: 1;
+  min-width: 0;
+  color: var(--text-muted, #4a6355);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.review-anno-item-remove {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-muted, #7a9486);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.review-anno-item-remove:hover:not(:disabled) {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+.review-anno-item-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* 分享工作台：项目设定与 AI 草稿审核 */
 .share-project-brief {
   margin: 18px 0;
