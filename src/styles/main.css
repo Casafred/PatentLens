@@ -6458,6 +6458,267 @@ body {
   background: var(--danger);
   color: #fff;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+ * 专利收藏夹（Favorites）
+ * 注入按钮 + 侧栏收藏夹视图 + 编辑对话框
+ * ════════════════════════════════════════════════════════════════════ */
+
+/* 历史条目上的星标按钮（与删除按钮同区域，hover 显现） */
+.history-item-fav-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.history-item:hover .history-item-fav-btn { opacity: 1; }
+.history-item-fav-btn:hover { background: var(--bg-hover, #eef2ee); color: var(--accent); }
+.history-item-fav-btn.favorited {
+  opacity: 1;
+  color: #f59e0b;
+}
+.history-item-fav-btn.favorited svg { fill: #f59e0b; }
+
+/* 侧栏顶部「收藏夹」切换按钮 + 计数徽标 */
+.fav-view-toggle {
+  position: relative;
+  color: var(--text-muted);
+}
+.fav-view-toggle[data-count]:not([data-count="0"])::after {
+  content: attr(data-count);
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  font-weight: 600;
+}
+.history-sidebar.fav-view .fav-view-toggle {
+  color: var(--accent);
+  background: var(--bg-hover, #eef2ee);
+}
+
+/* 收藏夹视图：隐藏历史列表与多选/清空按钮，显示收藏列表 */
+.history-sidebar.fav-view #history-list,
+.history-sidebar.fav-view #history-batch-bar,
+.history-sidebar.fav-view #history-select-btn,
+.history-sidebar.fav-view #history-clear-btn { display: none !important; }
+.history-sidebar:not(.fav-view) #favorites-list { display: none; }
+
+.favorites-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+.fav-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 24px 8px;
+  line-height: 1.6;
+}
+.fav-item {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--border, #e3e8e4);
+  border-radius: 7px;
+  background: var(--bg-secondary, #f8faf8);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.fav-item:hover { border-color: var(--accent); background: var(--bg-hover, #eef2ee); }
+.fav-item.pinned { border-left: 3px solid #f59e0b; }
+.fav-item-main { flex: 1; min-width: 0; }
+.fav-item-patent {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #14211a);
+}
+.fav-type-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.fav-type-badge.type-patent { background: #dbeafe; color: #2563eb; }
+.fav-type-badge.type-dossier { background: #dcfce7; color: #16a34a; }
+.fav-office { color: var(--accent); font-size: 11px; }
+.fav-item-title {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text, #14211a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fav-item-note {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted, #4a6355);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+.fav-item-meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-muted, #7a9486);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.fav-folder {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg-hover, #eef2ee);
+  color: var(--text-secondary, #4a6355);
+}
+.fav-sep { color: var(--text-muted, #b8c4be); }
+.fav-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+  justify-content: center;
+}
+.fav-act-btn {
+  padding: 2px 7px;
+  border: 1px solid var(--border, #e3e8e4);
+  border-radius: 4px;
+  background: var(--bg, #fff);
+  color: var(--text-muted, #7a9486);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.fav-act-btn:hover { border-color: var(--accent); color: var(--accent); }
+.fav-act-btn.fav-pin.active { color: #f59e0b; border-color: #f59e0b; }
+.fav-act-btn.fav-del:hover { border-color: var(--danger, #dc2626); color: var(--danger, #dc2626); }
+
+/* 注入到专利原文详情头部的「收藏」按钮 */
+.pd-header-link.fav-inject-btn { border: 1px solid var(--accent); }
+.pd-header-link.fav-inject-btn.favorited {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* 注入到审查文档标签栏的「收藏当前」按钮 */
+.dossier-fav-btn {
+  margin-left: 8px;
+  padding: 2px 11px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--bg, #fff);
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  align-self: center;
+}
+.dossier-fav-btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.dossier-fav-btn.favorited { background: var(--accent); color: #fff; }
+.dossier-fav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 编辑收藏对话框 */
+.fav-edit-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100001;
+  background: rgba(0, 0, 0, 0.45);
+  align-items: center;
+  justify-content: center;
+}
+.fav-edit-modal.show { display: flex; }
+.fav-edit-dialog {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg, #fff);
+  border-radius: 10px;
+  padding: 18px 20px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+.fav-edit-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text, #14211a);
+  margin-bottom: 12px;
+}
+.fav-edit-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary, #4a6355);
+  margin: 10px 0 4px;
+}
+#fav-edit-note {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #e3e8e4);
+  border-radius: 6px;
+  background: var(--bg, #fff);
+  color: var(--text, #14211a);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+}
+#fav-edit-folder {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--border, #e3e8e4);
+  border-radius: 6px;
+  background: var(--bg, #fff);
+  color: var(--text, #14211a);
+  font-size: 13px;
+  outline: none;
+}
+.fav-edit-pin-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text, #14211a);
+  cursor: pointer;
+}
+.fav-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
 .history-item.select-mode {
   cursor: default;
 }
