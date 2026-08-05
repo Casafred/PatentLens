@@ -213,6 +213,13 @@
     var citations = extractCitations(data);
     var family = extractFamily(data);
 
+    // 捕获附图 URL（后续异步抓取转为 DataURL）
+    var drawingUrls = Array.isArray(data.drawings) ? data.drawings.map(function (u) {
+      if (typeof u === "string") return cleanText(u);
+      if (u && typeof u === "object") return cleanText(u.url || u.src || u.image || "");
+      return "";
+    }).filter(Boolean) : [];
+
     var result = {
       id: "patent_" + patentNumber + "_" + Date.now().toString(36),
       patentNumber: patentNumber,
@@ -241,6 +248,10 @@
       },
     };
 
+    if (drawingUrls.length) {
+      result._pendingDrawings = drawingUrls;
+    }
+
     if (!description) delete result.description;
     if (!classifications.length) delete result.classifications;
     if (!citations.length) delete result.citations;
@@ -253,8 +264,66 @@
     return snapshotFromGpData(window._currentPatentData);
   }
 
+  // 异步抓取附图 URL 列表并转为 DataURL，返回 figures 数组
+  function fetchDrawingsAsDataUrls(urls, maxCount, onProgress) {
+    var list = Array.isArray(urls) ? urls.slice(0, maxCount || 20) : [];
+    var figures = [];
+    var done = 0;
+    function next() {
+      if (done >= list.length) return Promise.resolve(figures);
+      var idx = done;
+      var url = list[idx];
+      done++;
+      return fetch(url, { mode: "cors" })
+        .then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.blob();
+        })
+        .then(function (blob) {
+          return new Promise(function (resolve, reject) {
+            var reader = new FileReader();
+            reader.onload = function () { resolve(reader.result); };
+            reader.onerror = function () { reject(new Error("FileReader failed")); };
+            reader.readAsDataURL(blob);
+          });
+        })
+        .then(function (dataUrl) {
+          figures.push({
+            id: "fig_" + Date.now().toString(36) + "_" + idx,
+            dataUrl: dataUrl,
+            caption: "附图 " + (idx + 1),
+            width: 0,
+            height: 0,
+          });
+          if (onProgress) onProgress(figures.length, list.length);
+        })
+        .catch(function () {
+          // 单张抓取失败不影响其余
+        })
+        .then(next);
+    }
+    return next();
+  }
+
+  // 异步将 _pendingDrawings 转为 figures 并写入 store
+  function hydrateSnapshotDrawings(record, store) {
+    if (!record || !record._pendingDrawings || !store) return Promise.resolve();
+    var urls = record._pendingDrawings;
+    return fetchDrawingsAsDataUrls(urls, 20).then(function (figures) {
+      if (figures.length && store.addFigure) {
+        figures.forEach(function (fig) {
+          store.addFigure(record.id, fig.dataUrl, fig.caption, { width: fig.width, height: fig.height });
+        });
+      }
+      // 清除临时标记
+      delete record._pendingDrawings;
+    });
+  }
+
   window.PatentShareSources = {
     currentPatentSnapshot: currentPatentSnapshot,
     snapshotFromGpData: snapshotFromGpData,
+    fetchDrawingsAsDataUrls: fetchDrawingsAsDataUrls,
+    hydrateSnapshotDrawings: hydrateSnapshotDrawings,
   };
 })();
