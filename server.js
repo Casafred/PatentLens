@@ -1974,7 +1974,10 @@ function scrapeGooglePatentDebug(patentNumber, res, useProxy, proxyUrl) {
 
 // ============ 浏览器扩展通信 ============
 // 扩展通过 HTTP POST 发送数据，前端通过轮询获取
+// 修复无界内存增长：设置最大队列大小和条目 TTL
 const _extensionDataQueue = [];
+const EXTENSION_QUEUE_MAX_SIZE = 100; // 最大条目数
+const EXTENSION_QUEUE_TTL_MS = 30 * 60 * 1000; // 30 分钟超时
 
 function handleExtensionApi(req, res) {
   const urlObj = new URL(req.url, "http://localhost");
@@ -1995,6 +1998,13 @@ function handleExtensionApi(req, res) {
       try {
         const parsed = JSON.parse(body);
         const data = parsed.data || parsed;
+        // 添加前清理过期条目，避免无限增长
+        _pruneExtensionQueue();
+        // 检查队列大小限制
+        if (_extensionDataQueue.length >= EXTENSION_QUEUE_MAX_SIZE) {
+          console.warn(`[Extension] 队列已满 (${EXTENSION_QUEUE_MAX_SIZE} 条)，丢弃最旧的数据`);
+          _extensionDataQueue.shift(); // 移除最旧的条目
+        }
         _extensionDataQueue.push({ type: "extension-data", payload: data, timestamp: Date.now() });
         console.log(`[Extension] 收到数据: office=${data.office}, type=${data.type}`);
         res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
@@ -2014,6 +2024,12 @@ function handleExtensionApi(req, res) {
     req.on("end", () => {
       try {
         const parsed = JSON.parse(body);
+        // 添加前清理过期条目
+        _pruneExtensionQueue();
+        if (_extensionDataQueue.length >= EXTENSION_QUEUE_MAX_SIZE) {
+          console.warn(`[Extension] 队列已满，丢弃最旧的请求`);
+          _extensionDataQueue.shift();
+        }
         _extensionDataQueue.push({ type: "extension-analyze", payload: parsed, timestamp: Date.now() });
         res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
         res.end(JSON.stringify({ success: true }));
@@ -2027,6 +2043,8 @@ function handleExtensionApi(req, res) {
 
   // 前端轮询获取数据
   if (pathname === "/api/extension/poll" && req.method === "GET") {
+    // 返回前清理过期条目
+    _pruneExtensionQueue();
     const items = _extensionDataQueue.splice(0); // 取出并清空
     res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
     res.end(JSON.stringify({ items }));
@@ -2034,6 +2052,26 @@ function handleExtensionApi(req, res) {
   }
 
   return false;
+}
+
+// 清理过期的队列条目
+function _pruneExtensionQueue() {
+  const now = Date.now();
+  // 从后往前找第一个未过期的条目，删除该条目之前所有过期条目
+  let firstValidIndex = -1;
+  for (let i = _extensionDataQueue.length - 1; i >= 0; i--) {
+    if (now - _extensionDataQueue[i].timestamp <= EXTENSION_QUEUE_TTL_MS) {
+      firstValidIndex = i;
+    } else {
+      break; // 已过期，停止搜索
+    }
+  }
+  if (firstValidIndex > 0) {
+    _extensionDataQueue.splice(0, firstValidIndex);
+  } else if (firstValidIndex === -1 && _extensionDataQueue.length > 0) {
+    // 所有条目都已过期，清空队列
+    _extensionDataQueue.length = 0;
+  }
 }
 
 const server = http.createServer((req, res) => {
