@@ -583,3 +583,38 @@ test('buildPatentContext filters content by AI context scope', () => {
   assert.equal(empty.includes('权项内容'), false);
   assert.equal(empty.includes('说明书内容'), false);
 });
+
+test('multiple patents each carry independent processedFields for batch AI processing', () => {
+  const { PatentShareStore } = loadShareModules();
+  // 模拟一次输入 N 篇专利的批量场景：每篇都应有独立的加工字段槽位，
+  // 字段级 contextScope 缺省为 null（继承项目级），便于批量处理时统一按项目级范围抽取。
+  PatentShareStore.setAIContextScope({ abstract: true, claims: true, description: false, annotations: false });
+  ['US1', 'US2', 'US3'].forEach(function (num, i) {
+    PatentShareStore.addPatent({
+      id: 'p' + i, patentNumber: num, title: 'T' + i,
+      source: { type: 'manual', label: 'Manual' },
+    });
+  });
+  const snap1 = PatentShareStore.getSnapshot();
+  snap1.patents.forEach(function (p, i) {
+    const r = PatentShareStore.addProcessedField(p.id, '核心方案', '提取核心方案', 'list');
+    assert.equal(r.ok, true);
+  });
+  const snap2 = PatentShareStore.getSnapshot();
+  // 每篇都恰好 1 个加工字段，且 contextScope 默认 null（继承项目级 description=false）
+  snap2.patents.forEach(function (p) {
+    assert.equal(p.processedFields.length, 1);
+    assert.equal(p.processedFields[0].contextScope, null);
+    assert.equal(p.processedFields[0].label, '核心方案');
+  });
+  // 每篇独立写入 AI 结果，互不影响（批量并发写入的安全性）
+  assert.equal(PatentShareStore.updateProcessedField('p0', snap2.patents[0].processedFields[0].id, { value: 'v0', source: 'ai' }), true);
+  assert.equal(PatentShareStore.updateProcessedField('p2', snap2.patents[2].processedFields[0].id, { value: 'v2', source: 'ai' }), true);
+  const snap3 = PatentShareStore.getSnapshot();
+  assert.equal(snap3.patents[0].processedFields[0].value, 'v0');
+  assert.equal(snap3.patents[0].processedFields[0].source, 'ai');
+  assert.equal(snap3.patents[2].processedFields[0].value, 'v2');
+  // 中间那篇未写入，仍是空值
+  assert.equal(snap3.patents[1].processedFields[0].value, '');
+  assert.equal(snap3.patents[1].processedFields[0].source, 'manual');
+});
