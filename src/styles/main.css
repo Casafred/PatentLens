@@ -65,6 +65,24 @@ body {
   scrollbar-gutter: stable;
 }
 
+/* 分享工作台激活时：让 shell 成为视口高度的 flex 列容器，
+   使审核页的独立滚动容器有确定高度，sticky 标题/导航条稳定冻结。 */
+#app.share-workspace-active {
+  max-width: 100%;
+  padding: 16px 20px 16px;
+  align-items: stretch;
+  height: 100vh;
+  overflow: hidden;
+}
+#app.share-workspace-active .share-workspace-section {
+  max-width: 1480px;
+  width: 100%;
+  margin: 0 auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 #app {
   max-width: 960px;
   margin: 0 auto;
@@ -6963,18 +6981,10 @@ body {
   border-radius: 14px;
   background: var(--bg-primary);
   box-shadow: 0 12px 36px rgba(15, 23, 42, .08);
-}
-
-#app.share-workspace-active {
-  max-width: 100%;
-  padding: 16px 20px 32px;
-  align-items: stretch;
-}
-
-#app.share-workspace-active .share-workspace-section {
-  max-width: 1480px;
-  width: 100%;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .share-workspace-header {
@@ -6985,6 +6995,7 @@ body {
   padding: 22px 26px;
   border-bottom: 1px solid var(--border);
   background: linear-gradient(120deg, var(--bg-primary), var(--bg-secondary));
+  flex-shrink: 0;
 }
 
 .share-workspace-kicker {
@@ -7018,8 +7029,9 @@ body {
 .share-workspace-layout {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  min-height: 520px;
-  align-items: start;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .share-workspace-nav {
@@ -7029,11 +7041,8 @@ body {
   padding: 14px 10px;
   border-right: 1px solid var(--border);
   background: var(--bg-secondary);
-  position: sticky;
-  top: 0;
-  align-self: start;
-  max-height: 100vh;
   overflow-y: auto;
+  min-height: 0;
   z-index: 5;
 }
 
@@ -7077,7 +7086,9 @@ body {
 
 .share-workspace-view {
   min-width: 0;
+  min-height: 0;
   padding: 28px;
+  overflow-y: auto;
 }
 
 .share-view-heading {
@@ -12322,15 +12333,12 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 }
 
 /* ── 数据审核页：分节块 + 悬浮导航条 + 标注 ── */
-/* 审核页改为独立滚动容器：body 的 overflow-x:hidden 会使 overflow-y 计算为 auto，
-   从而破坏 position:sticky 相对视口的吸附。这里把 .share-workspace-view--review
-   显式设为滚动容器，sticky 以它为参考系，标题+导航条即可稳定冻结在顶部。 */
+/* 审核页滚动容器：#app.share-workspace-active 已设为 height:100vh + overflow:hidden，
+   shell/layout/view 层层 flex 填充，.share-workspace-view--review 是唯一滚动区域，
+   sticky 标题+导航条以它为参考系稳定冻结在顶部。 */
 .share-workspace-view--review {
   overflow-y: auto;
   overscroll-behavior: contain;
-  /* 顶部预留工作台标题栏（~117px）+ app 上下 padding（16+32px），使审核区在
-     视口内独立滚动，避免窗口与容器同时滚动的双重滚动体验。 */
-  max-height: calc(100vh - 168px);
 }
 .share-review-section {
   margin-top: 22px;
