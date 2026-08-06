@@ -6,27 +6,30 @@
  * 共享，而不是被默认规则重置。
  *
  * 依赖（均为 web-app.js 暴露的全局，该文件已冻结不可新增行）：
- *   - _kanbanSelected / _kanbanSelectMode   web-app.js 顶层全局选择状态
+ *   - _kanbanSelected / _kanbanSelectMode   web-app.js 顶层 let/const 全局选择状态
  *   - kanbanState / currentData / showError / escapeHtml
  *   - shouldDefaultSelectForAnalysis / buildMergeDownloadUrl
  *   - _applyKanbanSelection / _updateKanbanSelectSummary   原有 UI 同步函数（复用）
  *
- * 策略：web-app.js 的选择函数是经典脚本全局函数声明，本模块在加载后用增强版
- * 覆盖 window.enterKanbanSelectMode / window.exitKanbanSelectMode /
- * window._toggleKanbanCard。增强版保留原 UI 行为，但通过 _kanbanUserTouched
- * 标志控制 _kanbanSelected 的清空时机：
+ * 注意：web-app.js 是经典脚本（未用 IIFE 包裹），其顶层 `let`/`const` 声明的变量
+ * 不会挂到 window 对象，只能通过作用域链以「直接名字」访问；只有 `function` 声明
+ * 和显式 `window.xxx =` 会成为 window 属性。因此本模块：
+ *   - 覆盖函数声明（enterKanbanSelectMode 等）时用 `window.xxx =` 改写全局对象属性
+ *   - 访问 let/const 变量（_kanbanSelected / kanbanState / currentData 等）时用直接名字
+ *
+ * 策略：用 _kanbanUserTouched 标志控制 _kanbanSelected 的清空时机：
  *   - 用户手动 toggle 过 → 后续进入新模式不清空，保留用户勾选
- *   - 「全不选」「默认」「取消」按钮由 web-app.js 原监听处理，会 clear 并重置
- *     _kanbanSelected；本模块在按钮点击后将 _kanbanUserTouched 重置为 false，
- *     让下次进入可用默认规则
- *   - 加载新专利时 web-app.js 调 exitKanbanSelectMode，本模块额外清空 touched
+ *   - 「全选」「全不选」→ touched=true（用户显式决定，跨模式保留）
+ *   - 「默认」「取消」→ touched=false（恢复自动默认 / 中止）
+ *   - 加载新专利时 renderKanban 调 exitKanbanSelectMode，文档签名不一致则清空
  */
 (function () {
   "use strict";
 
-  // 仅在 web-app.js 已加载且存在选择状态时启用
-  if (typeof window._kanbanSelected === "undefined") return;
-  if (typeof window.enterKanbanSelectMode !== "function") return;
+  // 守卫：web-app.js 必须已加载。enterKanbanSelectMode 是函数声明，挂 window；
+  // _kanbanSelected 是 const，用 typeof 直接检测（typeof 对未声明标识符安全）。
+  if (typeof enterKanbanSelectMode !== "function") return;
+  if (typeof _kanbanSelected === "undefined") return;
 
   // 用户手动勾选/取消过文档后置 true；进入新模式时若为 true 则保留勾选
   var _kanbanUserTouched = false;
@@ -40,8 +43,8 @@
 
   // 用文档集合的 docId+docCode+date 拼接签名，唯一标识当前档案的文档集
   function currentDocSig() {
-    if (!window.kanbanState || !window.kanbanState.documents || !window.kanbanState.documents.length) return "";
-    return window.kanbanState.documents.map(function (d) {
+    if (!kanbanState || !kanbanState.documents || !kanbanState.documents.length) return "";
+    return kanbanState.documents.map(function (d) {
       return (d.docId || "") + "#" + (d.docCode || "") + "#" + (d.date || "");
     }).join("|");
   }
@@ -50,19 +53,21 @@
   // 完整复刻 web-app.js 原实现，仅修改 Pre-select documents 段：
   // 若 _kanbanUserTouched 为 true，则不清空 _kanbanSelected，保留用户勾选；
   // 仅对 mergeExport 过滤掉不可下载项。否则维持原默认规则。
+  // 覆盖赋值用 window.（函数声明挂 window，改 window 属性即改全局绑定）；
+  // 函数体内访问 let/const 变量用直接名字（通过作用域链）。
   window.enterKanbanSelectMode = function (mode, options) {
-    if (!window.kanbanState || !window.kanbanState.documents || window.kanbanState.documents.length === 0) {
+    if (!kanbanState || !kanbanState.documents || kanbanState.documents.length === 0) {
       if (typeof showError === "function") showError("请先查询专利并加载审查文档");
       return;
     }
-    var office = window.currentData && window.currentData.office;
+    var office = currentData && currentData.office;
     var canAnalyze = office === "US" || office === "EP" || office === "CN" || office === "WO" || office === "KR";
     if (!canAnalyze && mode !== "mergeExport") {
       if (typeof showError === "function") showError("当前国家/地区暂不支持AI梳理");
       return;
     }
-    window.exitKanbanSelectMode();
-    window._kanbanSelectMode = mode;
+    exitKanbanSelectMode();
+    _kanbanSelectMode = mode;
     var opts = options || {};
     var board = document.getElementById("kanban-board");
     if (board) board.classList.add("select-mode");
@@ -101,14 +106,14 @@
     // Pre-select documents
     // 用户已手动勾选过 → 保留勾选，不重置默认；否则用原默认规则
     if (!isUserTouched()) {
-      window._kanbanSelected.clear();
+      _kanbanSelected.clear();
     }
     if (opts.append && opts.preSelectedIdxs && opts.preSelectedIdxs.length > 0) {
-      opts.preSelectedIdxs.forEach(function (idx) { window._kanbanSelected.add(idx); });
+      opts.preSelectedIdxs.forEach(function (idx) { _kanbanSelected.add(idx); });
       _kanbanUserTouched = true;
       _lastTouchedDocSig = currentDocSig();
     } else if (!isUserTouched()) {
-      window.kanbanState.documents.forEach(function (it) {
+      kanbanState.documents.forEach(function (it) {
         var shouldSelect = false;
         if (mode === "review") {
           shouldSelect = shouldDefaultSelectForAnalysis(it);
@@ -118,19 +123,19 @@
           var CITED_DOC_CODES = ["FOR", "892", "1449", "IDS", "SRNT", "SRFW"];
           shouldSelect = CITED_DOC_CODES.indexOf(it.docCode) >= 0;
         }
-        if (shouldSelect) window._kanbanSelected.add(it.idx);
+        if (shouldSelect) _kanbanSelected.add(it.idx);
       });
     } else if (mode === "mergeExport") {
       // 用户已勾选过，进入合并导出时仅移除不可下载项，其余保留
       var toRemove = [];
-      window._kanbanSelected.forEach(function (idx) {
-        var it = window.kanbanState.documents.find(function (d) { return d.idx === idx; });
+      _kanbanSelected.forEach(function (idx) {
+        var it = kanbanState.documents.find(function (d) { return d.idx === idx; });
         if (it && !buildMergeDownloadUrl(it)) toRemove.push(idx);
       });
-      toRemove.forEach(function (idx) { window._kanbanSelected.delete(idx); });
+      toRemove.forEach(function (idx) { _kanbanSelected.delete(idx); });
     }
-    window._applyKanbanSelection();
-    window._updateKanbanSelectSummary();
+    _applyKanbanSelection();
+    _updateKanbanSelectSummary();
 
     var hintEl = document.getElementById("kanban-select-append-hint");
     var dlHintEl = document.getElementById("doclist-select-append-hint");
@@ -152,11 +157,11 @@
   // 此时文档签名与用户上次勾选时的签名不一致，说明 _kanbanSelected 中的 idx
   // 已对当前档案失效，必须清空并重置 touched，避免跨档案串用勾选状态。
   window.exitKanbanSelectMode = function () {
-    window._kanbanSelectMode = null;
+    _kanbanSelectMode = null;
     if (isUserTouched()) {
       var sig = currentDocSig();
       if (sig && _lastTouchedDocSig && sig !== _lastTouchedDocSig) {
-        window._kanbanSelected.clear();
+        _kanbanSelected.clear();
         resetTouched();
       }
     }
@@ -178,16 +183,16 @@
 
   // ── 覆盖 _toggleKanbanCard：标记用户已触摸 ──
   window._toggleKanbanCard = function (idx) {
-    if (!window._kanbanSelectMode) return;
-    if (window._kanbanSelected.has(idx)) {
-      window._kanbanSelected.delete(idx);
+    if (!_kanbanSelectMode) return;
+    if (_kanbanSelected.has(idx)) {
+      _kanbanSelected.delete(idx);
     } else {
-      window._kanbanSelected.add(idx);
+      _kanbanSelected.add(idx);
     }
     _kanbanUserTouched = true; // 用户手动勾选/取消，后续不再用默认规则重置
     _lastTouchedDocSig = currentDocSig(); // 记录当前档案签名，供加载新专利时比对
-    window._applyKanbanSelection();
-    window._updateKanbanSelectSummary();
+    _applyKanbanSelection();
+    _updateKanbanSelectSummary();
   };
 
   // ── 选择栏按钮：capture 阶段同步 touched 标志 ──
@@ -221,9 +226,9 @@
       resetTouched();
       // 「取消」按钮还需清空 _kanbanSelected（与原 exitKanbanSelectMode 行为一致）
       if (target.id.indexOf("cancel") >= 0) {
-        window._kanbanSelected.clear();
-        if (typeof window._applyKanbanSelection === "function") window._applyKanbanSelection();
-        if (typeof window._updateKanbanSelectSummary === "function") window._updateKanbanSelectSummary();
+        _kanbanSelected.clear();
+        if (typeof _applyKanbanSelection === "function") _applyKanbanSelection();
+        if (typeof _updateKanbanSelectSummary === "function") _updateKanbanSelectSummary();
       }
     }
   }, true); // capture 阶段，先于 web-app.js 的 bubble 监听执行
