@@ -312,8 +312,9 @@
           });
           if (onProgress) onProgress(figures.length, list.length);
         })
-        .catch(function () {
-          // 单张抓取失败不影响其余
+        .catch(function (err) {
+          // 单张抓取失败不影响其余，但输出日志便于诊断
+          console.warn("[分享工作台] 附图抓取失败 (" + (idx + 1) + "/" + list.length + "):", url, err && err.message);
         })
         .then(next);
     }
@@ -329,6 +330,8 @@
         figures.forEach(function (fig) {
           store.addFigure(record.id, fig.dataUrl, fig.caption, { width: fig.width, height: fig.height });
         });
+      } else if (urls.length) {
+        console.warn("[分享工作台] 附图水合完成但 0 张成功（共 " + urls.length + " 个URL），可能被 CDN 拒绝");
       }
       // 清除临时标记
       delete record._pendingDrawings;

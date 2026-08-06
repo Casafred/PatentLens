@@ -4735,7 +4735,17 @@ app.whenReady().then(async () => {
       const fetchImage = (imageUrl) => {
         return new Promise((resolve, reject) => {
           const mod = imageUrl.startsWith("https:") ? https : http;
-          const options = {};
+          const parsed = new URL(imageUrl);
+          const options = {
+            hostname: parsed.hostname,
+            path: parsed.pathname + parsed.search,
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+              "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+              "Accept-Language": "en-US,en;q=0.9",
+              "Referer": "https://patents.google.com/",
+            },
+          };
 
           // 如果有代理，使用代理
           if (proxyUrl && imageUrl.startsWith("https:")) {
