@@ -32,7 +32,7 @@
   var _originalStartReviewAnalysis = window.startReviewAnalysis;
 
   window.startReviewAnalysis = async function (selectedIdxs) {
-    var items = window.kanbanState.documents;
+    var items = kanbanState.documents;
     var config = window.AI.loadAIConfig();
     var provider = window.AI.getCurrentProvider(config);
     if (!provider) {
@@ -43,12 +43,12 @@
 
     var manualSelectBtnEl = document.getElementById("kanban-manual-select-btn");
     if (manualSelectBtnEl) manualSelectBtnEl.disabled = true;
-    if (window.activeAnalysisProcess) {
+    if (activeAnalysisProcess) {
       if (typeof abortActiveProcess === "function") abortActiveProcess();
     }
-    window.activeAnalysisProcess = "review";
-    window.kanbanState.activeAnalysisView = "review";
-    window.kanbanAutoAbortController = new AbortController();
+    activeAnalysisProcess = "review";
+    kanbanState.activeAnalysisView = "review";
+    kanbanAutoAbortController = new AbortController();
     ["kanban-manual-select-btn", "cited-refs-manual-btn"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.classList.add("hidden");
@@ -73,8 +73,8 @@
     var primaryEngine = ocrConfig.engine || "paddle_ocr_vl";
     var glmApiKey = window.AI.getGlmOcrApiKey(config);
     var statusEl = document.getElementById("ai-analysis-status");
-    var isUS = window.currentData.office === "US";
-    var urlDocNum = isUS ? window.currentData.applicationNumber : encodeURIComponent(window.currentData.docNumber || window.currentData.applicationNumber);
+    var isUS = currentData.office === "US";
+    var urlDocNum = isUS ? currentData.applicationNumber : encodeURIComponent(currentData.docNumber || currentData.applicationNumber);
 
     var MAX_RETRIES = 5;
     var RETRY_BASE_DELAY = 8000;
@@ -90,7 +90,7 @@
       }
       try {
         var useApiKey = engine === "glm_ocr" ? glmApiKey : "";
-        var result = await doExtractText(window.currentData.office, urlDocNum, it.docId, it.numberOfPages, it.docFormat, engine, useApiKey, it.epoPdfUrl || null);
+        var result = await doExtractText(currentData.office, urlDocNum, it.docId, it.numberOfPages, it.docFormat, engine, useApiKey, it.epoPdfUrl || null);
         if (result.error) {
           var isRateLimit = result.error.indexOf("429") >= 0 || result.error.indexOf("rate") >= 0 || result.error.indexOf("limit") >= 0 || result.error.indexOf("Too Many") >= 0;
           if (retriesLeft > 0) {
@@ -133,12 +133,12 @@
         }
         var blocks = result.blocks || [];
         var pageDimensions = result.page_dimensions || {};
-        window.kanbanState.extractions[it.idx] = { text: text, markdown: markdown, engine: result.engine, blocks: blocks, pageDimensions: pageDimensions };
-        window.kanbanState.hasUnsavedWork = true;
+        kanbanState.extractions[it.idx] = { text: text, markdown: markdown, engine: result.engine, blocks: blocks, pageDimensions: pageDimensions };
+        kanbanState.hasUnsavedWork = true;
         if (blocks.length > 0) {
           blocks.forEach(function (b) {
             var traceKey = "D" + it.idx + "_" + b.block_id;
-            window.kanbanState.traceIndex[traceKey] = {
+            kanbanState.traceIndex[traceKey] = {
               docIdx: it.idx, page: b.page, bbox: b.bbox,
               content: b.content, label: b.label, originalBlockId: b.block_id,
               pageDimensions: pageDimensions[b.page] || null,
@@ -177,13 +177,13 @@
 
     // 断点续OCR：已有缓存（kanbanState.extractions）的跳过，只提取缺失的
     var missing = oaItems.filter(function (it) {
-      return !window.kanbanState.extractions[it.idx] || (!window.kanbanState.extractions[it.idx].text && !window.kanbanState.extractions[it.idx].markdown);
+      return !kanbanState.extractions[it.idx] || (!kanbanState.extractions[it.idx].text && !kanbanState.extractions[it.idx].markdown);
     });
     var cachedItems = oaItems.filter(function (it) {
-      return window.kanbanState.extractions[it.idx] && (window.kanbanState.extractions[it.idx].text || window.kanbanState.extractions[it.idx].markdown);
+      return kanbanState.extractions[it.idx] && (kanbanState.extractions[it.idx].text || kanbanState.extractions[it.idx].markdown);
     });
     cachedItems.forEach(function (it) {
-      var ext = window.kanbanState.extractions[it.idx];
+      var ext = kanbanState.extractions[it.idx];
       extractReport.success.push({
         name: it.name, docCode: it.docCode,
         chars: (ext.markdown || ext.text || "").length,
@@ -193,12 +193,12 @@
     if (missing.length > 0) {
       for (var i = 0; i < missing.length; i++) {
         var it = missing[i];
-        if (window.kanbanState.extractions[it.idx] && (window.kanbanState.extractions[it.idx].text || window.kanbanState.extractions[it.idx].markdown)) continue;
+        if (kanbanState.extractions[it.idx] && (kanbanState.extractions[it.idx].text || kanbanState.extractions[it.idx].markdown)) continue;
         if (statusEl) statusEl.textContent = "提取中 (" + (i + 1) + "/" + missing.length + "): " + it.name;
         var extractProgress = Math.round(((i + 1) / missing.length) * 60);
         analysisContent.innerHTML = renderAiProgressUI("extract", "提取中 (" + (i + 1) + "/" + missing.length + "): " + it.name, extractProgress);
         await extractWithRetry(it, primaryEngine, MAX_RETRIES);
-        if (window.kanbanAutoAbortController && window.kanbanAutoAbortController.signal.aborted) break;
+        if (kanbanAutoAbortController && kanbanAutoAbortController.signal.aborted) break;
       }
     }
     autoSaveCache();
@@ -210,7 +210,7 @@
       analysisContent.innerHTML = '<p class="placeholder" style="color:var(--danger)">所有文档提取均失败，无法进行 AI 分析。</p>';
       var manualSelectBtnEl2 = document.getElementById("kanban-manual-select-btn");
       if (manualSelectBtnEl2) { manualSelectBtnEl2.disabled = false; manualSelectBtnEl2.classList.remove("hidden"); }
-      window.kanbanAutoAbortController = null;
+      kanbanAutoAbortController = null;
       return;
     }
 
@@ -237,7 +237,7 @@
           '</div>';
         var retryBtn = document.getElementById("retry-failed-ocr-btn");
         if (retryBtn) retryBtn.addEventListener("click", async function () {
-          if (window.kanbanAutoAbortController && window.kanbanAutoAbortController.signal.aborted) return;
+          if (kanbanAutoAbortController && kanbanAutoAbortController.signal.aborted) return;
           retryBtn.disabled = true;
           retryBtn.textContent = "重试中...";
           // 仅重新提取当前失败项（成功的已缓存，递归调用会自动跳过）
@@ -248,13 +248,13 @@
           var allOk = true;
           for (var j = 0; j < retryItems.length; j++) {
             var rit = retryItems[j];
-            if (window.kanbanAutoAbortController && window.kanbanAutoAbortController.signal.aborted) { allOk = false; break; }
+            if (kanbanAutoAbortController && kanbanAutoAbortController.signal.aborted) { allOk = false; break; }
             if (statusEl) statusEl.textContent = "重试提取中: " + rit.name + "...";
             var ok = await extractWithRetry(rit, primaryEngine, MAX_RETRIES);
             if (!ok) allOk = false;
           }
           autoSaveCache();
-          if (window.kanbanAutoAbortController && window.kanbanAutoAbortController.signal.aborted) return;
+          if (kanbanAutoAbortController && kanbanAutoAbortController.signal.aborted) return;
           if (allOk) {
             // 全部补齐，递归调用自身进入 AI 分析（已成功的会走缓存分支）
             await window.startReviewAnalysis(selectedIdxs);
@@ -284,12 +284,12 @@
     analysisContent.innerHTML = renderAiProgressUI("analyzing", "AI 正在梳理审查历史...", -1);
 
     var hasBlocks = oaItems.some(function (it) {
-      var ext = window.kanbanState.extractions[it.idx];
+      var ext = kanbanState.extractions[it.idx];
       return ext && ext.blocks && ext.blocks.length > 0;
     });
 
     var annotatedLines = [];
-    var timelineSummary = buildTimelineSummary(window.currentData.office, window.kanbanState.documents);
+    var timelineSummary = buildTimelineSummary(currentData.office, kanbanState.documents);
 
     var sortedOaItems = oaItems.slice().sort(function (a, b) {
       var da = parseDate(a.date);
@@ -298,7 +298,7 @@
     });
 
     sortedOaItems.forEach(function (it) {
-      var ext = window.kanbanState.extractions[it.idx];
+      var ext = kanbanState.extractions[it.idx];
       if (!ext) {
         var isClaimsDoc = CLAIMS_CODES_MANUAL.indexOf(it.docCode) >= 0;
         var missingHeader = isClaimsDoc
@@ -333,10 +333,10 @@
 
     try {
       var fullText = "";
-      window.kanbanState.analysis = "";
-      window.kanbanState.analysisSystemPrompt = systemPrompt;
-      window.kanbanState.analysisUserMessage = userMessage;
-      window.kanbanState.hasUnsavedWork = true;
+      kanbanState.analysis = "";
+      kanbanState.analysisSystemPrompt = systemPrompt;
+      kanbanState.analysisUserMessage = userMessage;
+      kanbanState.hasUnsavedWork = true;
       analysisContent.innerHTML = "";
       var progressPlaceholder = document.createElement("div");
       progressPlaceholder.innerHTML = renderAiProgressUI("analyzing", "AI 正在梳理审查历史，等待响应...", -1);
@@ -361,7 +361,7 @@
           temperature: 0.3,
           maxTokens: 32768,
         },
-        window.kanbanAutoAbortController ? window.kanbanAutoAbortController.signal : undefined
+        kanbanAutoAbortController ? kanbanAutoAbortController.signal : undefined
       )) {
         if (chunk.reasoningContent && thinkingHost) {
           if (progressPlaceholder.parentNode) progressPlaceholder.remove();
@@ -380,8 +380,8 @@
               if (answerContainer) {
                 answerContainer.innerHTML = renderAnalysisModules(fullText);
               }
-              window.kanbanState.analysis = fullText;
-              window.kanbanState.hasUnsavedWork = true;
+              kanbanState.analysis = fullText;
+              kanbanState.hasUnsavedWork = true;
               _lastRenderLen = fullText.length;
               _streamRafPending = false;
             });
@@ -393,16 +393,16 @@
       if (progressPlaceholder.parentNode) progressPlaceholder.remove();
       // 最终渲染确保所有内容显示（含模块分节）
       analysisContent.innerHTML = renderAnalysisModules(fullText);
-      window.kanbanState.analysis = fullText;
-      window.kanbanState.hasUnsavedWork = true;
+      kanbanState.analysis = fullText;
+      kanbanState.hasUnsavedWork = true;
       if (window._analysisScrollObserver) {
         analysisContent.querySelectorAll(".analysis-module[data-module-id]").forEach(function (mod) {
           window._analysisScrollObserver.observe(mod);
         });
       }
-      window.kanbanState.analysisSystemPrompt = systemPrompt;
-      window.kanbanState.analysisUserMessage = userMessage;
-      window.kanbanState.lastAnalyzedIdxs = selectedIdxs.slice();
+      kanbanState.analysisSystemPrompt = systemPrompt;
+      kanbanState.analysisUserMessage = userMessage;
+      kanbanState.lastAnalyzedIdxs = selectedIdxs.slice();
       analysisChatHistory = [];
       showAnalysisChatToggle();
       autoSaveCache();
@@ -431,14 +431,14 @@
       analysisContent.innerHTML = '<p class="placeholder" style="color:var(--danger)">' + escapeHtml(e.toString()) + "</p>";
       if (statusEl) statusEl.innerHTML = icon('x') + " AI 整理失败";
     } finally {
-      window.activeAnalysisProcess = null;
+      activeAnalysisProcess = null;
       ["kanban-manual-select-btn", "cited-refs-manual-btn"].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) { el.disabled = false; el.classList.remove("hidden"); }
       });
       var abortBtn2 = document.getElementById("cited-refs-abort-btn");
       if (abortBtn2) abortBtn2.classList.add("hidden");
-      window.kanbanAutoAbortController = null;
+      kanbanAutoAbortController = null;
       if (typeof _updateAIAnalysisView === "function") _updateAIAnalysisView();
     }
   };
