@@ -338,7 +338,7 @@
     getPromptDefaults: getPromptDefaults,
     getProjectContextScope: getProjectContextScope,
     defaultContextScope: defaultContextScope,
-    promptMeta: AI_PROMPT_META,
+    promptMeta: function () { return AI_PROMPT_META; },
     promptVersion: PROMPT_VERSION,
   };
 })();

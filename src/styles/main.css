@@ -783,6 +783,58 @@ body {
 .report-warning { color: var(--warning); margin: 4px 0; }
 .report-error { color: var(--danger); margin: 4px 0; }
 
+/* OCR 失败面板：进入 AI 分析前停下来，提示用户一键重试 */
+.extract-failed-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--danger, #dc2626);
+  border-radius: 8px;
+  padding: 16px 18px;
+  font-size: 13px;
+}
+.extract-failed-panel h4 {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  color: var(--danger, #dc2626);
+}
+.extract-failed-summary {
+  margin: 0 0 12px;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+.extract-failed-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.extract-failed-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 10px;
+  background: var(--bg-primary, #fff);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.extract-failed-list .doc-code {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.extract-failed-list .doc-name {
+  color: var(--text-secondary);
+}
+.extract-failed-list .reason {
+  color: var(--danger, #dc2626);
+  margin-left: auto;
+}
+.extract-failed-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .engine-select {
   padding: 4px 6px;
   background: var(--bg-secondary);
@@ -12739,6 +12791,12 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 .share-workspace-view--review {
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+/* 审核页内 .share-review-card 的 overflow:hidden 会成为 sticky 定位上下文，
+   但 card 本身不滚动，导致标题+导航条随 card 整体滚走而非吸附到容器顶部。
+   在审核页作用域内放开 overflow，让 sticky 重新以 .share-workspace-view--review 为参考。 */
+.share-workspace-view--review .share-review-card {
+  overflow: visible;
 }
 .share-review-section {
   margin-top: 22px;
