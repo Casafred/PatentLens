@@ -7029,6 +7029,10 @@ body {
 .share-workspace-layout {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
+  /* 显式约束行高：避免隐式 auto 行随内容撑开后，
+     .share-workspace-view 的 overflow-y:auto 因无确定高度而失效，
+     导致超出视口的内容被父级 overflow:hidden 裁掉、页面无法滚动。 */
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   flex: 1;
   overflow: hidden;
