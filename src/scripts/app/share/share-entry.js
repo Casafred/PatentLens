@@ -22,11 +22,21 @@
   var aiRunning = false;
   var reviewPatentIndex = 0;
 
+  // 批量 AI 处理状态：在一次输入多篇专利后，统一选定字段类型并发处理。
+  // 状态保存在模块作用域（不持久化到 store），跨 render 保持。
+  // fields: { summary, elements, embodiments, processed } 用户勾选的字段类型
+  // concurrency: 1-6，默认 3
+  // tasks: 任务队列 [{ patentId, fieldId, type, label, status, error }]
+  // status: pending | running | done | failed | skipped
+  // cancelled: 取消标志，正在执行的让其完成，未开始标记 skipped
+  var batchState = null;
+
   var viewMeta = {
     overview: { title: "项目设定", description: "明确分享对象、目的、技术关注点和内部使用边界。" },
     sources: { title: "专利与材料", description: "从当前查询、审查档案、PDF 和表格汇集可追溯的专利材料。" },
     review: { title: "内容加工与审核", description: "核对来源字段、制作分享字段、标注关键原文，并确认可对外呈现的内容。" },
     insights: { title: "组合判断", description: "生成并审核单篇技术解读和多专利技术路线对比；所有 AI 内容先作为草稿。" },
+    prompts: { title: "提示词与原文范围", description: "集中管理组合判断与加工字段的提示词，以及 AI 分析纳入的原文范围。" },
     modules: { title: "编排与展示", description: "选择研发分享中真正需要展示的内容，并调整加工模块在报告中的顺序。" },
     preview: { title: "预览", description: "在隔离 iframe 中检查研发团队最终会看到的离线页面。" },
     export: { title: "发布", description: "完成审核和敏感信息检查后保存单文件 HTML。" },
@@ -1272,6 +1282,16 @@
 
   function modeLabel(mode) { return mode === "full" ? "完整" : mode === "lite" ? "精简" : "关闭"; }
 
+  // 提示词与原文范围视图：左侧导航常驻入口，集中管理 12 条提示词 + 项目级 AI 原文范围。
+  // 面板组件复用 buildPromptManagementPanel，所有按钮 action 已有全局 handler。
+  function renderPrompts(container, project) {
+    addHeading(container, viewMeta.prompts);
+    addNotice(container);
+    var hint = makeElement("p", "share-module-hint", "这里集中管理「组合判断」4 类内置提示词（技术解读 / 技术要素 / 实施例与验证 / 多专利对比）与「内容加工与审核」中加工字段的预设提示词；修改后立即生效，影响后续 AI 草稿生成。下方还可设置 AI 分析纳入的原文范围（项目级默认，字段级可在加工字段中单独覆盖）。");
+    container.appendChild(hint);
+    container.appendChild(buildPromptManagementPanel(project));
+  }
+
   function renderModules(container, project) {
     addHeading(container, viewMeta.modules);
     addNotice(container);
@@ -1280,9 +1300,6 @@
     var config = registry.resolveConfig(project.moduleConfig);
     var hint = makeElement("p", "share-module-hint", "点击模块切换“完整 / 精简 / 关闭”。加工信息模块可拖拽排序，排序会在预览与导出中生效；基础原文模块保持固定阅读结构。");
     container.appendChild(hint);
-
-    // 提示词与原文范围管理面板：集中暴露 12 条提示词与项目级原文范围。
-    container.appendChild(buildPromptManagementPanel(project));
 
     // 可视化布局编辑器：模拟最终分享 HTML 的版面结构
     var preview = makeElement("div", "share-module-visual");
@@ -1519,12 +1536,15 @@
     if (!hasAI) container.appendChild(makeElement("div", "share-inline-notice error", "未检测到可用的 AI 配置。仍可编辑人工结论，但无法生成新的 AI 草稿。"));
     container.appendChild(makeElement("p", "share-module-hint", "每份 AI 内容都必须在这里阅读、编辑并确认后，才可进入正式分享。结论应能回到权利要求、说明书或 IPR 标注核验。"));
 
-    // 提示词与原文范围入口：在组合判断视图提示用户去「编排与展示」集中管理。
+    // 批量 AI 处理面板：一次输入多篇专利后，统一选定字段类型并发处理，可看进度、可取消。
+    container.appendChild(buildBatchPanel(project, hasAI));
+
+    // 提示词与原文范围入口：跳转到独立的「提示词与原文范围」导航项集中管理。
     var promptHint = makeElement("div", "share-insights-prompt-hint");
     promptHint.appendChild(makeElement("span", "", "提示词与原文范围管理："));
-    var promptBtn = makeElement("button", "share-field-edit", "前往「编排与展示 · 提示词管理」");
+    var promptBtn = makeElement("button", "share-field-edit", "前往「提示词与原文范围」");
     promptBtn.type = "button";
-    promptBtn.dataset.shareAction = "go-modules-prompts";
+    promptBtn.dataset.shareAction = "go-prompts";
     promptBtn.disabled = aiRunning;
     promptHint.appendChild(promptBtn);
     // 显示当前项目级原文范围概要
@@ -1652,6 +1672,7 @@
     else if (activeView === "review") renderReview(container, project);
     else if (activeView === "modules") renderModules(container, project);
     else if (activeView === "insights") renderInsights(container, project);
+    else if (activeView === "prompts") renderPrompts(container, project);
     else if (activeView === "preview") renderPreview(container, project);
     else if (activeView === "export") renderExport(container, project);
     else renderPlaceholder(container, activeView, project);
@@ -2110,6 +2131,348 @@
     });
   }
 
+  // ── 批量 AI 处理 ──
+  // 解决"一次输入 N 篇专利后逐篇逐字段点击"的痛点：统一勾选字段类型 + 目标专利，
+  // 并发执行（默认 3，可调 1-6），实时显示进度，可中途取消。
+  // 取消后已完成的保留，未开始的标记 skipped（不回滚已写入的结果）。
+  function buildBatchPanel(project, hasAI) {
+    var panel = makeElement("section", "share-batch-panel");
+    var head = makeElement("div", "share-batch-head");
+    head.appendChild(makeElement("h4", "", "批量 AI 处理"));
+    head.appendChild(makeElement("p", "share-module-hint", "统一选定要处理的字段类型与目标专利，并发执行；可在进度面板中查看每项状态，支持中途取消。"));
+    panel.appendChild(head);
+
+    var running = batchState && batchState.running;
+    var patents = project.patents || [];
+
+    // 配置区（运行中禁用）
+    var configRow = makeElement("div", "share-batch-config");
+    configRow.appendChild(makeElement("div", "share-batch-config-label", "处理字段："));
+    var fieldDefs = [
+      { key: "summary", label: "技术解读", needsDesc: false },
+      { key: "elements", label: "技术要素", needsDesc: false },
+      { key: "embodiments", label: "实施例与验证", needsDesc: true },
+      { key: "processed", label: "加工字段（每篇已有的全部加工字段）", needsDesc: false },
+    ];
+    var selectedFields = (batchState && batchState.fields) || { summary: true, elements: true, embodiments: false, processed: false };
+    fieldDefs.forEach(function (fd) {
+      var id = "batch-field-" + fd.key;
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = id;
+      cb.className = "share-batch-cb";
+      cb.checked = !!selectedFields[fd.key];
+      cb.disabled = running;
+      cb.dataset.batchField = fd.key;
+      var lbl = makeElement("label", "share-batch-cb-label", fd.label);
+      lbl.htmlFor = id;
+      lbl.insertBefore(cb, lbl.firstChild);
+      // 缺说明书的 embodiments 提示
+      if (fd.needsDesc && patents.some(function (p) { return !p.description; })) {
+        lbl.appendChild(makeElement("span", "share-batch-cb-hint", "（部分专利无说明书将跳过）"));
+      }
+      configRow.appendChild(lbl);
+    });
+
+    // 目标专利选择（运行中禁用，默认全选）
+    configRow.appendChild(makeElement("div", "share-batch-config-label", "目标专利："));
+    var patentBox = makeElement("div", "share-batch-patent-list");
+    var selectedPatents = (batchState && batchState.patentIds) || patents.map(function (p) { return p.id; });
+    if (!patents.length) {
+      patentBox.appendChild(makeElement("div", "share-batch-empty", "尚未加入专利。请先在「专利与材料」中导入。"));
+    } else {
+      // 全选 / 取消全选
+      var allCb = document.createElement("input");
+      allCb.type = "checkbox";
+      allCb.id = "batch-patent-all";
+      allCb.className = "share-batch-cb";
+      allCb.checked = selectedPatents.length === patents.length;
+      allCb.disabled = running;
+      allCb.dataset.batchPatentAll = "1";
+      var allLbl = makeElement("label", "share-batch-cb-label share-batch-cb-all", "全选 (" + patents.length + " 篇)");
+      allLbl.htmlFor = "batch-patent-all";
+      allLbl.insertBefore(allCb, allLbl.firstChild);
+      patentBox.appendChild(allLbl);
+      patents.forEach(function (p) {
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.id = "batch-patent-" + p.id;
+        cb.className = "share-batch-cb";
+        cb.checked = selectedPatents.indexOf(p.id) >= 0;
+        cb.disabled = running;
+        cb.dataset.batchPatent = p.id;
+        var lbl = makeElement("label", "share-batch-cb-label", (p.patentNumber || "未编号") + " · " + (p.title || "未提供标题"));
+        lbl.htmlFor = "batch-patent-" + p.id;
+        lbl.insertBefore(cb, lbl.firstChild);
+        patentBox.appendChild(lbl);
+      });
+    }
+    configRow.appendChild(patentBox);
+
+    // 并发数滑块
+    var concRow = makeElement("div", "share-batch-conc");
+    concRow.appendChild(makeElement("span", "share-batch-config-label", "并发数："));
+    var concInput = document.createElement("input");
+    concInput.type = "range";
+    concInput.min = "1";
+    concInput.max = "6";
+    concInput.value = String((batchState && batchState.concurrency) || 3);
+    concInput.className = "share-batch-conc-range";
+    concInput.disabled = running;
+    concInput.dataset.batchConc = "1";
+    var concVal = makeElement("span", "share-batch-conc-val", concInput.value + " 个并发");
+    concInput.addEventListener("input", function () { concVal.textContent = concInput.value + " 个并发"; });
+    concRow.appendChild(concInput);
+    concRow.appendChild(concVal);
+    configRow.appendChild(concRow);
+
+    // 启动 / 取消按钮
+    var btnRow = makeElement("div", "share-batch-btn-row");
+    var startBtn = makeElement("button", "share-primary-action", "开始批量处理");
+    startBtn.type = "button";
+    startBtn.dataset.shareAction = "batch-start";
+    startBtn.disabled = running || !hasAI || !patents.length;
+    btnRow.appendChild(startBtn);
+    if (running) {
+      var cancelBtn = makeElement("button", "share-secondary-action", "取消（已完成保留，未开始跳过）");
+      cancelBtn.type = "button";
+      cancelBtn.dataset.shareAction = "batch-cancel";
+      btnRow.appendChild(cancelBtn);
+    }
+    configRow.appendChild(btnRow);
+    panel.appendChild(configRow);
+
+    // 进度面板（运行中或完成后展示）
+    if (batchState && batchState.tasks && batchState.tasks.length) {
+      panel.appendChild(buildBatchProgressPanel());
+    }
+    return panel;
+  }
+
+  function buildBatchProgressPanel() {
+    var st = batchState;
+    var wrap = makeElement("div", "share-batch-progress");
+    var total = st.tasks.length;
+    var done = 0, failed = 0, skipped = 0, running = 0, pending = 0;
+    st.tasks.forEach(function (t) {
+      if (t.status === "done") done++;
+      else if (t.status === "failed") failed++;
+      else if (t.status === "skipped") skipped++;
+      else if (t.status === "running") running++;
+      else pending++;
+    });
+    var finished = done + failed + skipped;
+    var pct = total ? Math.round((finished / total) * 100) : 0;
+
+    var head = makeElement("div", "share-batch-progress-head");
+    head.appendChild(makeElement("span", "share-batch-progress-title", (st.running ? "处理中" : "已结束") + " · " + finished + "/" + total + "（" + pct + "%）"));
+    var stats = makeElement("span", "share-batch-progress-stats");
+    stats.appendChild(makeElement("span", "share-batch-stat-done", "✓ " + done));
+    if (failed) stats.appendChild(makeElement("span", "share-batch-stat-failed", "✗ " + failed));
+    if (skipped) stats.appendChild(makeElement("span", "share-batch-stat-skipped", "⊘ " + skipped));
+    if (running) stats.appendChild(makeElement("span", "share-batch-stat-running", "▶ " + running));
+    if (pending) stats.appendChild(makeElement("span", "share-batch-stat-pending", "○ " + pending));
+    head.appendChild(stats);
+    wrap.appendChild(head);
+
+    var bar = makeElement("div", "share-batch-bar");
+    var fill = makeElement("div", "share-batch-bar-fill");
+    fill.style.width = pct + "%";
+    bar.appendChild(fill);
+    wrap.appendChild(bar);
+
+    // 每项任务状态（按专利分组）
+    var list = makeElement("div", "share-batch-task-list");
+    st.tasks.forEach(function (t) {
+      var row = makeElement("div", "share-batch-task-row share-batch-task-" + t.status);
+      var icon = t.status === "done" ? "✓" : t.status === "failed" ? "✗" : t.status === "skipped" ? "⊘" : t.status === "running" ? "▶" : "○";
+      row.appendChild(makeElement("span", "share-batch-task-icon", icon));
+      row.appendChild(makeElement("span", "share-batch-task-label", t.label));
+      if (t.status === "failed" && t.error) {
+        row.appendChild(makeElement("span", "share-batch-task-error", t.error));
+      }
+      list.appendChild(row);
+    });
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  // 启动批量处理：构建任务队列 → 并发池执行 → 实时更新进度
+  function runAIBatch() {
+    var AI = window.PatentShareAI;
+    var project = currentProject();
+    if (!AI || !project || aiRunning) return;
+    var provider = AI.getActiveAIProvider();
+    if (!provider) { setNotice("未检测到可用的AI配置，请先在设置中配置AI接口。", true); render(); return; }
+
+    // 从 DOM 读取用户选择（render 后的 checkbox 状态）
+    var fields = {};
+    document.querySelectorAll("[data-batch-field]").forEach(function (cb) {
+      fields[cb.dataset.batchField] = cb.checked;
+    });
+    var patentIds = [];
+    document.querySelectorAll("[data-batch-patent]").forEach(function (cb) {
+      if (cb.checked) patentIds.push(cb.dataset.batchPatent);
+    });
+    var concurrency = 3;
+    var concEl = document.querySelector("[data-batch-conc]");
+    if (concEl) concurrency = Math.max(1, Math.min(6, parseInt(concEl.value, 10) || 3));
+
+    if (!fields.summary && !fields.elements && !fields.embodiments && !fields.processed) {
+      setNotice("请至少勾选一个要处理的字段类型。", true);
+      render();
+      return;
+    }
+    if (!patentIds.length) {
+      setNotice("请至少选择一篇目标专利。", true);
+      render();
+      return;
+    }
+
+    // 构建任务队列
+    var tasks = [];
+    var patentsById = {};
+    project.patents.forEach(function (p) { patentsById[p.id] = p; });
+    patentIds.forEach(function (pid) {
+      var patent = patentsById[pid];
+      if (!patent) return;
+      if (fields.summary) tasks.push({ patentId: pid, type: "summary", label: patent.patentNumber + " · 技术解读", status: "pending", error: "" });
+      if (fields.elements) tasks.push({ patentId: pid, type: "elements", label: patent.patentNumber + " · 技术要素", status: "pending", error: "" });
+      if (fields.embodiments) {
+        if (patent.description) tasks.push({ patentId: pid, type: "embodiments", label: patent.patentNumber + " · 实施例与验证", status: "pending", error: "" });
+        else tasks.push({ patentId: pid, type: "embodiments", label: patent.patentNumber + " · 实施例（无说明书，跳过）", status: "skipped", error: "" });
+      }
+      if (fields.processed) {
+        var pfs = patent.processedFields || [];
+        if (!pfs.length) {
+          tasks.push({ patentId: pid, type: "processed", fieldId: null, label: patent.patentNumber + " · 加工字段（无字段，跳过）", status: "skipped", error: "" });
+        } else {
+          pfs.forEach(function (pf) {
+            if (!pf.prompt) {
+              tasks.push({ patentId: pid, type: "processed", fieldId: pf.id, label: patent.patentNumber + " · " + pf.label + "（无提示词，跳过）", status: "skipped", error: "" });
+            } else {
+              tasks.push({ patentId: pid, type: "processed", fieldId: pf.id, label: patent.patentNumber + " · " + pf.label, status: "pending", error: "" });
+            }
+          });
+        }
+      }
+    });
+
+    if (!tasks.length) {
+      setNotice("没有可执行的任务，请检查选择。", true);
+      return;
+    }
+
+    batchState = {
+      running: true,
+      cancelled: false,
+      fields: fields,
+      patentIds: patentIds,
+      concurrency: concurrency,
+      tasks: tasks,
+      startedAt: new Date().toISOString(),
+    };
+    aiRunning = true;
+    setNotice("批量处理已启动：" + tasks.length + " 项任务，并发 " + concurrency + "。", false);
+    render();
+
+    // 并发池：维护 concurrency 个 worker，从队列取 pending 任务执行
+    var queue = tasks.slice();
+    function nextTask() {
+      if (batchState.cancelled) return null;
+      for (var i = 0; i < queue.length; i++) {
+        if (queue[i].status === "pending") {
+          queue[i].status = "running";
+          return queue[i];
+        }
+      }
+      return null;
+    }
+
+    function executeTask(task) {
+      var patent = patentsById[task.patentId];
+      var promise;
+      if (task.type === "summary") {
+        promise = AI.generatePatentSummary(patent, project.brief).then(function (r) {
+          if (r.ok) { window.PatentShareStore.setAIAnalysis(task.patentId, "summary", r); task.status = "done"; }
+          else { task.status = "failed"; task.error = r.error || "未知错误"; }
+        });
+      } else if (task.type === "elements") {
+        promise = AI.generateTechnicalElements(patent, project.brief).then(function (r) {
+          if (r.ok) { window.PatentShareStore.setAIAnalysis(task.patentId, "elements", r); task.status = "done"; }
+          else { task.status = "failed"; task.error = r.error || "未知错误"; }
+        });
+      } else if (task.type === "embodiments") {
+        promise = AI.generateEmbodiments(patent, project.brief).then(function (r) {
+          if (r.ok) { window.PatentShareStore.setAIAnalysis(task.patentId, "embodiments", r); task.status = "done"; }
+          else { task.status = "failed"; task.error = r.error || "未知错误"; }
+        });
+      } else if (task.type === "processed") {
+        var field = patent.processedFields && patent.processedFields.find(function (f) { return f.id === task.fieldId; });
+        if (!field) { task.status = "skipped"; return Promise.resolve(); }
+        promise = AI.generateProcessedField(patent, field, project.brief).then(function (r) {
+          if (r.ok) {
+            window.PatentShareStore.updateProcessedField(task.patentId, task.fieldId, {
+              value: r.content, source: "ai", model: r.model, generatedAt: r.generatedAt, reviewState: "pending",
+            });
+            task.status = "done";
+          } else { task.status = "failed"; task.error = r.error || "未知错误"; }
+        });
+      }
+      return promise.catch(function (err) {
+        task.status = "failed";
+        task.error = err && err.message ? err.message : String(err);
+      });
+    }
+
+    // 每个 worker 循环取任务执行，直到队列空或被取消
+    function worker() {
+      if (batchState.cancelled) return Promise.resolve();
+      var task = nextTask();
+      if (!task) return Promise.resolve();
+      renderBatchOnly(); // 显示 running 状态
+      return executeTask(task).then(function () {
+        renderBatchOnly();
+        return worker();
+      });
+    }
+
+    var workers = [];
+    for (var i = 0; i < concurrency; i++) workers.push(worker());
+    Promise.all(workers).then(function () {
+      // 取消后，把剩余 pending 标记 skipped
+      if (batchState.cancelled) {
+        batchState.tasks.forEach(function (t) { if (t.status === "pending" || t.status === "running") t.status = "skipped"; });
+      }
+      batchState.running = false;
+      aiRunning = false;
+      var done = batchState.tasks.filter(function (t) { return t.status === "done"; }).length;
+      var failed = batchState.tasks.filter(function (t) { return t.status === "failed"; }).length;
+      var skipped = batchState.tasks.filter(function (t) { return t.status === "skipped"; }).length;
+      setNotice("批量处理结束：成功 " + done + "，失败 " + failed + (skipped ? "，跳过 " + skipped : "") + "。成功结果仍需人工审核。", failed > 0);
+      render();
+    });
+  }
+
+  // 仅刷新进度面板（不触发完整 render，避免重渲染打断用户在 insights 视图的滚动位置）
+  // 但仍要更新进度数字；这里折中：直接重渲染当前视图（render 会保留滚动容器位置）。
+  function renderBatchOnly() {
+    // 更新 notice 文本
+    var st = batchState;
+    var done = st.tasks.filter(function (t) { return t.status === "done"; }).length;
+    var total = st.tasks.length;
+    setNotice("批量处理进度：" + done + "/" + total + " 已完成...", false);
+    render();
+  }
+
+  function cancelAIBatch() {
+    if (!batchState || !batchState.running) return;
+    batchState.cancelled = true;
+    // 不立即结束；让正在执行的 worker 完成，剩余 pending 会在 Promise.all 后标 skipped
+    setNotice("正在取消批量处理，等待当前进行中的任务完成...", false);
+    render();
+  }
+
   function bind() {
     var entry = byId("share-workspace-entry");
     if (entry) entry.addEventListener("click", openWorkspace);
@@ -2137,6 +2500,23 @@
     if (view) view.addEventListener("mousedown", function (event) {
       var annoButton = event.target.closest ? event.target.closest("[data-share-action='annotate-text']") : null;
       if (annoButton && annoButton.dataset.annoType !== "clear") event.preventDefault();
+    });
+    // 批量处理面板：全选联动 + 单选反向同步全选状态
+    if (view) view.addEventListener("change", function (event) {
+      var target = event.target;
+      if (!target || !target.dataset) return;
+      if (target.dataset.batchPatentAll === "1") {
+        var checked = target.checked;
+        document.querySelectorAll("[data-batch-patent]").forEach(function (cb) { cb.checked = checked; });
+      } else if (target.dataset.batchPatent) {
+        var allCb2 = document.querySelector("[data-batch-patent-all]");
+        if (allCb2) {
+          var cbs = document.querySelectorAll("[data-batch-patent]");
+          var allChecked = true;
+          cbs.forEach(function (cb) { if (!cb.checked) allChecked = false; });
+          allCb2.checked = cbs.length > 0 && allChecked;
+        }
+      }
     });
     if (view) view.addEventListener("click", function (event) {
       var action = event.target.closest ? event.target.closest("[data-share-action]") : null;
@@ -2271,19 +2651,16 @@
         render();
       }
       if (actionName === "ai-analyze-all") runAIAnalyzeAll();
+      if (actionName === "batch-start") runAIBatch();
+      if (actionName === "batch-cancel") cancelAIBatch();
       if (actionName === "ai-summary" && action.dataset.patentId) runAIAnalysis(action.dataset.patentId, "summary");
       if (actionName === "ai-elements" && action.dataset.patentId) runAIAnalysis(action.dataset.patentId, "elements");
       if (actionName === "ai-embodiments" && action.dataset.patentId) runAIAnalysis(action.dataset.patentId, "embodiments");
       if (actionName === "ai-comparison") runAIComparison();
-      // 跳转到「编排与展示」中的提示词管理面板
-      if (actionName === "go-modules-prompts") {
-        activeView = "modules";
+      // 跳转到独立的「提示词与原文范围」视图（不再嵌在编排与展示里）
+      if (actionName === "go-prompts" || actionName === "go-modules-prompts") {
+        activeView = "prompts";
         render();
-        // 滚动到提示词管理面板
-        setTimeout(function () {
-          var panel = document.querySelector(".share-prompt-panel");
-          if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
-        }, 50);
         return;
       }
       // 提示词管理：编辑/重置组合判断内置提示词
