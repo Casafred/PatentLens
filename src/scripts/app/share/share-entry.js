@@ -784,20 +784,20 @@
 
     var card = makeElement("article", "share-review-card");
 
-    // 详情卡头部
+    // 详情卡头部（不冻结，随内容滚动）
     var header = makeElement("div", "share-review-header");
     var headerLeft = makeElement("div", "share-review-header-left");
     headerLeft.appendChild(makeElement("h4", "", patent.patentNumber));
-    headerLeft.appendChild(makeElement("p", "share-review-header-subtitle", patent.title || "未提供标题"));
+    // 过滤标题中的 " - Google Patents" 等来源后缀
+    var cleanTitle = (patent.title || "未提供标题")
+      .replace(/\s*-\s*Google\s*Patents\s*$/i, "")
+      .replace(/\s*-\s*Google\s*专利\s*$/i, "")
+      .trim();
+    headerLeft.appendChild(makeElement("p", "share-review-header-subtitle", cleanTitle));
     var sourceMeta = makeElement("div", "share-review-meta-row");
-    var srcType = patent.source && patent.source.type ? readableSource({ source: patent.source.type }) : "专利原文";
-    sourceMeta.appendChild(makeElement("span", "", "来源：" + srcType));
-    if (patent.source && patent.source.capturedAt) {
-      try { sourceMeta.appendChild(makeElement("span", "", " · 抓取：" + new Date(patent.source.capturedAt).toLocaleString())); } catch (_) {}
-    }
     var figCount = patent.figures ? patent.figures.length : 0;
     var claimCount = Array.isArray(patent.claims) ? patent.claims.length : 0;
-    sourceMeta.appendChild(makeElement("span", "", " · " + claimCount + "项权利要求 · " + figCount + "张附图"));
+    sourceMeta.appendChild(makeElement("span", "", claimCount + "项权利要求 · " + figCount + "张附图"));
     headerLeft.appendChild(sourceMeta);
     header.appendChild(headerLeft);
     var headerActions = makeElement("div", "share-review-detail-actions");
@@ -808,13 +808,9 @@
     removeBtn.disabled = aiRunning;
     headerActions.appendChild(removeBtn);
     header.appendChild(headerActions);
+    card.appendChild(header);
 
-    // 标题 + 段落导航条合并为顶部冻结组：审核页启用独立滚动容器后，
-    // 该组 sticky 到容器顶部，滚动正文时标题与导航按钮始终可见可点击。
-    var stickyTop = makeElement("div", "share-review-sticky-top");
-    stickyTop.appendChild(header);
-
-    // 悬浮导航条 + 进度条
+    // 导航条
     var navBar = makeElement("nav", "share-review-nav");
     navBar.appendChild(makeElement("div", "share-review-nav-progress"));
     var navItems = [
@@ -833,8 +829,7 @@
       navBtnList.appendChild(navBtn);
     });
     navBar.appendChild(navBtnList);
-    stickyTop.appendChild(navBar);
-    card.appendChild(stickyTop);
+    card.appendChild(navBar);
 
     // Section: 基本信息（著录项网格 + 分类号）
     card.appendChild(buildReviewSection("基本信息", "basic", function (body) {
