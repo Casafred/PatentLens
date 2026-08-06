@@ -213,7 +213,6 @@
         <div class="share-workspace-shell">
           <header class="share-workspace-header">
             <div class="share-workspace-title-group">
-              <span class="share-workspace-kicker">PatentLens Workspace</span>
               <h2 id="share-workspace-title">专利分享工作台</h2>
               <p id="share-project-status" class="share-project-status">本地草稿 · 尚未加入专利</p>
             </div>
@@ -224,14 +223,21 @@
           </header>
           <div class="share-workspace-layout">
             <nav id="share-workspace-nav" class="share-workspace-nav" aria-label="分享工作台导航">
-              <button class="share-workspace-nav-item active" type="button" data-share-view="overview"><span class="share-nav-step">01</span>项目设定</button>
-              <button class="share-workspace-nav-item" type="button" data-share-view="sources"><span class="share-nav-step">02</span>专利与材料</button>
-              <button class="share-workspace-nav-item" type="button" data-share-view="review"><span class="share-nav-step">03</span>内容加工与审核</button>
-              <button class="share-workspace-nav-item" type="button" data-share-view="insights"><span class="share-nav-step">04</span>组合判断</button>
-              <button class="share-workspace-nav-item" type="button" data-share-view="prompts"><span class="share-nav-step">05</span>提示词与原文范围</button>
-              <button class="share-workspace-nav-item" type="button" data-share-view="modules"><span class="share-nav-step">06</span>编排与展示</button>
-              <button class="share-workspace-nav-item" type="button" data-share-view="preview"><span class="share-nav-step">07</span>预览</button>
-              <button class="share-workspace-nav-item" type="button" data-share-view="export"><span class="share-nav-step">08</span>导出</button>
+              <div class="share-nav-main">
+                <button class="share-workspace-nav-item active" type="button" data-share-view="overview"><span class="share-nav-step">01</span>项目设定</button>
+                <button class="share-workspace-nav-item" type="button" data-share-view="sources"><span class="share-nav-step">02</span>专利与材料</button>
+                <button class="share-workspace-nav-item" type="button" data-share-view="review"><span class="share-nav-step">03</span>内容加工与审核</button>
+                <button class="share-workspace-nav-item" type="button" data-share-view="insights"><span class="share-nav-step">04</span>组合判断</button>
+                <button class="share-workspace-nav-item" type="button" data-share-view="modules"><span class="share-nav-step">05</span>编排与展示</button>
+                <button class="share-workspace-nav-item" type="button" data-share-view="preview"><span class="share-nav-step">06</span>预览</button>
+                <button class="share-workspace-nav-item" type="button" data-share-view="export"><span class="share-nav-step">07</span>导出</button>
+              </div>
+              <div class="share-nav-footer">
+                <button id="share-prompts-settings-btn" class="share-prompts-settings-btn" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  提示词与原文范围
+                </button>
+              </div>
             </nav>
             <div id="share-workspace-view" class="share-workspace-view" aria-live="polite"></div>
           </div>

@@ -169,9 +169,12 @@
   function buildPromptRow(item) {
     var row = makeElement("div", "share-prompt-row");
     var head = makeElement("div", "share-prompt-head");
-    head.appendChild(makeElement("span", "share-prompt-label", item.label));
+    var labelText = item.label;
+    if (item.isCustom) labelText += " (自定义)";
+    head.appendChild(makeElement("span", "share-prompt-label", labelText));
     if (item.description) head.appendChild(makeElement("span", "share-prompt-desc", item.description));
-    var badge = makeElement("span", "share-prompt-badge" + (item.modified ? " modified" : ""), item.modified ? "已自定义" : "默认");
+    var badgeText = item.isCustom ? "自定义" : (item.modified ? "已自定义" : "默认");
+    var badge = makeElement("span", "share-prompt-badge" + (item.modified || item.isCustom ? " modified" : ""), badgeText);
     head.appendChild(badge);
     row.appendChild(head);
     var preview = makeElement("div", "share-prompt-preview");
@@ -183,9 +186,17 @@
     edit.dataset.shareAction = item.editAction;
     if (item.promptKey) edit.dataset.promptKey = item.promptKey;
     if (item.presetLabel) edit.dataset.presetLabel = item.presetLabel;
+    if (item.presetType) edit.dataset.presetType = item.presetType;
     edit.disabled = aiRunning;
     actions.appendChild(edit);
-    if (item.modified) {
+    if (item.isCustom) {
+      var del = makeElement("button", "share-field-remove", "删除");
+      del.type = "button";
+      del.dataset.shareAction = "delete-custom-preset";
+      del.dataset.presetLabel = item.presetLabel || item.label;
+      del.disabled = aiRunning;
+      actions.appendChild(del);
+    } else if (item.modified) {
       var reset = makeElement("button", "share-field-remove", "恢复默认");
       reset.type = "button";
       reset.dataset.shareAction = item.resetAction;
@@ -202,7 +213,7 @@
   function buildPromptManagementPanel(project) {
     var panel = makeElement("section", "share-prompt-panel");
     panel.appendChild(makeElement("h4", "", "提示词管理"));
-    panel.appendChild(makeElement("p", "share-module-hint", "组合判断的 4 类内置提示词与加工字段的 8 个预设提示词均在此集中管理；修改后立即生效，影响后续 AI 草稿生成。"));
+    panel.appendChild(makeElement("p", "share-module-hint", "组合判断的 4 类内置提示词与加工字段的预设提示词均在此集中管理；修改后立即生效，影响后续 AI 草稿生成。您也可以新增自定义预置模板，快速添加到「内容加工与审核」中。"));
 
     // 组合判断 4 类内置提示词
     var aiGroup = makeElement("div", "share-prompt-group");
@@ -217,25 +228,31 @@
       var modified = !!(overrides.ai && overrides.ai[key]);
       aiGroup.appendChild(buildPromptRow({
         label: meta.label, description: meta.description,
-        currentValue: current, modified: modified,
+        currentValue: current, modified: modified, isCustom: false,
         editAction: "edit-ai-prompt", promptKey: key,
         resetAction: "reset-ai-prompt",
       }));
     });
     panel.appendChild(aiGroup);
 
-    // 加工字段 8 个预设提示词
+    // 加工字段预设提示词（内置 + 自定义）
     var fieldGroup = makeElement("div", "share-prompt-group");
     fieldGroup.appendChild(makeElement("div", "share-prompt-group-title", "加工字段预设（应用于「内容加工与审核」中的快速添加字段）"));
     var presets = window.PatentShareModules && window.PatentShareModules.fieldPresets ? window.PatentShareModules.fieldPresets() : [];
     presets.forEach(function (preset) {
       fieldGroup.appendChild(buildPromptRow({
         label: preset.label, description: preset.type === "list" ? "列表型" : "文本型",
-        currentValue: preset.prompt, modified: !!preset.modified,
-        editAction: "edit-field-preset-prompt", presetLabel: preset.label,
+        currentValue: preset.prompt, modified: !!preset.modified, isCustom: !!preset.isCustom,
+        editAction: "edit-field-preset-prompt", presetLabel: preset.label, presetType: preset.type,
         resetAction: "reset-field-preset-prompt",
       }));
     });
+    // 新增自定义模板按钮
+    var addPresetBtn = makeElement("button", "share-add-preset-btn", "+ 新增自定义预置模板");
+    addPresetBtn.type = "button";
+    addPresetBtn.dataset.shareAction = "add-custom-preset";
+    addPresetBtn.disabled = aiRunning;
+    fieldGroup.appendChild(addPresetBtn);
     panel.appendChild(fieldGroup);
 
     // 项目级 AI 原文范围
@@ -1681,6 +1698,10 @@
     for (var i = 0; i < navItems.length; i++) {
       navItems[i].classList.toggle("active", navItems[i].dataset.shareView === activeView);
     }
+    var promptsBtn = byId("share-prompts-settings-btn");
+    if (promptsBtn) {
+      promptsBtn.classList.toggle("active", activeView === "prompts");
+    }
     updateProjectStatus();
     if (activeView === "review") bindReviewScrollSpy();
   }
@@ -2496,6 +2517,12 @@
       notice = null;
       render();
     });
+    var promptsSettingsBtn = byId("share-prompts-settings-btn");
+    if (promptsSettingsBtn) promptsSettingsBtn.addEventListener("click", function () {
+      activeView = "prompts";
+      notice = null;
+      render();
+    });
     var view = byId("share-workspace-view");
     if (view) view.addEventListener("mousedown", function (event) {
       var annoButton = event.target.closest ? event.target.closest("[data-share-action='annotate-text']") : null;
@@ -2709,6 +2736,41 @@
           if (!confirmed) return;
           window.PatentShareStore.setFieldPresetPrompt(resetPresetLabel, "", "text");
           setNotice("预设提示词「" + resetPresetLabel + "」已恢复为默认。", false);
+          render();
+        });
+      }
+      // 新增自定义预置模板
+      if (actionName === "add-custom-preset") {
+        PatentShareUI.prompt("请输入自定义预置模板名称", "").then(function (presetName) {
+          if (presetName == null) return;
+          presetName = presetName.trim();
+          if (!presetName) { setNotice("模板名称不能为空。", true); render(); return; }
+          // 检查是否与已有模板重名
+          var existingPresets = window.PatentShareModules && window.PatentShareModules.fieldPresets ? window.PatentShareModules.fieldPresets() : [];
+          if (existingPresets.some(function (p) { return p.label === presetName; })) {
+            setNotice("已存在同名模板「" + presetName + "」，请换一个名称。", true);
+            render();
+            return;
+          }
+          // 选择类型
+          PatentShareUI.confirm("默认类型为列表型，点击确定为列表型，取消为文本型。", "选择类型").then(function (isList) {
+            var pType = isList !== false ? "list" : "text";
+            PatentShareUI.multilinePrompt("输入自定义预置模板的提示词", "", "提示AI如何抽取该字段内容，如：请概括该专利在XX方面的技术优势，3-5个要点。").then(function (promptText) {
+              if (promptText == null || !promptText.trim()) { setNotice("提示词不能为空。", true); render(); return; }
+              window.PatentShareStore.addCustomPreset(presetName, promptText, pType);
+              setNotice("自定义预置模板「" + presetName + "」已添加。", false);
+              render();
+            });
+          });
+        });
+      }
+      // 删除自定义预置模板
+      if (actionName === "delete-custom-preset" && action.dataset.presetLabel) {
+        var delPresetLabel = action.dataset.presetLabel;
+        PatentShareUI.confirm("确定删除自定义预置模板「" + delPresetLabel + "」吗？此操作不可恢复。").then(function (confirmed) {
+          if (!confirmed) return;
+          window.PatentShareStore.removeCustomPreset(delPresetLabel);
+          setNotice("自定义预置模板「" + delPresetLabel + "」已删除。", false);
           render();
         });
       }

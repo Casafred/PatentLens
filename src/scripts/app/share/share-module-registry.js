@@ -54,7 +54,7 @@
 
   function buildFieldPresets() {
     var overrides = readFieldPresetOverrides();
-    return FIELD_PRESETS.map(function (preset) {
+    var result = FIELD_PRESETS.map(function (preset) {
       var override = overrides[preset.label];
       var effective = override && override.prompt ? override : preset;
       return {
@@ -64,8 +64,27 @@
         defaultPrompt: preset.prompt,
         defaultType: preset.type,
         modified: !!(override && override.prompt && override.prompt !== preset.prompt),
+        isCustom: false,
       };
     });
+    // 添加用户自定义模板（overrides 中 isCustom=true 且不在内置列表中的）
+    var builtInLabels = {};
+    FIELD_PRESETS.forEach(function (p) { builtInLabels[p.label] = true; });
+    Object.keys(overrides).forEach(function (label) {
+      var item = overrides[label];
+      if (item && item.isCustom && item.prompt && !builtInLabels[label]) {
+        result.push({
+          label: label,
+          type: item.type || "text",
+          prompt: item.prompt,
+          defaultPrompt: "",
+          defaultType: item.type || "text",
+          modified: true,
+          isCustom: true,
+        });
+      }
+    });
+    return result;
   }
 
   function defaultConfig() {
