@@ -7408,6 +7408,202 @@ body {
   border-color: var(--accent);
 }
 
+/* 加工模块数据来源标注（编排与展示视图） */
+.share-module-block-datasource {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.share-module-block-ds-label {
+  color: var(--text-muted);
+}
+.share-module-block-ds-value {
+  color: var(--accent);
+  font-weight: 600;
+}
+.share-module-block-ds-key {
+  margin-left: auto;
+  padding: 1px 6px;
+  background: var(--bg-secondary);
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* 提示词管理面板 */
+.share-prompt-panel {
+  margin: 0 0 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+}
+.share-prompt-panel h4 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+.share-prompt-group {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.share-prompt-group:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+.share-prompt-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.share-prompt-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+}
+.share-prompt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.share-prompt-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.share-prompt-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 0;
+}
+.share-prompt-badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--bg-tertiary, #eef2f0);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.share-prompt-badge.modified {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.share-prompt-preview {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-height: 60px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  opacity: 0.85;
+}
+.share-prompt-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 原文范围勾选面板 */
+.share-scope-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.share-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+.share-scope-row.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.share-scope-row input[type="checkbox"],
+.share-scope-row input[type="radio"] {
+  margin: 0;
+  cursor: pointer;
+}
+.share-scope-label {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.share-scope-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.share-scope-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 14px;
+  border-left: 2px solid var(--border);
+  margin-left: 4px;
+}
+.share-scope-custom.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* 组合判断视图：提示词与原文范围入口提示 */
+.share-insights-prompt-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent-dim);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* 加工字段行：字段级原文范围 */
+.share-review-pf-scope {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+}
+.share-review-pf-scope .share-review-info-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.share-review-pf-scope .share-scope-panel {
+  margin-top: 4px;
+}
+
 .share-preview-toolbar {
   display: flex;
   align-items: center;

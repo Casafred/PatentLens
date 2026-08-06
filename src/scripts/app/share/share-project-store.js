@@ -126,6 +126,8 @@
         model: cleanText(f.model),
         generatedAt: cleanText(f.generatedAt),
         reviewState: f.reviewState === "accepted" ? "accepted" : "pending",
+        // 字段级原文范围覆盖；为 null 或缺失表示继承项目级 aiContextScope。
+        contextScope: (f.contextScope === null || f.contextScope === undefined) ? null : normalizeContextScope(f.contextScope),
         evidence: Array.isArray(f.evidence) ? f.evidence.map(function (e) {
           return e && typeof e === "object" ? {
             source: cleanText(e.source).slice(0, 100),
@@ -155,6 +157,41 @@
     }).filter(Boolean);
   }
 
+  // AI 分析纳入的原文范围：摘要 / 权利要求 / 说明书 / IPR 标注。
+  // 缺省全部为 true（保持历史行为）。字段级 scope 缺省继承项目级默认。
+  var SCOPE_KEYS = ["abstract", "claims", "description", "annotations"];
+  function normalizeContextScope(value) {
+    var source = value && typeof value === "object" ? value : {};
+    var result = {};
+    SCOPE_KEYS.forEach(function (key) {
+      result[key] = source[key] === false ? false : true;
+    });
+    return result;
+  }
+
+  // 提示词覆盖：组合判断四类内置提示词 + 加工字段预设提示词（按 label 索引）。
+  function normalizePromptOverrides(value) {
+    var source = value && typeof value === "object" ? value : {};
+    var aiIn = source.ai && typeof source.ai === "object" ? source.ai : {};
+    var aiOut = {};
+    ["summary", "elements", "embodiments", "comparison"].forEach(function (key) {
+      aiOut[key] = cleanText(aiIn[key]).slice(0, 20000);
+    });
+    var presetsIn = source.fieldPresets && typeof source.fieldPresets === "object" ? source.fieldPresets : {};
+    var presetsOut = {};
+    Object.keys(presetsIn).forEach(function (label) {
+      var item = presetsIn[label];
+      if (!item || typeof item !== "object") return;
+      var prompt = cleanText(item.prompt).slice(0, 20000);
+      if (!prompt) return;
+      presetsOut[cleanText(label)] = {
+        prompt: prompt,
+        type: item.type === "list" ? "list" : "text",
+      };
+    });
+    return { ai: aiOut, fieldPresets: presetsOut };
+  }
+
   function createProject() {
     var defaultModules = window.PatentShareModules && window.PatentShareModules.defaultConfig ? window.PatentShareModules.defaultConfig() : {};
     return {
@@ -169,6 +206,8 @@
       researchSummary: {},
       moduleConfig: defaultModules,
       aiAnalysis: {},
+      promptOverrides: normalizePromptOverrides(),
+      aiContextScope: normalizeContextScope(),
     };
   }
 
@@ -186,6 +225,8 @@
       researchSummary: normalizeResearchSummary(raw.researchSummary),
       moduleConfig: raw.moduleConfig && typeof raw.moduleConfig === "object" ? clone(raw.moduleConfig) : {},
       aiAnalysis: raw.aiAnalysis && typeof raw.aiAnalysis === "object" ? clone(raw.aiAnalysis) : {},
+      promptOverrides: normalizePromptOverrides(raw.promptOverrides),
+      aiContextScope: normalizeContextScope(raw.aiContextScope),
     };
     var knownNumbers = {};
     (Array.isArray(raw.patents) ? raw.patents : []).forEach(function (record) {
@@ -512,6 +553,68 @@
     queuePersist();
     notify();
     return clone(active.brief);
+  }
+
+  function getPromptOverrides() {
+    return clone(normalizePromptOverrides(ensureProject().promptOverrides));
+  }
+
+  function setPromptOverrides(overrides) {
+    var active = ensureProject();
+    active.promptOverrides = normalizePromptOverrides(overrides);
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return clone(active.promptOverrides);
+  }
+
+  // 覆盖单条组合判断内置提示词；value 为空字符串等同清除覆盖（回退到内置默认）。
+  function setAIPrompt(key, value) {
+    var active = ensureProject();
+    if (!active.promptOverrides || typeof active.promptOverrides !== "object") active.promptOverrides = normalizePromptOverrides();
+    if (!active.promptOverrides.ai || typeof active.promptOverrides.ai !== "object") active.promptOverrides.ai = {};
+    if (["summary", "elements", "embodiments", "comparison"].indexOf(key) < 0) return false;
+    active.promptOverrides.ai[key] = cleanText(value).slice(0, 20000);
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  // 读取单条组合判断提示词的项目级覆盖；未覆盖时返回空字符串（由 share-ai 回退到内置默认）。
+  function getAIPrompt(key) {
+    var overrides = getPromptOverrides();
+    if (overrides && overrides.ai && overrides.ai[key]) return overrides.ai[key];
+    return "";
+  }
+
+  // 覆盖单条加工字段预设提示词；prompt 为空则移除覆盖（回退到内置预设）。
+  function setFieldPresetPrompt(label, prompt, type) {
+    var active = ensureProject();
+    var key = cleanText(label);
+    if (!key) return false;
+    if (!active.promptOverrides || typeof active.promptOverrides !== "object") active.promptOverrides = normalizePromptOverrides();
+    if (!active.promptOverrides.fieldPresets || typeof active.promptOverrides.fieldPresets !== "object") active.promptOverrides.fieldPresets = {};
+    var text = cleanText(prompt).slice(0, 20000);
+    if (!text) delete active.promptOverrides.fieldPresets[key];
+    else active.promptOverrides.fieldPresets[key] = { prompt: text, type: type === "list" ? "list" : "text" };
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  function getAIContextScope() {
+    return clone(normalizeContextScope(ensureProject().aiContextScope));
+  }
+
+  function setAIContextScope(scope) {
+    var active = ensureProject();
+    active.aiContextScope = normalizeContextScope(scope);
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return clone(active.aiContextScope);
   }
 
   function setModuleMode(moduleId, mode) {
@@ -904,7 +1007,7 @@
     return true;
   }
 
-  function addProcessedField(patentId, label, prompt, type) {
+  function addProcessedField(patentId, label, prompt, type, contextScope) {
     var active = ensureProject();
     var patent = active.patents.find(function (item) { return item.id === patentId; });
     var cleanLabel = cleanText(label);
@@ -920,6 +1023,7 @@
       model: "",
       generatedAt: "",
       reviewState: "pending",
+      contextScope: (contextScope === null || contextScope === undefined) ? null : normalizeContextScope(contextScope),
     };
     patent.processedFields.push(field);
     active.updatedAt = now();
@@ -942,6 +1046,9 @@
     if (updates.source === "ai" || updates.source === "manual") field.source = updates.source;
     if (updates.reviewState === "accepted") field.reviewState = "accepted";
     else if (updates.reviewState) field.reviewState = "pending";
+    if (Object.prototype.hasOwnProperty.call(updates, "contextScope")) {
+      field.contextScope = updates.contextScope === null ? null : normalizeContextScope(updates.contextScope);
+    }
     if (Array.isArray(updates.evidence)) field.evidence = updates.evidence.slice(0, 20);
     active.updatedAt = now();
     queuePersist();
@@ -1085,6 +1192,13 @@
     setProjectBrief: setProjectBrief,
     setModuleConfig: setModuleConfig,
     setModuleMode: setModuleMode,
+    getPromptOverrides: getPromptOverrides,
+    setPromptOverrides: setPromptOverrides,
+    setAIPrompt: setAIPrompt,
+    getAIPrompt: getAIPrompt,
+    setFieldPresetPrompt: setFieldPresetPrompt,
+    getAIContextScope: getAIContextScope,
+    setAIContextScope: setAIContextScope,
     addPatent: addPatent,
     importPatents: importPatents,
     updatePatentField: updatePatentField,

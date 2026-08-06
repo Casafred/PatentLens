@@ -15,17 +15,17 @@
     { id: "S4", label: "权利要求书", description: "完整权利要求，含独立/从属标识与引用关系。", required: true, defaultMode: "lite", category: "basic" },
     { id: "S5", label: "说明书", description: "专利说明书/具体实施方式全文。", required: false, defaultMode: "off", category: "basic" },
     { id: "S7", label: "附图", description: "专利附图、流程图或用户上传的图片。", required: false, defaultMode: "full", category: "basic" },
-    { id: "S6", label: "来源与声明", description: "数据来源、抓取时间、审核状态和技术沟通声明。", required: true, defaultMode: "full", category: "basic" },
     // ===== 加工信息：AI 抽取或手工录入的结构化字段 =====
-    { id: "R1", label: "技术问题-方案-效果", description: "AI 抽取或人工编辑的技术问题、技术方案、技术效果三要素。", required: false, defaultMode: "off", category: "processed" },
-    { id: "R2", label: "技术要素提取", description: "AI 提取的核心部件、方法步骤、参数和接口关系。", required: false, defaultMode: "off", category: "processed" },
-    { id: "R3", label: "关键参数与边界", description: "数值范围、材料、工艺、性能指标及适用条件。", required: false, defaultMode: "off", category: "processed" },
-    { id: "R4", label: "实施例与验证", description: "实施方式、对比实验、测试条件和结果归纳。", required: false, defaultMode: "off", category: "processed" },
-    { id: "R5", label: "多专利对比", description: "多篇专利按技术路线、关键要素、效果做矩阵对比。", required: false, defaultMode: "off", category: "processed" },
-    { id: "R6", label: "研发启发与待验证", description: "研发建议、待验证问题、技术空白点和后续实验项。", required: false, defaultMode: "off", category: "processed" },
-    { id: "R7", label: "OCR 原文摘录", description: "PDF OCR 文本摘录，默认不对外分享。", required: false, defaultMode: "off", category: "processed" },
-    { id: "R8", label: "引证文献", description: "前后向引证文献列表。", required: false, defaultMode: "off", category: "processed" },
-    { id: "R9", label: "同族与地域", description: "同族专利布局、重点国家与申请节奏。", required: false, defaultMode: "off", category: "processed" },
+    // dataSource/analysisKey 用于在「编排与展示」中提示该模块的内容来自哪一处生成入口。
+    { id: "R1", label: "技术问题-方案-效果", description: "AI 抽取或人工编辑的技术问题、技术方案、技术效果三要素。", required: false, defaultMode: "off", category: "processed", dataSource: "组合判断 · 技术解读 + 项目级结论", analysisKey: "summary" },
+    { id: "R2", label: "技术要素提取", description: "AI 提取的核心部件、方法步骤、参数和接口关系。", required: false, defaultMode: "off", category: "processed", dataSource: "组合判断 · 技术要素", analysisKey: "elements" },
+    { id: "R3", label: "关键参数与边界", description: "数值范围、材料、工艺、性能指标及适用条件。", required: false, defaultMode: "off", category: "processed", dataSource: "组合判断 · 技术要素（参数）", analysisKey: "elements" },
+    { id: "R4", label: "实施例与验证", description: "实施方式、对比实验、测试条件和结果归纳。", required: false, defaultMode: "off", category: "processed", dataSource: "组合判断 · 实施例与验证", analysisKey: "embodiments" },
+    { id: "R5", label: "多专利对比", description: "多篇专利按技术路线、关键要素、效果做矩阵对比。", required: false, defaultMode: "off", category: "processed", dataSource: "组合判断 · 多专利技术路线对比", analysisKey: "comparison", projectLevel: true },
+    { id: "R6", label: "研发启发与待验证", description: "研发建议、待验证问题、技术空白点和后续实验项。", required: false, defaultMode: "off", category: "processed", dataSource: "项目级结论（待验证问题）", analysisKey: "research" },
+    { id: "R7", label: "OCR 原文摘录", description: "PDF OCR 文本摘录，默认不对外分享。", required: false, defaultMode: "off", category: "processed", dataSource: "PDF OCR 材料" },
+    { id: "R8", label: "引证文献", description: "前后向引证文献列表。", required: false, defaultMode: "off", category: "processed", dataSource: "专利引证文献" },
+    { id: "R9", label: "同族与地域", description: "同族专利布局、重点国家与申请节奏。", required: false, defaultMode: "off", category: "processed", dataSource: "专利同族数据" },
   ];
 
   // 加工字段预设模板：面向研发沟通，不默认输出侵权、FTO 或规避结论。
@@ -41,6 +41,32 @@
   ];
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
+
+  // 读取项目级预设提示词覆盖（store 在 registry 之后加载，但本函数仅在运行时调用）。
+  function readFieldPresetOverrides() {
+    var store = window.PatentShareStore;
+    if (!store || typeof store.getPromptOverrides !== "function") return {};
+    try {
+      var overrides = store.getPromptOverrides();
+      return overrides && overrides.fieldPresets && typeof overrides.fieldPresets === "object" ? overrides.fieldPresets : {};
+    } catch (e) { return {}; }
+  }
+
+  function buildFieldPresets() {
+    var overrides = readFieldPresetOverrides();
+    return FIELD_PRESETS.map(function (preset) {
+      var override = overrides[preset.label];
+      var effective = override && override.prompt ? override : preset;
+      return {
+        label: preset.label,
+        type: effective.type || preset.type,
+        prompt: effective.prompt,
+        defaultPrompt: preset.prompt,
+        defaultType: preset.type,
+        modified: !!(override && override.prompt && override.prompt !== preset.prompt),
+      };
+    });
+  }
 
   function defaultConfig() {
     var modules = {};
@@ -114,6 +140,6 @@
     resolveConfig: resolveConfig,
     setModuleMode: setModuleMode,
     orderByConfig: orderByConfig,
-    fieldPresets: function () { return clone(FIELD_PRESETS); },
+    fieldPresets: function () { return clone(buildFieldPresets()); },
   };
 })();

@@ -98,6 +98,146 @@
     container.appendChild(el);
   }
 
+  // AI 分析纳入的原文范围：4 个开关，项目级与字段级共用同一组标签。
+  var SCOPE_LABELS = [
+    { key: "abstract", label: "摘要", hint: "专利摘要文本" },
+    { key: "claims", label: "权利要求", hint: "完整权利要求文本" },
+    { key: "description", label: "说明书", hint: "说明书 / 具体实施方式全文" },
+    { key: "annotations", label: "IPR 标注", hint: "在「内容加工与审核」中标注的关键段落" },
+  ];
+
+  // 构建原文范围勾选面板。opts.actionName 决定 onChange 派发到哪个 action；
+  // opts.inheritLabel 用于字段级「跟随项目默认」选项。
+  function buildContextScopePanel(scope, opts) {
+    opts = opts || {};
+    var panel = makeElement("div", "share-scope-panel");
+    var s = scope && typeof scope === "object" ? scope : {};
+    var isInherit = opts.allowInherit && s === null;
+    if (opts.allowInherit) {
+      var inheritRow = makeElement("label", "share-scope-row" + (isInherit ? " active" : ""));
+      var inheritCb = document.createElement("input");
+      inheritCb.type = "radio";
+      inheritCb.name = opts.radioName || "share-scope-inherit";
+      inheritCb.checked = isInherit;
+      inheritCb.dataset.shareAction = opts.inheritAction || "set-field-context-scope";
+      if (opts.fieldId) inheritCb.dataset.fieldId = opts.fieldId;
+      if (opts.patentId) inheritCb.dataset.patentId = opts.patentId;
+      inheritCb.dataset.scopeValue = "inherit";
+      inheritRow.appendChild(inheritCb);
+      inheritRow.appendChild(makeElement("span", "share-scope-label", opts.inheritLabel || "跟随项目默认"));
+      panel.appendChild(inheritRow);
+    }
+    var customRow = makeElement("div", "share-scope-custom" + (isInherit ? " disabled" : ""));
+    SCOPE_LABELS.forEach(function (item) {
+      var row = makeElement("label", "share-scope-row" + (s[item.key] ? " active" : ""));
+      var cb = document.createElement("input");
+      cb.type = opts.allowInherit ? "radio" : "checkbox";
+      if (opts.allowInherit) {
+        cb.name = opts.radioName || "share-scope-inherit";
+        cb.checked = !isInherit;
+        cb.dataset.scopeValue = "custom";
+      } else {
+        cb.type = "checkbox";
+        cb.checked = s[item.key] !== false;
+      }
+      cb.dataset.shareAction = opts.actionName || "toggle-context-scope";
+      cb.dataset.scopeKey = item.key;
+      if (opts.fieldId) cb.dataset.fieldId = opts.fieldId;
+      if (opts.patentId) cb.dataset.patentId = opts.patentId;
+      if (isInherit) cb.disabled = true;
+      row.appendChild(cb);
+      var labelBox = makeElement("span", "share-scope-label", item.label);
+      row.appendChild(labelBox);
+      row.appendChild(makeElement("span", "share-scope-hint", item.hint));
+      customRow.appendChild(row);
+    });
+    panel.appendChild(customRow);
+    return panel;
+  }
+
+  // 构建单条提示词行：显示当前是否被覆盖、编辑与重置按钮。
+  function buildPromptRow(item) {
+    var row = makeElement("div", "share-prompt-row");
+    var head = makeElement("div", "share-prompt-head");
+    head.appendChild(makeElement("span", "share-prompt-label", item.label));
+    if (item.description) head.appendChild(makeElement("span", "share-prompt-desc", item.description));
+    var badge = makeElement("span", "share-prompt-badge" + (item.modified ? " modified" : ""), item.modified ? "已自定义" : "默认");
+    head.appendChild(badge);
+    row.appendChild(head);
+    var preview = makeElement("div", "share-prompt-preview");
+    preview.textContent = (item.currentValue || "").slice(0, 120) + ((item.currentValue || "").length > 120 ? "…" : "");
+    row.appendChild(preview);
+    var actions = makeElement("div", "share-prompt-actions");
+    var edit = makeElement("button", "share-field-edit", "编辑提示词");
+    edit.type = "button";
+    edit.dataset.shareAction = item.editAction;
+    if (item.promptKey) edit.dataset.promptKey = item.promptKey;
+    if (item.presetLabel) edit.dataset.presetLabel = item.presetLabel;
+    edit.disabled = aiRunning;
+    actions.appendChild(edit);
+    if (item.modified) {
+      var reset = makeElement("button", "share-field-remove", "恢复默认");
+      reset.type = "button";
+      reset.dataset.shareAction = item.resetAction;
+      if (item.promptKey) reset.dataset.promptKey = item.promptKey;
+      if (item.presetLabel) reset.dataset.presetLabel = item.presetLabel;
+      reset.disabled = aiRunning;
+      actions.appendChild(reset);
+    }
+    row.appendChild(actions);
+    return row;
+  }
+
+  // 构建提示词与原文范围管理面板（编排与展示视图顶部）。
+  function buildPromptManagementPanel(project) {
+    var panel = makeElement("section", "share-prompt-panel");
+    panel.appendChild(makeElement("h4", "", "提示词管理"));
+    panel.appendChild(makeElement("p", "share-module-hint", "组合判断的 4 类内置提示词与加工字段的 8 个预设提示词均在此集中管理；修改后立即生效，影响后续 AI 草稿生成。"));
+
+    // 组合判断 4 类内置提示词
+    var aiGroup = makeElement("div", "share-prompt-group");
+    aiGroup.appendChild(makeElement("div", "share-prompt-group-title", "组合判断（技术解读 / 技术要素 / 实施例与验证 / 多专利对比）"));
+    var ai = window.PatentShareAI;
+    var overrides = window.PatentShareStore && window.PatentShareStore.getPromptOverrides ? window.PatentShareStore.getPromptOverrides() : { ai: {}, fieldPresets: {} };
+    var aiMeta = ai && ai.promptMeta ? ai.promptMeta() : {};
+    var aiDefaults = ai && ai.getPromptDefaults ? ai.getPromptDefaults() : {};
+    ["summary", "elements", "embodiments", "comparison"].forEach(function (key) {
+      var meta = aiMeta[key] || { label: key, description: "" };
+      var current = (overrides.ai && overrides.ai[key]) || aiDefaults[key] || "";
+      var modified = !!(overrides.ai && overrides.ai[key]);
+      aiGroup.appendChild(buildPromptRow({
+        label: meta.label, description: meta.description,
+        currentValue: current, modified: modified,
+        editAction: "edit-ai-prompt", promptKey: key,
+        resetAction: "reset-ai-prompt",
+      }));
+    });
+    panel.appendChild(aiGroup);
+
+    // 加工字段 8 个预设提示词
+    var fieldGroup = makeElement("div", "share-prompt-group");
+    fieldGroup.appendChild(makeElement("div", "share-prompt-group-title", "加工字段预设（应用于「内容加工与审核」中的快速添加字段）"));
+    var presets = window.PatentShareModules && window.PatentShareModules.fieldPresets ? window.PatentShareModules.fieldPresets() : [];
+    presets.forEach(function (preset) {
+      fieldGroup.appendChild(buildPromptRow({
+        label: preset.label, description: preset.type === "list" ? "列表型" : "文本型",
+        currentValue: preset.prompt, modified: !!preset.modified,
+        editAction: "edit-field-preset-prompt", presetLabel: preset.label,
+        resetAction: "reset-field-preset-prompt",
+      }));
+    });
+    panel.appendChild(fieldGroup);
+
+    // 项目级 AI 原文范围
+    var scopeGroup = makeElement("div", "share-prompt-group");
+    scopeGroup.appendChild(makeElement("div", "share-prompt-group-title", "AI 分析纳入的原文范围（项目级默认）"));
+    scopeGroup.appendChild(makeElement("p", "share-module-hint", "勾选后，所有组合判断与加工字段的 AI 抽取都会基于此处勾选的原文内容生成；字段级可在「内容加工与审核」中单独覆盖。"));
+    var projectScope = window.PatentShareStore && window.PatentShareStore.getAIContextScope ? window.PatentShareStore.getAIContextScope() : { abstract: true, claims: true, description: true, annotations: true };
+    scopeGroup.appendChild(buildContextScopePanel(projectScope, { actionName: "toggle-context-scope" }));
+    panel.appendChild(scopeGroup);
+    return panel;
+  }
+
   function renderOverview(container, project) {
     addHeading(container, viewMeta.overview, "加入当前专利", "add-current");
     addNotice(container);
@@ -816,6 +956,21 @@
           rmPf.disabled = aiRunning;
           pfActions.appendChild(rmPf);
           pfRow.appendChild(pfActions);
+          // 字段级 AI 原文范围：默认继承项目级；可单独勾选摘要/权利要求/说明书/IPR 标注。
+          var scopeBox = makeElement("div", "share-review-pf-scope");
+          scopeBox.appendChild(makeElement("div", "share-review-info-label", "AI 抽取基于的原文范围："));
+          var fieldScope = pf.contextScope === null || pf.contextScope === undefined
+            ? null
+            : pf.contextScope;
+          scopeBox.appendChild(buildContextScopePanel(fieldScope, {
+            actionName: "toggle-field-context-scope",
+            allowInherit: true,
+            radioName: "share-scope-" + pf.id,
+            inheritAction: "set-field-context-scope",
+            patentId: patent.id,
+            fieldId: pf.id,
+          }));
+          pfRow.appendChild(scopeBox);
           body.appendChild(pfRow);
         });
       } else {
@@ -1126,6 +1281,9 @@
     var hint = makeElement("p", "share-module-hint", "点击模块切换“完整 / 精简 / 关闭”。加工信息模块可拖拽排序，排序会在预览与导出中生效；基础原文模块保持固定阅读结构。");
     container.appendChild(hint);
 
+    // 提示词与原文范围管理面板：集中暴露 12 条提示词与项目级原文范围。
+    container.appendChild(buildPromptManagementPanel(project));
+
     // 可视化布局编辑器：模拟最终分享 HTML 的版面结构
     var preview = makeElement("div", "share-module-visual");
     preview.appendChild(makeElement("div", "share-module-visual-hint", "以下版面模拟最终分享网页的布局结构；仅加工信息模块支持拖拽排序"));
@@ -1203,6 +1361,18 @@
     info.appendChild(makeElement("span", "share-module-block-label", module.label));
     if (module.required) info.appendChild(makeElement("span", "share-module-block-required", "必要"));
     block.appendChild(info);
+
+    // 数据来源标注：让用户看到该模块的内容来自「组合判断」的哪一类生成入口，
+    // 解决「加工字段、组合判断的内容不知道对应编排的哪个模块」的问题。
+    if (module.category === "processed" && module.dataSource) {
+      var dsRow = makeElement("div", "share-module-block-datasource");
+      dsRow.appendChild(makeElement("span", "share-module-block-ds-label", "数据来源："));
+      dsRow.appendChild(makeElement("span", "share-module-block-ds-value", module.dataSource));
+      if (module.analysisKey) {
+        dsRow.appendChild(makeElement("span", "share-module-block-ds-key", "键：" + module.analysisKey));
+      }
+      block.appendChild(dsRow);
+    }
 
     // 模式切换按钮组
     var modeBar = makeElement("div", "share-module-mode-bar");
@@ -1348,6 +1518,23 @@
     var hasAI = window.PatentShareAI && window.PatentShareAI.getActiveAIProvider();
     if (!hasAI) container.appendChild(makeElement("div", "share-inline-notice error", "未检测到可用的 AI 配置。仍可编辑人工结论，但无法生成新的 AI 草稿。"));
     container.appendChild(makeElement("p", "share-module-hint", "每份 AI 内容都必须在这里阅读、编辑并确认后，才可进入正式分享。结论应能回到权利要求、说明书或 IPR 标注核验。"));
+
+    // 提示词与原文范围入口：在组合判断视图提示用户去「编排与展示」集中管理。
+    var promptHint = makeElement("div", "share-insights-prompt-hint");
+    promptHint.appendChild(makeElement("span", "", "提示词与原文范围管理："));
+    var promptBtn = makeElement("button", "share-field-edit", "前往「编排与展示 · 提示词管理」");
+    promptBtn.type = "button";
+    promptBtn.dataset.shareAction = "go-modules-prompts";
+    promptBtn.disabled = aiRunning;
+    promptHint.appendChild(promptBtn);
+    // 显示当前项目级原文范围概要
+    var curScope = window.PatentShareStore && window.PatentShareStore.getAIContextScope ? window.PatentShareStore.getAIContextScope() : {};
+    var scopeSummary = ["abstract", "claims", "description", "annotations"]
+      .filter(function (k) { return curScope[k] !== false; })
+      .map(function (k) { return k === "abstract" ? "摘要" : k === "claims" ? "权利要求" : k === "description" ? "说明书" : "IPR 标注"; })
+      .join("、") || "（未勾选任何原文）";
+    promptHint.appendChild(makeElement("span", "share-review-info-label", "当前 AI 基于：" + scopeSummary));
+    container.appendChild(promptHint);
 
     if (!project.patents.length) {
       var empty = makeElement("div", "share-empty-panel");
@@ -2088,6 +2275,66 @@
       if (actionName === "ai-elements" && action.dataset.patentId) runAIAnalysis(action.dataset.patentId, "elements");
       if (actionName === "ai-embodiments" && action.dataset.patentId) runAIAnalysis(action.dataset.patentId, "embodiments");
       if (actionName === "ai-comparison") runAIComparison();
+      // 跳转到「编排与展示」中的提示词管理面板
+      if (actionName === "go-modules-prompts") {
+        activeView = "modules";
+        render();
+        // 滚动到提示词管理面板
+        setTimeout(function () {
+          var panel = document.querySelector(".share-prompt-panel");
+          if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 50);
+        return;
+      }
+      // 提示词管理：编辑/重置组合判断内置提示词
+      if (actionName === "edit-ai-prompt" && action.dataset.promptKey) {
+        var aiPromptKey = action.dataset.promptKey;
+        var aiMetaMap = window.PatentShareAI && window.PatentShareAI.promptMeta ? window.PatentShareAI.promptMeta() : {};
+        var aiDefaultsMap = window.PatentShareAI && window.PatentShareAI.getPromptDefaults ? window.PatentShareAI.getPromptDefaults() : {};
+        var aiMetaEntry = aiMetaMap[aiPromptKey] || { label: aiPromptKey };
+        var currentOverrides = window.PatentShareStore.getPromptOverrides();
+        var currentPromptVal = (currentOverrides.ai && currentOverrides.ai[aiPromptKey]) || aiDefaultsMap[aiPromptKey] || "";
+        PatentShareUI.multilinePrompt("编辑提示词：" + aiMetaEntry.label, currentPromptVal, aiMetaEntry.description || "留空保存将恢复为内置默认提示词。").then(function (next) {
+          if (next == null) return;
+          window.PatentShareStore.setAIPrompt(aiPromptKey, next);
+          setNotice("提示词「" + aiMetaEntry.label + "」已" + (next.trim() ? "保存" : "重置为默认") + "。", false);
+          render();
+        });
+      }
+      if (actionName === "reset-ai-prompt" && action.dataset.promptKey) {
+        var resetAiKey = action.dataset.promptKey;
+        var resetAiMeta = window.PatentShareAI && window.PatentShareAI.promptMeta ? window.PatentShareAI.promptMeta() : {};
+        var resetAiLabel = (resetAiMeta[resetAiKey] || { label: resetAiKey }).label;
+        PatentShareUI.confirm("确定将「" + resetAiLabel + "」提示词恢复为内置默认吗？").then(function (confirmed) {
+          if (!confirmed) return;
+          window.PatentShareStore.setAIPrompt(resetAiKey, "");
+          setNotice("提示词「" + resetAiLabel + "」已恢复为默认。", false);
+          render();
+        });
+      }
+      // 提示词管理：编辑/重置加工字段预设提示词
+      if (actionName === "edit-field-preset-prompt" && action.dataset.presetLabel) {
+        var presetLabel = action.dataset.presetLabel;
+        var presetList = window.PatentShareModules && window.PatentShareModules.fieldPresets ? window.PatentShareModules.fieldPresets() : [];
+        var presetMatch = presetList.find(function (p) { return p.label === presetLabel; });
+        var presetType = presetMatch ? presetMatch.type : "text";
+        var currentPresetPrompt = presetMatch ? presetMatch.prompt : "";
+        PatentShareUI.multilinePrompt("编辑预设提示词：" + presetLabel, currentPresetPrompt, "留空保存将恢复为内置预设。当前类型：" + (presetType === "list" ? "列表型" : "文本型")).then(function (next) {
+          if (next == null) return;
+          window.PatentShareStore.setFieldPresetPrompt(presetLabel, next, presetType);
+          setNotice("预设提示词「" + presetLabel + "」已" + (next.trim() ? "保存" : "重置为默认") + "。", false);
+          render();
+        });
+      }
+      if (actionName === "reset-field-preset-prompt" && action.dataset.presetLabel) {
+        var resetPresetLabel = action.dataset.presetLabel;
+        PatentShareUI.confirm("确定将预设「" + resetPresetLabel + "」的提示词恢复为内置默认吗？").then(function (confirmed) {
+          if (!confirmed) return;
+          window.PatentShareStore.setFieldPresetPrompt(resetPresetLabel, "", "text");
+          setNotice("预设提示词「" + resetPresetLabel + "」已恢复为默认。", false);
+          render();
+        });
+      }
       if (actionName === "open-project") openProject(action.dataset.projectId);
       if (actionName === "delete-project" && action.dataset.projectId) deleteProject(action.dataset.projectId, action.dataset.projectName);
       if (actionName === "translate-claims" && action.dataset.patentId) runTranslate(action.dataset.patentId, "claims");
@@ -2513,6 +2760,41 @@
           render();
         }
         control.value = "";
+      }
+      // 项目级 AI 原文范围勾选：toggle 单个 key
+      if (actionName === "toggle-context-scope" && control.dataset.scopeKey) {
+        var scopeKey = control.dataset.scopeKey;
+        var projectScope = window.PatentShareStore.getAIContextScope ? window.PatentShareStore.getAIContextScope() : { abstract: true, claims: true, description: true, annotations: true };
+        projectScope[scopeKey] = !!control.checked;
+        window.PatentShareStore.setAIContextScope(projectScope);
+        setNotice("AI 原文范围「" + (scopeKey === "abstract" ? "摘要" : scopeKey === "claims" ? "权利要求" : scopeKey === "description" ? "说明书" : "IPR 标注") + "」已" + (control.checked ? "纳入" : "排除") + "。", false);
+        render();
+        return;
+      }
+      // 字段级 AI 原文范围：选择「跟随项目默认」
+      if (actionName === "set-field-context-scope" && control.dataset.patentId && control.dataset.fieldId) {
+        if (control.dataset.scopeValue === "inherit") {
+          window.PatentShareStore.updateProcessedField(control.dataset.patentId, control.dataset.fieldId, { contextScope: null });
+          setNotice("字段已恢复为跟随项目级原文范围。", false);
+          render();
+        }
+        return;
+      }
+      // 字段级 AI 原文范围：自定义时切换某个 key
+      if (actionName === "toggle-field-context-scope" && control.dataset.patentId && control.dataset.fieldId && control.dataset.scopeKey) {
+        var pfScopeKey = control.dataset.scopeKey;
+        var pfProj = currentProject();
+        var pfPatent = pfProj.patents.find(function (x) { return x.id === control.dataset.patentId; });
+        var pfFieldTarget = pfPatent && Array.isArray(pfPatent.processedFields) ? pfPatent.processedFields.find(function (f) { return f.id === control.dataset.fieldId; }) : null;
+        if (!pfFieldTarget) { render(); return; }
+        var baseScope = pfFieldTarget.contextScope && typeof pfFieldTarget.contextScope === "object"
+          ? pfFieldTarget.contextScope
+          : (window.PatentShareStore.getAIContextScope ? window.PatentShareStore.getAIContextScope() : { abstract: true, claims: true, description: true, annotations: true });
+        baseScope[pfScopeKey] = !!control.checked;
+        window.PatentShareStore.updateProcessedField(control.dataset.patentId, control.dataset.fieldId, { contextScope: baseScope });
+        setNotice("字段原文范围已更新。", false);
+        render();
+        return;
       }
     });
     document.addEventListener("keydown", function (event) {

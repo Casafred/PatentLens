@@ -8,7 +8,7 @@ function loadShareModules(patentData) {
   const root = path.resolve(__dirname, '../src/scripts/app/share');
   const window = { _currentPatentData: patentData || null };
   const context = vm.createContext({ window, Date, Math, JSON });
-  for (const name of ['share-field-merge.js', 'share-spreadsheet-import.js', 'share-module-registry.js', 'share-renderer.js', 'share-project-store.js', 'share-source-adapters.js']) {
+  for (const name of ['share-field-merge.js', 'share-spreadsheet-import.js', 'share-module-registry.js', 'share-renderer.js', 'share-project-store.js', 'share-source-adapters.js', 'share-ai.js']) {
     const file = path.join(root, name);
     vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
   }
@@ -383,4 +383,203 @@ test('current GP data is copied into a normalized share snapshot', () => {
   assert.equal(Array.isArray(snapshot.claims[0].references), true);
   assert.equal(snapshot.claims[0].references.length, 0);
   assert.equal(snapshot.source.type, 'google_patents');
+});
+
+test('S6 module is removed from registry and rendered HTML carries PatentLens watermark instead', () => {
+  const { PatentShareModules, PatentShareRenderer } = loadShareModules();
+  const modules = PatentShareModules.list();
+  assert.equal(modules.some((m) => m.id === 'S6'), false);
+  assert.equal(modules.some((m) => m.id === 'S7'), true);
+  const config = PatentShareModules.defaultConfig();
+  assert.equal(config.modules.S6, undefined);
+  const rendered = PatentShareRenderer.render({
+    name: 'Watermark', moduleConfig: config,
+    patents: [{ patentNumber: 'US1', title: 'W', source: { type: 'manual', label: 'Manual' } }],
+  });
+  // 来源与声明模块的内容不应再出现
+  assert.equal(rendered.html.includes('来源内容来自项目快照'), false);
+  // 由 PatentLens 制作 水印必须出现在导出 HTML 中
+  assert.equal(rendered.html.includes('patentlens-watermark'), true);
+  assert.equal(rendered.html.includes('PatentLens</span>'), true);
+});
+
+test('renderMarkdownSimple supports GFM tables, fenced code blocks and inline formatting', () => {
+  const { PatentShareRenderer } = loadShareModules();
+  const render = PatentShareRenderer.renderMarkdownSimple;
+  const tableMd = '| 维度 | 取值 |\n| --- | --- |\n| 温度 | 25℃ |\n| 压力 | 1atm |';
+  const tableHtml = render(tableMd);
+  assert.equal(tableHtml.includes('<table class="md-table">'), true);
+  assert.equal(tableHtml.includes('<th>维度</th>'), true);
+  assert.equal(tableHtml.includes('<td>25℃</td>'), true);
+
+  const codeMd = '```js\nconst x = 1;\n```';
+  const codeHtml = render(codeMd);
+  assert.equal(codeHtml.includes('<pre class="md-code">'), true);
+  assert.equal(codeHtml.includes('const x = 1;'), true);
+  // 代码块内容不应被行内格式化规则误伤
+  assert.equal(codeHtml.includes('<strong>'), false);
+
+  const md = '## 标题\n**粗体** *斜体* `code`';
+  const html = render(md);
+  assert.equal(html.includes('<h3>标题</h3>'), true);
+  assert.equal(html.includes('<strong>粗体</strong>'), true);
+  assert.equal(html.includes('<em>斜体</em>'), true);
+  assert.equal(html.includes('<code>code</code>'), true);
+});
+
+test('figure-text comparison: 图N references become clickable links and figure rail renders when S7 enabled', () => {
+  const { PatentShareModules, PatentShareRenderer } = loadShareModules();
+  const config = PatentShareModules.defaultConfig();
+  config.modules.S4 = 'full';
+  config.modules.S5 = 'full';
+  config.modules.S7 = 'full';
+  const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  const rendered = PatentShareRenderer.render({
+    name: '图文对照', moduleConfig: config,
+    patents: [{
+      patentNumber: 'US1', title: 'Figures', source: { type: 'manual', label: 'Manual' },
+      claims: [{ number: '1', text: '参见 图1 所示的结构。', type: 'independent' }],
+      description: '说明书提到 图2 的实施方式。',
+      figures: [{ dataUrl: tinyPng, caption: '结构图' }, { dataUrl: tinyPng, caption: '实施方式' }],
+    }],
+  });
+  // 正文「图1」「图2」被转换为可点击链接
+  assert.equal(rendered.html.includes('class="fig-ref"'), true);
+  assert.equal(rendered.html.includes('data-fig-index="1"'), true);
+  assert.equal(rendered.html.includes('data-fig-index="2"'), true);
+  // 左文右图分栏布局生效
+  assert.equal(rendered.html.includes('source-split'), true);
+  assert.equal(rendered.html.includes('source-figures'), true);
+  assert.equal(rendered.html.includes('fig-mini'), true);
+});
+
+test('project-level AI prompt overrides persist and propagate to getAIPrompt', () => {
+  const { PatentShareStore, PatentShareAI } = loadShareModules();
+  // 默认值：getAIPrompt 返回内置默认
+  const defaultSummary = PatentShareAI.getAIPrompt('summary');
+  assert.equal(defaultSummary.length > 0, true);
+  assert.equal(defaultSummary.includes('专利技术信息分析师'), true);
+
+  // 覆盖单条组合判断提示词
+  assert.equal(PatentShareStore.setAIPrompt('summary', '自定义技术解读提示词。'), true);
+  assert.equal(PatentShareStore.getAIPrompt('summary'), '自定义技术解读提示词。');
+  assert.equal(PatentShareAI.getAIPrompt('summary'), '自定义技术解读提示词。');
+
+  // 未覆盖的项仍返回内置默认
+  assert.equal(PatentShareAI.getAIPrompt('elements').includes('结构化技术要素'), true);
+
+  // 非法 key 被拒绝
+  assert.equal(PatentShareStore.setAIPrompt('unknown', 'x'), false);
+
+  // 空字符串清除覆盖，回退到内置默认
+  assert.equal(PatentShareStore.setAIPrompt('summary', ''), true);
+  assert.equal(PatentShareAI.getAIPrompt('summary'), defaultSummary);
+});
+
+test('field preset prompt overrides surface through fieldPresets()', () => {
+  const { PatentShareStore, PatentShareModules } = loadShareModules();
+  const before = PatentShareModules.fieldPresets();
+  const techProblem = before.find((p) => p.label === '技术问题');
+  assert.equal(techProblem.modified, false);
+  const originalPrompt = techProblem.prompt;
+
+  // 覆盖预设提示词
+  assert.equal(PatentShareStore.setFieldPresetPrompt('技术问题', '自定义问题提示词', 'text'), true);
+  const after = PatentShareModules.fieldPresets();
+  const overridden = after.find((p) => p.label === '技术问题');
+  assert.equal(overridden.prompt, '自定义问题提示词');
+  assert.equal(overridden.modified, true);
+  assert.equal(overridden.defaultPrompt, originalPrompt);
+
+  // 空字符串清除覆盖
+  assert.equal(PatentShareStore.setFieldPresetPrompt('技术问题', '', 'text'), true);
+  const reset = PatentShareModules.fieldPresets().find((p) => p.label === '技术问题');
+  assert.equal(reset.prompt, originalPrompt);
+  assert.equal(reset.modified, false);
+});
+
+test('project-level AI context scope normalizes and persists abstract/claims/description/annotations', () => {
+  const { PatentShareStore } = loadShareModules();
+  const defaults = PatentShareStore.getAIContextScope();
+  assert.deepEqual(defaults, { abstract: true, claims: true, description: true, annotations: true });
+
+  PatentShareStore.setAIContextScope({ abstract: false, claims: true, description: false });
+  const next = PatentShareStore.getAIContextScope();
+  // 缺失的 key 被补全为 true（保持历史行为）
+  assert.equal(next.abstract, false);
+  assert.equal(next.claims, true);
+  assert.equal(next.description, false);
+  assert.equal(next.annotations, true);
+
+  // 持久化到快照
+  const snapshot = PatentShareStore.getSnapshot();
+  assert.equal(snapshot.aiContextScope.abstract, false);
+});
+
+test('field-level context scope inherits project default when null, or uses custom scope when set', () => {
+  const { PatentShareStore } = loadShareModules();
+  PatentShareStore.setAIContextScope({ abstract: false, claims: true, description: true, annotations: true });
+  PatentShareStore.addPatent({ id: 'p1', patentNumber: 'US1', title: 'Scope', source: { type: 'manual', label: 'Manual' } });
+  const addResult = PatentShareStore.addProcessedField('p1', '核心方案', '提取核心方案', 'list');
+  assert.equal(addResult.ok, true);
+
+  // 默认 contextScope 为 null（继承项目级）
+  let snap = PatentShareStore.getSnapshot();
+  assert.equal(snap.patents[0].processedFields[0].contextScope, null);
+
+  // 设置字段级覆盖
+  assert.equal(PatentShareStore.updateProcessedField('p1', snap.patents[0].processedFields[0].id, { contextScope: { abstract: true, claims: false, description: true, annotations: false } }), true);
+  snap = PatentShareStore.getSnapshot();
+  assert.deepEqual(snap.patents[0].processedFields[0].contextScope, { abstract: true, claims: false, description: true, annotations: false });
+
+  // 恢复为继承项目级
+  assert.equal(PatentShareStore.updateProcessedField('p1', snap.patents[0].processedFields[0].id, { contextScope: null }), true);
+  snap = PatentShareStore.getSnapshot();
+  assert.equal(snap.patents[0].processedFields[0].contextScope, null);
+});
+
+test('processed modules expose dataSource and analysisKey so users can trace content origin', () => {
+  const { PatentShareModules } = loadShareModules();
+  const list = PatentShareModules.list();
+  const r1 = list.find((m) => m.id === 'R1');
+  const r4 = list.find((m) => m.id === 'R4');
+  const r5 = list.find((m) => m.id === 'R5');
+  assert.equal(r1.dataSource.includes('技术解读'), true);
+  assert.equal(r1.analysisKey, 'summary');
+  assert.equal(r4.dataSource.includes('实施例与验证'), true);
+  assert.equal(r4.analysisKey, 'embodiments');
+  assert.equal(r5.dataSource.includes('多专利技术路线对比'), true);
+  assert.equal(r5.analysisKey, 'comparison');
+  // 基础模块不带 dataSource（来源是 GP/Excel/OCR，而非组合判断）
+  const s2 = list.find((m) => m.id === 'S2');
+  assert.equal(s2.dataSource, undefined);
+});
+
+test('buildPatentContext filters content by AI context scope', () => {
+  const { PatentShareStore, PatentShareAI } = loadShareModules();
+  const patent = {
+    patentNumber: 'US1', title: 'Scope filter',
+    fields: { abstract: { value: '摘要内容', source: 'manual' } },
+    claims: [{ number: '1', text: '权项内容', type: 'independent' }],
+    description: '说明书内容',
+    claimsAnnotations: [],
+    descriptionAnnotations: [],
+  };
+  // 全部纳入
+  const full = PatentShareAI.buildPatentContext(patent, {}, { abstract: true, claims: true, description: true, annotations: true });
+  assert.equal(full.includes('摘要内容'), true);
+  assert.equal(full.includes('权项内容'), true);
+  assert.equal(full.includes('说明书内容'), true);
+
+  // 仅摘要
+  const onlyAbs = PatentShareAI.buildPatentContext(patent, {}, { abstract: true, claims: false, description: false, annotations: false });
+  assert.equal(onlyAbs.includes('摘要内容'), true);
+  assert.equal(onlyAbs.includes('权项内容'), false);
+  assert.equal(onlyAbs.includes('说明书内容'), false);
+
+  // 关闭所有
+  const empty = PatentShareAI.buildPatentContext(patent, {}, { abstract: false, claims: false, description: false, annotations: false });
+  assert.equal(empty.includes('摘要内容'), false);
+  assert.equal(empty.includes('权项内容'), false);
+  assert.equal(empty.includes('说明书内容'), false);
 });
