@@ -187,6 +187,7 @@
       presetsOut[cleanText(label)] = {
         prompt: prompt,
         type: item.type === "list" ? "list" : "text",
+        isCustom: !!item.isCustom,
       };
     });
     return { ai: aiOut, fieldPresets: presetsOut };
@@ -596,8 +597,52 @@
     if (!active.promptOverrides || typeof active.promptOverrides !== "object") active.promptOverrides = normalizePromptOverrides();
     if (!active.promptOverrides.fieldPresets || typeof active.promptOverrides.fieldPresets !== "object") active.promptOverrides.fieldPresets = {};
     var text = cleanText(prompt).slice(0, 20000);
-    if (!text) delete active.promptOverrides.fieldPresets[key];
-    else active.promptOverrides.fieldPresets[key] = { prompt: text, type: type === "list" ? "list" : "text" };
+    if (!text) {
+      // 自定义模板：直接删除；内置模板覆盖：删除覆盖键回退默认
+      delete active.promptOverrides.fieldPresets[key];
+    } else {
+      var existing = active.promptOverrides.fieldPresets[key];
+      active.promptOverrides.fieldPresets[key] = {
+        prompt: text,
+        type: type === "list" ? "list" : "text",
+        isCustom: !!(existing && existing.isCustom),
+      };
+    }
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
+  // 新增自定义预置模板
+  function addCustomPreset(label, prompt, type) {
+    var active = ensureProject();
+    var key = cleanText(label);
+    if (!key) return false;
+    var text = cleanText(prompt).slice(0, 20000);
+    if (!text) return false;
+    if (!active.promptOverrides || typeof active.promptOverrides !== "object") active.promptOverrides = normalizePromptOverrides();
+    if (!active.promptOverrides.fieldPresets || typeof active.promptOverrides.fieldPresets !== "object") active.promptOverrides.fieldPresets = {};
+    active.promptOverrides.fieldPresets[key] = {
+      prompt: text,
+      type: type === "list" ? "list" : "text",
+      isCustom: true,
+    };
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return key;
+  }
+
+  // 删除自定义预置模板（只能删除 isCustom 的）
+  function removeCustomPreset(label) {
+    var active = ensureProject();
+    var key = cleanText(label);
+    if (!key) return false;
+    if (!active.promptOverrides || !active.promptOverrides.fieldPresets) return false;
+    var existing = active.promptOverrides.fieldPresets[key];
+    if (!existing || !existing.isCustom) return false;
+    delete active.promptOverrides.fieldPresets[key];
     active.updatedAt = now();
     queuePersist();
     notify();
@@ -1197,6 +1242,8 @@
     setAIPrompt: setAIPrompt,
     getAIPrompt: getAIPrompt,
     setFieldPresetPrompt: setFieldPresetPrompt,
+    addCustomPreset: addCustomPreset,
+    removeCustomPreset: removeCustomPreset,
     getAIContextScope: getAIContextScope,
     setAIContextScope: setAIContextScope,
     addPatent: addPatent,

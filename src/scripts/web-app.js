@@ -13285,7 +13285,7 @@ function renderTimeline(data) {
 // ── Timeline hover popup（JS 接管：解决 hover 断开即收起 & 层级被穿透问题） ──
 let _tlPopupCloseTimer = null;
 let _tlOpenPopupInfo = null; // { el, home }
-let _tlPopupPinned = false; // 选择模式下点击 popup 项后锁定，防止 scroll/重排导致的意外关闭
+let _tlPopupPinned = false; // 点击节点固定弹窗后锁定，防止意外关闭
 
 function _tlClosePopup() {
   if (_tlPopupPinned) return; // 锁定状态下不关闭
@@ -13309,7 +13309,61 @@ function _tlClosePopup() {
 function _tlScheduleClosePopup() {
   if (_tlPopupPinned) return; // 锁定状态下不调度关闭
   clearTimeout(_tlPopupCloseTimer);
-  _tlPopupCloseTimer = setTimeout(_tlClosePopup, 350);
+  _tlPopupCloseTimer = setTimeout(_tlClosePopup, 200);
+}
+
+function _tlPositionPopup(popup, node, rect) {
+  const pw = popup.offsetWidth;
+  const ph = popup.offsetHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const MARGIN = 10;
+  const GAP = 10;
+  const FLIP_THRESHOLD = 60; // 翻转阈值，避免临界位置来回闪动
+
+  // 水平居中于节点，保证不超出视口
+  const centerX = rect.left + rect.width / 2;
+  let left = centerX - pw / 2;
+  left = Math.max(MARGIN, Math.min(left, vw - pw - MARGIN));
+
+  // 根据节点侧（tl-s-above / tl-s-below）决定弹层方向，空间不足时翻转
+  // 增加阈值避免在临界位置上下翻转导致闪动
+  let top;
+  let placeBelow = node.classList.contains("tl-s-above"); // 卡片在上方 → 弹层默认在下方
+
+  if (placeBelow) {
+    // 默认放下方
+    const spaceBelow = vh - rect.bottom - GAP - MARGIN;
+    const spaceAbove = rect.top - GAP - MARGIN;
+    if (spaceBelow < ph - FLIP_THRESHOLD && spaceAbove > spaceBelow + FLIP_THRESHOLD) {
+      // 下方空间严重不足且上方空间明显更大，翻转到上方
+      placeBelow = false;
+    }
+  } else {
+    // 默认放上方
+    const spaceAbove = rect.top - GAP - MARGIN;
+    const spaceBelow = vh - rect.bottom - GAP - MARGIN;
+    if (spaceAbove < ph - FLIP_THRESHOLD && spaceBelow > spaceAbove + FLIP_THRESHOLD) {
+      placeBelow = true;
+    }
+  }
+
+  if (placeBelow) {
+    top = rect.bottom + GAP;
+    // 如果下方还是放不下，向上压缩（会出现滚动条），但不超出视口底部
+    if (top + ph > vh - MARGIN) {
+      top = Math.max(MARGIN, vh - MARGIN - ph);
+    }
+  } else {
+    top = rect.top - GAP - ph;
+    if (top < MARGIN) {
+      top = MARGIN;
+    }
+  }
+
+  popup.style.left = left + "px";
+  popup.style.top = Math.max(MARGIN, top) + "px";
+  popup.style.bottom = "auto";
 }
 
 function _tlOpenPopupFor(node) {
@@ -13332,24 +13386,19 @@ function _tlOpenPopupFor(node) {
   // 同步选择模式类（弹层已不在 .tl-board 内）
   popup.classList.toggle("select-mode", typeof _tlSelectMode !== "undefined" && _tlSelectMode !== null);
 
-  const pw = popup.offsetWidth;
-  const ph = popup.offsetHeight;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const centerX = rect.left + rect.width / 2;
-  const left = Math.max(8, Math.min(centerX - pw / 2, vw - pw - 8));
-  // 卡片在上方(tl-s-above)的节点，弹层放下方；反之放上方；空间不足时翻转
-  let top;
-  if (node.classList.contains("tl-s-above")) {
-    top = rect.bottom + 10;
-    if (top + ph > vh - 8) top = Math.max(8, rect.top - ph - 10);
-  } else {
-    top = rect.top - ph - 10;
-    if (top < 8) top = Math.min(vh - ph - 8, rect.bottom + 10);
+  // 标记折叠节点可点击
+  if (node.classList.contains("tl-s-folded-node")) {
+    node.style.cursor = "pointer";
   }
-  popup.style.left = left + "px";
-  popup.style.top = Math.max(8, top) + "px";
-  popup.style.bottom = "auto";
+
+  // 用 double rAF 确保布局完成后再计算位置，减少闪动
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!_tlOpenPopupInfo || _tlOpenPopupInfo.el !== popup) return;
+      const currentRect = node.getBoundingClientRect();
+      _tlPositionPopup(popup, node, currentRect);
+    });
+  });
 
   if (!popup._tlHoverBound) {
     popup.addEventListener("mouseenter", () => clearTimeout(_tlPopupCloseTimer));
@@ -13363,28 +13412,67 @@ function _bindTimelineHoverPopups(board) {
   _tlClosePopup();
   _tlPopupPinned = false;
   board.querySelectorAll(".tl-s-node").forEach(node => {
-    node.addEventListener("mouseenter", () => _tlOpenPopupFor(node));
-    node.addEventListener("mouseleave", _tlScheduleClosePopup);
+    node.addEventListener("mouseenter", () => {
+      if (!_tlPopupPinned) _tlOpenPopupFor(node);
+    });
+    node.addEventListener("mouseleave", (e) => {
+      if (_tlPopupPinned) return;
+      // 检查鼠标是否移到了弹窗上
+      const to = e.relatedTarget;
+      if (to && _tlOpenPopupInfo && _tlOpenPopupInfo.el.contains(to)) return;
+      _tlScheduleClosePopup();
+    });
+    // 折叠节点支持点击固定展开
+    if (node.classList.contains("tl-s-folded-node")) {
+      const clickTarget = node.querySelector(".tl-s-dot-mini") || node;
+      clickTarget.addEventListener("click", (e) => {
+        // 弹窗内的点击交给自己的handler处理
+        if (_tlOpenPopupInfo && _tlOpenPopupInfo.el.contains(e.target)) return;
+        e.stopPropagation();
+        if (_tlOpenPopupInfo && _tlOpenPopupInfo.home === node && _tlPopupPinned) {
+          // 再次点击同一个固定节点 → 关闭
+          _tlPopupPinned = false;
+          _tlClosePopup();
+        } else {
+          // 打开并固定
+          _tlPopupPinned = true;
+          _tlOpenPopupFor(node);
+          // 打开后延迟一下再确认位置
+          setTimeout(() => {
+            if (_tlOpenPopupInfo && _tlOpenPopupInfo.home === node) {
+              _tlPositionPopup(_tlOpenPopupInfo.el, node, node.getBoundingClientRect());
+            }
+          }, 50);
+        }
+      });
+    }
   });
-  // 滚动时立即收起，避免 fixed 弹层与节点错位
+  // 滚动时立即收起（固定状态也收，避免错位），但弹层内部滚动不收
   const scroll = board.querySelector(".tl-s-scroll");
-  if (scroll) scroll.addEventListener("scroll", _tlClosePopup, { passive: true });
+  if (scroll) scroll.addEventListener("scroll", () => {
+    _tlPopupPinned = false;
+    _tlClosePopup();
+  }, { passive: true });
   if (!window._tlPopupGlobalBound) {
     window.addEventListener("scroll", (e) => {
       // 弹层内部滚动不关闭
       if (_tlOpenPopupInfo && e.target instanceof Node && _tlOpenPopupInfo.el.contains(e.target)) return;
+      _tlPopupPinned = false;
       _tlClosePopup();
     }, { passive: true, capture: true });
-    window.addEventListener("resize", _tlClosePopup, { passive: true });
+    window.addEventListener("resize", () => {
+      _tlPopupPinned = false;
+      _tlClosePopup();
+    }, { passive: true });
     // 点击 popup 外部区域时解除锁定并关闭弹窗
     document.addEventListener("click", (e) => {
       if (!_tlOpenPopupInfo) return;
       // 点击在弹窗内部 → 不处理（让 popup item 的 onclick 正常执行）
       if (_tlOpenPopupInfo.el.contains(e.target)) return;
-      // 点击在时间轴节点上 → 不处理（让 mouseenter 正常切换弹窗）
+      // 点击在时间轴节点上 → 不立即关闭（让节点自己的click处理固定状态）
       const node = e.target.closest(".tl-s-node");
       if (node) return;
-      // 点击在摘要栏/选择栏等UI上 → 不处理
+      // 点击在摘要栏/选择栏/FAB等UI上 → 不处理
       if (e.target.closest("#tl-select-bar") || e.target.closest("#tl-fab")) return;
       // 点击在其他区域 → 解除锁定并关闭
       _tlPopupPinned = false;
