@@ -2433,8 +2433,34 @@ async function scrapeGooglePatent(patentNumber, res, useProxy, proxyUrl) {
       console.log(`[GP] ${tryNumber} → HTTP ${httpCode}, body长度: ${html.length}`);
 
       if (httpCode === 200 && html && html.length > 1000) {
-        const data = extractPatentFromHtml(html, tryNumber);
+        let data = extractPatentFromHtml(html, tryNumber);
         if (data.title || data.abstract) {
+          // 附图为空时重试一次（Google Patents 偶尔返回不完整页面）
+          if ((!data.drawings || data.drawings.length === 0)) {
+            console.log(`[GP] ${tryNumber} 首次解析无附图，2秒后重试...`);
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+              const retryOutput = await new Promise((resolve, reject) => {
+                execFile("curl", curlArgs, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
+                  if (err) { reject(err); return; }
+                  resolve(stdout);
+                });
+              });
+              const rIdx = retryOutput.lastIndexOf(marker);
+              let rHtml = retryOutput;
+              if (rIdx !== -1) rHtml = retryOutput.substring(0, rIdx);
+              if (rHtml && rHtml.length > 1000) {
+                const retryData = extractPatentFromHtml(rHtml, tryNumber);
+                if (retryData.drawings && retryData.drawings.length > 0) {
+                  // 合并重试结果中的附图，保留首次的著录项
+                  data.drawings = retryData.drawings;
+                  console.log(`[GP] ${tryNumber} 重试成功，获取到 ${data.drawings.length} 张附图`);
+                }
+              }
+            } catch (retryErr) {
+              console.log(`[GP] ${tryNumber} 重试失败: ${retryErr.message}`);
+            }
+          }
           res.writeHead(200, corsHeaders);
           res.end(JSON.stringify({ success: true, data, patent_number: tryNumber }));
           return;

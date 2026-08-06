@@ -185,6 +185,17 @@ function extractPatentFromHtml(html, patentId) {
     }
   }
 
+  // Fallback: 如果 itemprop 提取失败，从 HTML 中直接搜索 patentimages CDN URL
+  if (htmlResult.drawings.length === 0) {
+    const cdnMatches = html.match(/https?:\/\/patentimages\.storage\.googleapis\.com\/[^"'\s<>)]+/gi);
+    if (cdnMatches) {
+      const seen = new Set();
+      for (const u of cdnMatches) {
+        if (!seen.has(u)) { seen.add(u); htmlResult.drawings.push(u); }
+      }
+    }
+  }
+
   // Helper: extract citation fields from a <tr> row, supporting both old class-based
   // and new itemprop-based Google Patents HTML formats
   function extractCitationRow(row) {
