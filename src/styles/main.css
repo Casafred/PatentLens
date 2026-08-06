@@ -78,9 +78,27 @@ body {
   max-width: 1480px;
   width: 100%;
   margin: 0 auto;
-  height: 100%;
+  /* 不用 height:100%（在 flex column 父容器内会被内容撑开超出视口，
+     导致 #app 的 overflow:hidden 把下半部分裁掉、页面无法滚动）。
+     改用 flex:1 + min-height:0，让 section 占满 app-main 的剩余高度，
+     并允许内部 .share-workspace-view 正常滚动。 */
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* 工作台激活时让 .app-main 成为可收缩的 flex 子项：
+   默认 .app-main 是 flex:0 1 auto + min-height:auto，在 #app(height:100vh,overflow:hidden)
+   内会被内容撑高超过视口，导致下半部分被裁掉、页面无法滚动。
+   设 min-height:0 + flex:1 让它占满 #app 除 header/footer 外的剩余高度，
+   内部的 share-workspace-section 才能拿到正确的高度约束并让 view 滚动。 */
+#app.share-workspace-active .app-main {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 #app {
