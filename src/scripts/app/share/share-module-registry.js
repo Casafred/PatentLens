@@ -1,7 +1,7 @@
 /*!
  * PatentLens - 专利分享模块注册表
  *
- * 仅分两类：基础信息（从来源提取+人工校核）与加工信息（AI抽取/手工录入的字段）。
+ * 分三类：基础信息（著录项+摘要）、原文信息（权利要求/说明书/附图）与加工信息（AI抽取/手工录入的字段）。
  * 模块声明是唯一配置来源；渲染器只消费 resolved config，不执行用户 HTML/JS。
  */
 (function () {
@@ -12,9 +12,10 @@
     { id: "S1", label: "封面与目录", description: "项目标题、专利范围、生成时间和目录导航。", required: true, defaultMode: "full", category: "basic" },
     { id: "S2", label: "专利基础信息", description: "公开号、标题、申请人、发明人、日期、IPC/CPC 分类号及自定义字段。", required: true, defaultMode: "full", category: "basic" },
     { id: "S3", label: "技术摘要", description: "专利摘要和技术主题概述。", required: true, defaultMode: "full", category: "basic" },
-    { id: "S4", label: "权利要求书", description: "完整权利要求，含独立/从属标识与引用关系。", required: true, defaultMode: "lite", category: "basic" },
-    { id: "S5", label: "说明书", description: "专利说明书/具体实施方式全文。", required: false, defaultMode: "off", category: "basic" },
-    { id: "S7", label: "附图", description: "专利附图、流程图或用户上传的图片。", required: false, defaultMode: "full", category: "basic" },
+    // ===== 原文信息：权利要求、说明书与附图原文（与分享 HTML 的「原文信息」标签页对应） =====
+    { id: "S4", label: "权利要求书", description: "完整权利要求，含独立/从属标识与引用关系。", required: true, defaultMode: "lite", category: "source" },
+    { id: "S5", label: "说明书", description: "专利说明书/具体实施方式全文。", required: false, defaultMode: "off", category: "source" },
+    { id: "S7", label: "附图", description: "专利附图、流程图或用户上传的图片。", required: false, defaultMode: "full", category: "source" },
     // ===== 加工信息：AI 抽取或手工录入的结构化字段 =====
     // dataSource/analysisKey 用于在「编排与展示」中提示该模块的内容来自哪一处生成入口。
     { id: "R1", label: "技术问题-方案-效果", description: "AI 抽取或人工编辑的技术问题、技术方案、技术效果三要素。", required: false, defaultMode: "off", category: "processed", dataSource: "组合判断 · 技术解读 + 项目级结论", analysisKey: "summary" },

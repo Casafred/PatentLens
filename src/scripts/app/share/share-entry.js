@@ -25,7 +25,7 @@
   // 批量 AI 处理状态：在一次输入多篇专利后，统一选定字段类型并发处理。
   // 状态保存在模块作用域（不持久化到 store），跨 render 保持。
   // fields: { summary, elements, embodiments, processed } 用户勾选的字段类型
-  // concurrency: 1-6，默认 3
+  // concurrency: 1-20，默认 3（上限 20，可按平台情况调整）
   // tasks: 任务队列 [{ patentId, fieldId, type, label, status, error }]
   // status: pending | running | done | failed | skipped
   // cancelled: 取消标志，正在执行的让其完成，未开始标记 skipped
@@ -121,8 +121,18 @@
   function buildContextScopePanel(scope, opts) {
     opts = opts || {};
     var panel = makeElement("div", "share-scope-panel");
-    var s = scope && typeof scope === "object" ? scope : {};
-    var isInherit = opts.allowInherit && s === null;
+    // 继承态必须在归一化前判断：字段级 scope === null 表示「跟随项目默认」。
+    var isInherit = opts.allowInherit && scope === null;
+    // 显示用的范围值：继承态回退到项目级默认（只读预览继承到的勾选范围）；
+    // 字段级自定义态用字段自身范围；项目级直接用传入范围。
+    var s;
+    if (scope && typeof scope === "object") {
+      s = scope;
+    } else if (isInherit) {
+      s = (window.PatentShareStore && window.PatentShareStore.getAIContextScope) ? window.PatentShareStore.getAIContextScope() : { abstract: true, claims: true, description: true, annotations: true };
+    } else {
+      s = {};
+    }
     if (opts.allowInherit) {
       var inheritRow = makeElement("label", "share-scope-row" + (isInherit ? " active" : ""));
       var inheritCb = document.createElement("input");
@@ -137,24 +147,18 @@
       inheritRow.appendChild(makeElement("span", "share-scope-label", opts.inheritLabel || "跟随项目默认"));
       panel.appendChild(inheritRow);
     }
-    var customRow = makeElement("div", "share-scope-custom" + (isInherit ? " disabled" : ""));
+    var customRow = makeElement("div", "share-scope-custom");
     SCOPE_LABELS.forEach(function (item) {
       var row = makeElement("label", "share-scope-row" + (s[item.key] ? " active" : ""));
       var cb = document.createElement("input");
-      cb.type = opts.allowInherit ? "radio" : "checkbox";
-      if (opts.allowInherit) {
-        cb.name = opts.radioName || "share-scope-inherit";
-        cb.checked = !isInherit;
-        cb.dataset.scopeValue = "custom";
-      } else {
-        cb.type = "checkbox";
-        cb.checked = s[item.key] !== false;
-      }
+      // 4 个原文范围始终用 checkbox 支持多选；与「跟随项目默认」单选解耦。
+      // 继承态下保持可点击：用户勾选任意一项即自动切换到自定义范围。
+      cb.type = "checkbox";
+      cb.checked = s[item.key] !== false;
       cb.dataset.shareAction = opts.actionName || "toggle-context-scope";
       cb.dataset.scopeKey = item.key;
       if (opts.fieldId) cb.dataset.fieldId = opts.fieldId;
       if (opts.patentId) cb.dataset.patentId = opts.patentId;
-      if (isInherit) cb.disabled = true;
       row.appendChild(cb);
       var labelBox = makeElement("span", "share-scope-label", item.label);
       row.appendChild(labelBox);
@@ -1058,15 +1062,9 @@
           var claimText = makeElement("div", "review-claim-text review-annotatable");
           claimText.dataset.annotationField = "claims";
           claimText.dataset.annotationKey = claim.number || "";
+          claimText.dataset.patentId = patent.id;
           claimText.innerHTML = applyAnnotations(claim.text || "", patent.claimsAnnotations, claim.number || "");
           claimItem.appendChild(claimText);
-          // 标注工具条
-          var annoBar = makeElement("div", "review-anno-bar");
-          annoBar.appendChild(makeAnnoBtn("underline", "下划线", patent.id, "claims", claim.number || ""));
-          annoBar.appendChild(makeAnnoBtn("highlight", "高亮", patent.id, "claims", claim.number || ""));
-          annoBar.appendChild(makeAnnoBtn("comment", "注释", patent.id, "claims", claim.number || ""));
-          annoBar.appendChild(makeAnnoBtn("clear", "清除标注", patent.id, "claims", claim.number || ""));
-          claimItem.appendChild(annoBar);
           var claimAnnoList = buildAnnotationList(patent, "claims", claim.number || "");
           if (claimAnnoList) claimItem.appendChild(claimAnnoList);
           if (claim.references && claim.references.length) {
@@ -1103,16 +1101,10 @@
         var descPreview = makeElement("div", "review-desc-block");
         var descText = makeElement("div", "review-desc-text review-annotatable");
         descText.dataset.annotationField = "description";
+        descText.dataset.patentId = patent.id;
         descText.innerHTML = applyAnnotations(patent.description.length > 2000 ? patent.description.slice(0, 2000) + "..." : patent.description, patent.descriptionAnnotations, "");
         descPreview.appendChild(descText);
         body.appendChild(descPreview);
-        // 标注工具条
-        var descAnnoBar = makeElement("div", "review-anno-bar");
-        descAnnoBar.appendChild(makeAnnoBtn("underline", "下划线", patent.id, "description", ""));
-        descAnnoBar.appendChild(makeAnnoBtn("highlight", "高亮", patent.id, "description", ""));
-        descAnnoBar.appendChild(makeAnnoBtn("comment", "注释", patent.id, "description", ""));
-        descAnnoBar.appendChild(makeAnnoBtn("clear", "清除标注", patent.id, "description", ""));
-        body.appendChild(descAnnoBar);
         var descAnnoList = buildAnnotationList(patent, "description", "");
         if (descAnnoList) body.appendChild(descAnnoList);
       } else {
@@ -1176,7 +1168,7 @@
     btn.dataset.patentId = patentId;
     btn.dataset.annoField = field;
     btn.dataset.annoKey = key;
-    btn.title = type === "clear" ? "清除本段所有标注" : "先选中正文，再" + label;
+    btn.title = type === "clear" ? "清除本段所有标注" : label + "选中文字";
     btn.disabled = aiRunning;
     return btn;
   }
@@ -1219,16 +1211,110 @@
   }
 
   function showAnnotationFeedback(action, message, isError) {
-    var bar = action && action.closest ? action.closest(".review-anno-bar") : null;
-    if (!bar) return;
-    var feedback = bar.querySelector(".review-anno-feedback");
+    var host = action && action.closest ? action.closest(".review-anno-bar, .review-anno-floating, .review-anno-contextmenu") : null;
+    if (!host) return;
+    var feedback = host.querySelector(".review-anno-feedback");
     if (!feedback) {
       feedback = makeElement("span", "review-anno-feedback");
       feedback.setAttribute("role", "status");
-      bar.appendChild(feedback);
+      host.appendChild(feedback);
     }
     feedback.classList.toggle("error", !!isError);
     feedback.textContent = message;
+  }
+
+  // === 标注悬浮工具条与右键菜单 ===
+  // 选中正文后弹出悬浮球，右键弹出菜单；替代每条底部的固定工具条。
+  var annoFloating = null;
+  var annoContextMenu = null;
+
+  function hideAnnotationFloating() {
+    if (annoFloating) { annoFloating.remove(); annoFloating = null; }
+  }
+  function hideAnnotationContextMenu() {
+    if (annoContextMenu) { annoContextMenu.remove(); annoContextMenu = null; }
+  }
+
+  // 根据按钮 data 属性定位对应的可标注正文元素（兼容底部工具条与悬浮球/右键菜单）。
+  function findAnnotatableForAction(action) {
+    var annoField = action.dataset.annoField || "";
+    var annoKey = action.dataset.annoKey || "";
+    var keySel = annoKey ? "[data-annotation-key='" + annoKey + "']" : "";
+    var sel = ".review-annotatable[data-annotation-field='" + annoField + "']" + keySel;
+    var container = action.closest ? action.closest(".review-claim-item, .share-review-section-body") : null;
+    if (container) {
+      var el = container.querySelector(sel);
+      if (el) return el;
+    }
+    var view = byId("share-workspace-view");
+    return view ? view.querySelector(sel) : null;
+  }
+
+  function buildAnnoButtons(target, types) {
+    var patentId = target.dataset.patentId || "";
+    var field = target.dataset.annotationField || "";
+    var key = target.dataset.annotationKey || "";
+    var labels = { underline: "下划线", highlight: "高亮", comment: "注释", clear: "清除标注" };
+    return types.map(function (t) {
+      return makeAnnoBtn(t, labels[t] || t, patentId, field, key);
+    });
+  }
+
+  // 选中正文后，在选区上方弹出悬浮工具条（下划线/高亮/注释）。
+  function showAnnotationFloating(target, rect) {
+    hideAnnotationFloating();
+    if (aiRunning) return;
+    var view = byId("share-workspace-view");
+    if (!view) return;
+    var toolbar = makeElement("div", "review-anno-floating");
+    toolbar.setAttribute("data-annotation-ui", "true");
+    buildAnnoButtons(target, ["underline", "highlight", "comment"]).forEach(function (btn) {
+      toolbar.appendChild(btn);
+    });
+    view.appendChild(toolbar);
+    var top = rect.top - toolbar.offsetHeight - 8;
+    var left = rect.left + (rect.width - toolbar.offsetWidth) / 2;
+    if (top < 8) top = rect.bottom + 8;
+    if (left < 8) left = 8;
+    if (left + toolbar.offsetWidth > window.innerWidth - 8) left = window.innerWidth - toolbar.offsetWidth - 8;
+    toolbar.style.top = top + "px";
+    toolbar.style.left = left + "px";
+    annoFloating = toolbar;
+  }
+
+  // 右键弹出菜单：有选区时提供下划线/高亮/注释/清除，无选区时仅清除标注。
+  function showAnnotationContextMenu(target, x, y) {
+    hideAnnotationContextMenu();
+    if (aiRunning) return;
+    var view = byId("share-workspace-view");
+    if (!view) return;
+    var menu = makeElement("div", "review-anno-contextmenu");
+    menu.setAttribute("data-annotation-ui", "true");
+    var sel = window.getSelection();
+    var hasSelection = sel && !sel.isCollapsed && sel.rangeCount > 0 && target.contains(sel.getRangeAt(0).commonAncestorContainer);
+    var types = hasSelection ? ["underline", "highlight", "comment", "clear"] : ["clear"];
+    buildAnnoButtons(target, types).forEach(function (btn) {
+      var item = makeElement("div", "review-anno-contextmenu-item");
+      item.appendChild(btn);
+      menu.appendChild(item);
+    });
+    view.appendChild(menu);
+    var top = y;
+    var left = x;
+    if (top + menu.offsetHeight > window.innerHeight - 8) top = window.innerHeight - menu.offsetHeight - 8;
+    if (left + menu.offsetWidth > window.innerWidth - 8) left = window.innerWidth - menu.offsetWidth - 8;
+    menu.style.top = top + "px";
+    menu.style.left = left + "px";
+    annoContextMenu = menu;
+  }
+
+  // 判断选区是否落在某个可标注正文元素内，返回该元素或 null。
+  function getAnnotatableFromSelection(sel) {
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+    var range = sel.getRangeAt(0);
+    var node = range.commonAncestorContainer;
+    var el = node.nodeType === 1 ? node : node.parentElement;
+    return el && el.closest ? el.closest(".review-annotatable") : null;
   }
 
   function selectionOffsetsInText(container, range) {
@@ -1322,6 +1408,7 @@
     coverZone.appendChild(makeElement("div", "share-module-zone-label", "封面区"));
     var allModules = registry.list();
     var basicModules = allModules.filter(function(m) { return m.category === "basic"; });
+    var sourceModules = allModules.filter(function(m) { return m.category === "source"; });
     var processedModules = registry.orderByConfig ? registry.orderByConfig(allModules.filter(function(m) { return m.category === "processed"; }), config, "processed") : allModules.filter(function(m) { return m.category === "processed"; });
 
     // S1 封面单独放封面区
@@ -1352,6 +1439,17 @@
     });
     basicPanel.appendChild(basicDropZone);
     contentArea.appendChild(basicPanel);
+
+    // 原文信息面板（权利要求 / 说明书 / 附图，与分享 HTML 的「原文信息」标签页对应，固定顺序不可拖拽）
+    var sourcePanel = makeElement("div", "share-module-panel");
+    sourcePanel.appendChild(makeElement("div", "share-module-panel-header", "原文信息标签页"));
+    var sourceDropZone = makeElement("div", "share-module-drop-zone");
+    sourceDropZone.dataset.zone = "source";
+    sourceModules.forEach(function(m) {
+      sourceDropZone.appendChild(buildModuleBlock(m, config));
+    });
+    sourcePanel.appendChild(sourceDropZone);
+    contentArea.appendChild(sourcePanel);
 
     // 加工信息面板
     var procPanel = makeElement("div", "share-module-panel");
@@ -1643,8 +1741,8 @@
     summary.appendChild(makeElement("strong", "", "HTML 导出检查"));
     summary.appendChild(makeElement("p", "", "" + project.patents.length + " 篇专利 · " + Math.ceil(result.size / 1024) + " KB · 离线 CSS 已内联，无外部依赖"));
     container.appendChild(summary);
-    var hardBlockFindings = result.findings.filter(function (f) { return /密钥|Token|Cookie|未审核 AI/.test(f); });
-    var softWarningFindings = result.findings.filter(function (f) { return !/密钥|Token|Cookie|未审核 AI/.test(f); });
+    var hardBlockFindings = result.findings.filter(function (f) { return /密钥|Token|Cookie/.test(f); });
+    var softWarningFindings = result.findings.filter(function (f) { return !/密钥|Token|Cookie/.test(f); });
     var canExport = project.patents.length > 0 && !aiRunning && hardBlockFindings.length === 0;
     var action = makeElement("button", "share-primary-action", "保存 HTML");
     action.type = "button";
@@ -1676,6 +1774,8 @@
     var container = byId("share-workspace-view");
     var project = currentProject();
     if (!container || !project) return;
+    hideAnnotationFloating();
+    hideAnnotationContextMenu();
     container.textContent = "";
     // 按当前视图打修饰类，供 CSS 定向（如审核页启用独立滚动容器以冻结标题+导航条）
     container.className = "share-workspace-view" + (activeView ? " share-workspace-view--" + activeView : "");
@@ -2043,14 +2143,14 @@
       return;
     }
     var result = renderer.render(project);
-    // 安全扫描和 AI 审核：密钥、令牌及未审核 AI 内容均硬阻断；路径类仅警告。
-    var hardBlock = result.findings.some(function (f) { return /密钥|Token|Cookie|未审核 AI/.test(f); });
+    // 安全扫描：密钥、令牌内容硬阻断；未审核 AI 与路径类仅警告，不阻断导出。
+    var hardBlock = result.findings.some(function (f) { return /密钥|Token|Cookie/.test(f); });
     if (hardBlock) {
       setNotice("导出已阻止：" + result.findings.join("；"), true);
       render();
       return;
     }
-    var softWarnings = result.findings.filter(function (f) { return !/密钥|Token|Cookie|未审核 AI/.test(f); });
+    var softWarnings = result.findings.filter(function (f) { return !/密钥|Token|Cookie/.test(f); });
     function doExport() {
       var baseName = (project.name || "patent-share").replace(/[<>:"/\\|?*]/g, "-").trim().slice(0, 60) || "patent-share";
       var bridge = window.electronAPI && window.electronAPI.saveShareHtml;
@@ -2323,7 +2423,7 @@
     var concInput = document.createElement("input");
     concInput.type = "range";
     concInput.min = "1";
-    concInput.max = "6";
+    concInput.max = "20";
     concInput.value = String((batchState && batchState.concurrency) || 3);
     concInput.className = "share-batch-conc-range";
     concInput.disabled = running;
@@ -2424,7 +2524,7 @@
     });
     var concurrency = 3;
     var concEl = document.querySelector("[data-batch-conc]");
-    if (concEl) concurrency = Math.max(1, Math.min(6, parseInt(concEl.value, 10) || 3));
+    if (concEl) concurrency = Math.max(1, Math.min(20, parseInt(concEl.value, 10) || 3));
 
     if (!fields.summary && !fields.elements && !fields.embodiments && !fields.processed) {
       setNotice("请至少勾选一个要处理的字段类型。", true);
@@ -2615,6 +2715,43 @@
       var annoButton = event.target.closest ? event.target.closest("[data-share-action='annotate-text']") : null;
       if (annoButton && annoButton.dataset.annoType !== "clear") event.preventDefault();
     });
+    // 选中正文后弹出标注悬浮球（仅左键拖选；右键交给 contextmenu 菜单）
+    if (view) view.addEventListener("mouseup", function (event) {
+      if (event.button !== 0) return;
+      if (event.target.closest && event.target.closest("[data-annotation-ui]")) return;
+      setTimeout(function () {
+        var sel = window.getSelection();
+        var target = getAnnotatableFromSelection(sel);
+        if (target) {
+          var range = sel.getRangeAt(0);
+          var rect = range.getBoundingClientRect();
+          if (rect && rect.width > 0 && rect.height > 0) showAnnotationFloating(target, rect);
+          else hideAnnotationFloating();
+        } else {
+          hideAnnotationFloating();
+        }
+      }, 0);
+    });
+    // 右键弹出标注菜单
+    if (view) view.addEventListener("contextmenu", function (event) {
+      var targetEl = event.target.closest ? event.target.closest(".review-annotatable") : null;
+      if (!targetEl) return;
+      event.preventDefault();
+      showAnnotationContextMenu(targetEl, event.clientX, event.clientY);
+    });
+    // 滚动时隐藏悬浮球与右键菜单（选区可能已滚出视口）
+    if (view) view.addEventListener("scroll", function () {
+      hideAnnotationFloating();
+      hideAnnotationContextMenu();
+    }, true);
+    // 点击悬浮球/菜单外部或按 Esc 时隐藏
+    document.addEventListener("mousedown", function (event) {
+      if (annoFloating && !annoFloating.contains(event.target)) hideAnnotationFloating();
+      if (annoContextMenu && !annoContextMenu.contains(event.target)) hideAnnotationContextMenu();
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") { hideAnnotationFloating(); hideAnnotationContextMenu(); }
+    });
     // 批量处理面板：全选联动 + 单选反向同步全选状态
     if (view) view.addEventListener("change", function (event) {
       var target = event.target;
@@ -2651,9 +2788,8 @@
         var annoType = action.dataset.annoType;
         var annoField = action.dataset.annoField;
         var annoKey = action.dataset.annoKey || "";
-        // 找到对应的可标注文本元素
-        var annoContainer = action.closest(".review-claim-item, .share-review-section-body");
-        var annoTextEl = annoContainer ? annoContainer.querySelector(".review-annotatable[data-annotation-field='" + annoField + "']" + (annoKey ? "[data-annotation-key='" + annoKey + "']" : "")) : null;
+        // 找到对应的可标注文本元素（兼容悬浮球/右键菜单：按钮不在段落容器内时回退到视图全局查找）
+        var annoTextEl = findAnnotatableForAction(action);
         if (!annoTextEl) return;
         var sel = window.getSelection();
         if (annoType === "clear") {

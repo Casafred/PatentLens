@@ -319,8 +319,7 @@
         annotatedLines.push(header + "\n" + blockParts);
       } else {
         var fullContent = ext.markdown || ext.text || "";
-        var content = fullContent.length > 50000 ? fullContent.substring(0, 50000) + "\n\n[...内容过长，已截断...]" : fullContent;
-        annotatedLines.push(header + "\n" + content);
+        annotatedLines.push(header + "\n" + fullContent);
       }
     });
 
