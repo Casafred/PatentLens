@@ -1698,7 +1698,10 @@
       promptsBtn.classList.toggle("active", activeView === "prompts");
     }
     updateProjectStatus();
-    if (activeView === "review") bindReviewScrollSpy();
+    if (activeView === "review") {
+      bindReviewScrollSpy();
+      enhanceReviewBasicFields();
+    }
   }
 
   // 数据审核页：悬浮导航条 active 状态与滚动进度
@@ -1751,6 +1754,95 @@
     window.addEventListener("resize", updateActive, { passive: true });
     reviewScrollSpyBound = true;
     updateActive();
+  }
+
+  // ── 基本信息/分类号字段卡片：固定尺寸 + 折叠 + 悬浮查看完整内容 ──
+  // 卡片高度固定（值折叠为 3 行），内容溢出时点击值打开悬浮窗查看完整文本。
+  var _reviewFieldPopover = null;
+  function enhanceReviewBasicFields() {
+    var vals = document.querySelectorAll(".review-basic-val");
+    Array.prototype.forEach.call(vals, function (valEl) {
+      // 折叠态下滚动高度大于可见高度，说明内容被截断
+      if (valEl.scrollHeight - valEl.clientHeight <= 1) return;
+      var item = valEl.closest ? valEl.closest(".review-basic-item") : null;
+      var labelEl = item ? item.querySelector(".review-basic-label") : null;
+      var label = labelEl ? labelEl.textContent.trim() : "字段内容";
+      var fullText = valEl.textContent || "";
+      if (item) item.classList.add("has-overflow");
+      valEl.setAttribute("role", "button");
+      valEl.setAttribute("tabindex", "0");
+      valEl.title = "点击查看完整内容";
+      valEl.addEventListener("click", function () {
+        showFieldPopover(label, fullText, valEl.getBoundingClientRect());
+      });
+      valEl.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          showFieldPopover(label, fullText, valEl.getBoundingClientRect());
+        }
+      });
+    });
+  }
+  function closeFieldPopover() {
+    if (!_reviewFieldPopover) return;
+    var ref = _reviewFieldPopover;
+    document.removeEventListener("keydown", ref.keyHandler);
+    if (ref.backdrop.parentNode) ref.backdrop.parentNode.removeChild(ref.backdrop);
+    _reviewFieldPopover = null;
+  }
+  function showFieldPopover(label, text, anchorRect) {
+    closeFieldPopover();
+    var backdrop = makeElement("div", "review-field-popover-backdrop");
+    var pop = makeElement("div", "review-field-popover");
+    var head = makeElement("div", "review-field-popover-head");
+    head.appendChild(makeElement("span", "review-field-popover-label", label));
+    var closeBtn = makeElement("button", "review-field-popover-close", "×");
+    closeBtn.type = "button";
+    closeBtn.setAttribute("aria-label", "关闭");
+    head.appendChild(closeBtn);
+    var body = makeElement("div", "review-field-popover-body");
+    body.textContent = text; // 纯文本，避免长内容/特殊字符引发安全问题
+    pop.appendChild(head);
+    pop.appendChild(body);
+    backdrop.appendChild(pop);
+    document.body.appendChild(backdrop);
+
+    // 先隐藏定位，避免初始位置闪现
+    pop.style.visibility = "hidden";
+    requestAnimationFrame(function () {
+      if (!pop.isConnected) return;
+      var vw = window.innerWidth, vh = window.innerHeight, M = 12, GAP = 8;
+      var pw = pop.offsetWidth, ph = pop.offsetHeight;
+      var centerX = anchorRect.left + anchorRect.width / 2;
+      var left = Math.max(M, Math.min(centerX - pw / 2, vw - pw - M));
+      var want = Math.min(ph, vh * 0.6);
+      var spaceBelow = vh - anchorRect.bottom - GAP - M;
+      var spaceAbove = anchorRect.top - GAP - M;
+      var top;
+      if (spaceBelow >= want) {
+        top = anchorRect.bottom + GAP;
+      } else if (spaceAbove >= want) {
+        top = Math.max(M, anchorRect.top - GAP - ph);
+      } else if (spaceBelow >= spaceAbove) {
+        top = anchorRect.bottom + GAP;
+        if (top + ph > vh - M) top = Math.max(M, vh - M - ph);
+      } else {
+        top = Math.max(M, anchorRect.top - GAP - ph);
+      }
+      pop.style.left = left + "px";
+      pop.style.top = top + "px";
+      pop.style.visibility = "";
+      pop.classList.add("open");
+      closeBtn.focus();
+    });
+
+    function onKey(e) { if (e.key === "Escape") closeFieldPopover(); }
+    document.addEventListener("keydown", onKey);
+    closeBtn.addEventListener("click", closeFieldPopover);
+    backdrop.addEventListener("click", function (e) {
+      if (e.target === backdrop) closeFieldPopover();
+    });
+    _reviewFieldPopover = { backdrop: backdrop, pop: pop, keyHandler: onKey };
   }
 
   function rememberAndHideLegacyViews() {

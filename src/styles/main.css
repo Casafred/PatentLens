@@ -12614,12 +12614,40 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
+  /* 同行卡片各自取自身高度，避免某个字段内容过长把同行其他卡片一起拉长 */
+  align-items: start;
 }
 .review-basic-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   padding: 10px 12px;
   background: var(--bg-secondary, #f3f8f4);
   border: 1px solid var(--border, #d6e8dc);
   border-radius: 6px;
+}
+/* 内容被折叠的卡片：右上角「展开」标记 + 值可点击悬浮查看完整内容 */
+.review-basic-item.has-overflow::after {
+  content: "展开";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--accent, #16a34a);
+  background: var(--bg-primary, #fff);
+  padding: 2px 6px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent, #16a34a) 35%, var(--border, #d6e8dc));
+  pointer-events: none;
+}
+.review-basic-item.has-overflow .review-basic-val {
+  cursor: pointer;
+}
+.review-basic-item.has-overflow .review-basic-val:hover {
+  background: color-mix(in srgb, var(--accent, #16a34a) 7%, transparent);
+  border-radius: 4px;
 }
 .review-basic-label {
   font-size: 11px;
@@ -12629,11 +12657,86 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   letter-spacing: 0.3px;
 }
 .review-basic-val {
+  flex: 1 1 auto;
+  min-height: 58px;          /* 固定 3 行高度，统一卡片尺寸 */
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary, #14211a);
   line-height: 1.5;
   word-break: break-all;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 字段完整内容悬浮窗 */
+.review-field-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(15, 23, 42, 0.28);
+}
+.review-field-popover {
+  position: fixed;
+  z-index: 9001;
+  max-width: min(560px, 92vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border, #d6e8dc);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(15, 23, 42, 0.10);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease-out, transform 0.12s ease-out;
+}
+.review-field-popover.open {
+  opacity: 1;
+  transform: none;
+}
+.review-field-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft, #e8f1ec);
+  background: var(--bg-secondary, #f3f8f4);
+}
+.review-field-popover-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #14211a);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.review-field-popover-close {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-muted, #7a9486);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.review-field-popover-close:hover {
+  background: var(--border-soft, #e8f1ec);
+  color: var(--text-primary, #14211a);
+}
+.review-field-popover-body {
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary, #14211a);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
 }
 
 /* ── 审核页权利要求 ── */
@@ -12909,9 +13012,11 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   background: var(--bg-primary, #fff);
   border-radius: var(--radius, 10px) var(--radius, 10px) 0 0;
 }
-/* 导航条本身不再单独 sticky（由父级 .share-review-sticky-top 统一吸附） */
+/* 导航条本身冻结在审核滚动容器顶部：滚动时始终可见可点击 */
 .share-review-nav {
-  position: static;
+  position: sticky;
+  top: 0;
+  z-index: 30;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: saturate(180%) blur(8px);
   -webkit-backdrop-filter: saturate(180%) blur(8px);
