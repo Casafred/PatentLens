@@ -5516,24 +5516,30 @@ body {
 .tl-s-dot.tl-dot-request.tl-s-dot-key { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
 .tl-s-dot.tl-dot-citation.tl-s-dot-key { background: linear-gradient(135deg, #38bdf8, #0ea5e9); }
 .tl-s-dot.tl-dot-misc.tl-s-dot-key { background: linear-gradient(135deg, #9ca3af, #6b7280); }
-/* Mini dot (folded, small with count) */
+/* Mini dot (folded, with count) — 放大并加粗计数，hover 用外光环代替 scale 避免布局抖动 */
 .tl-s-dot-mini {
-  width: 16px;
-  height: 16px;
-  opacity: 0.55;
-  background: var(--text-muted);
+  width: 26px;
+  height: 26px;
+  opacity: 0.85;
+  background: linear-gradient(135deg, #94a3b8, #64748b);
+  box-shadow: 0 0 0 2px var(--bg), 0 2px 6px rgba(0,0,0,0.25);
   cursor: pointer;
-  transition: all 0.15s ease;
+  /* hover 不再 scale（会触发重排/抖动），改用 box-shadow 外光环 */
+  transition: box-shadow 0.18s ease, background 0.18s ease;
 }
 .tl-s-folded-node:hover .tl-s-dot-mini {
   opacity: 1;
-  transform: scale(1.2);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  /* 取消 .tl-s-dot:hover 的 scale(1.25)，仅保留居中 translate，避免重排抖动 */
+  transform: translate(-50%, -50%);
+  background: linear-gradient(135deg, var(--accent, #16a34a), color-mix(in srgb, var(--accent, #16a34a) 70%, #0f172a));
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 6px color-mix(in srgb, var(--accent, #16a34a) 25%, transparent), 0 3px 10px rgba(0,0,0,0.3);
 }
 .tl-s-mini-count {
-  font-size: 8px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   color: #fff;
+  letter-spacing: -0.3px;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.25);
 }
 
 /* ── Connector line ── */
@@ -5743,11 +5749,11 @@ body {
 /* ── Hover Popup（JS 接管：打开时移至 body 顶层，fixed 定位） ── */
 .tl-s-popup {
   position: absolute;
-  left: 50%;
-  top: calc(100% + 16px);
-  transform: translateX(-50%);
+  left: 0;
+  top: 0;
+  transform: none;
   min-width: 250px;
-  max-width: 310px;
+  max-width: 320px;
   background: var(--bg-card, #fff);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -5758,7 +5764,8 @@ body {
   pointer-events: none;
   z-index: 100;
 }
-/* 打开态：脱离时间轴层叠上下文，永远置顶、完全不透明 */
+/* 打开态：脱离时间轴层叠上下文，永远置顶、完全不透明。
+   不使用 CSS 渐入动画 —— 由 JS 同步定位后再显示，避免中间态闪现。 */
 .tl-s-popup.tl-s-popup-open {
   position: fixed;
   opacity: 1;
@@ -5767,11 +5774,6 @@ body {
   transform: none;
   margin: 0;
   z-index: 10000;
-  animation: tl-s-popup-in 0.1s ease-out;
-}
-@keyframes tl-s-popup-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
 }
 .tl-s-popup::-webkit-scrollbar { width: 6px; }
 .tl-s-popup::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
