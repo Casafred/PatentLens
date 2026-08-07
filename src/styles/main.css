@@ -13190,6 +13190,52 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   cursor: not-allowed;
 }
 
+/* 标注悬浮工具条：选中正文后浮现，替代每条底部固定工具条 */
+.review-anno-floating {
+  position: fixed;
+  z-index: 300;
+  display: flex;
+  gap: 4px;
+  padding: 5px 6px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border, #d6e8dc);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  flex-wrap: nowrap;
+  align-items: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.review-anno-floating .review-anno-clear { margin-left: 4px; }
+
+/* 标注右键菜单 */
+.review-anno-contextmenu {
+  position: fixed;
+  z-index: 310;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  min-width: 128px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border, #d6e8dc);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.review-anno-contextmenu-item .review-anno-btn {
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 10px;
+}
+.review-anno-contextmenu-item .review-anno-btn:hover:not(:disabled) {
+  background: var(--bg-secondary, #f3f8f4);
+}
+.review-anno-contextmenu-item .review-anno-clear { margin-left: 0; }
+
 /* 分享工作台：项目设定与 AI 草稿审核 */
 .share-project-brief {
   margin: 18px 0;
