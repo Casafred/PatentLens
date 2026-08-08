@@ -27,6 +27,37 @@ test('timeline popup flips above when the preferred lower side is clipped', () =
   assert.ok(placement.top + placement.maxHeight <= 892);
 });
 
+test('timeline popup chooses the side with more room before limiting list height', () => {
+  const computePlacement = loadPlacement();
+  const placement = computePlacement({
+    rect: { left: 480, top: 460, bottom: 500, width: 24 },
+    viewportWidth: 1200,
+    viewportHeight: 900,
+    popupWidth: 320,
+    popupHeight: 600,
+    preferredBelow: true,
+  });
+
+  assert.equal(placement.placeBelow, false);
+  assert.ok(placement.maxHeight > 380);
+  assert.ok(placement.top + placement.maxHeight <= 892);
+});
+
+test('timeline popup does not impose an artificial half-viewport height cap', () => {
+  const computePlacement = loadPlacement();
+  const placement = computePlacement({
+    rect: { left: 480, top: 60, bottom: 100, width: 24 },
+    viewportWidth: 1200,
+    viewportHeight: 1200,
+    popupWidth: 320,
+    popupHeight: 900,
+    preferredBelow: true,
+  });
+
+  assert.equal(placement.placeBelow, true);
+  assert.equal(placement.maxHeight, 900);
+});
+
 test('timeline popup remains inside the viewport when both sides are tight', () => {
   const computePlacement = loadPlacement();
   const placement = computePlacement({
