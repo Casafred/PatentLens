@@ -5751,6 +5751,7 @@ body {
   position: absolute;
   left: 0;
   top: 0;
+  box-sizing: border-box;
   transform: none;
   min-width: 250px;
   max-width: 320px;
@@ -13305,6 +13306,60 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   margin-left: 2px;
   vertical-align: super;
   font-weight: 700;
+}
+
+/* 分享工作台翻译状态：让翻译过程和完成结果都留在内容加工页。 */
+.share-translation-loading {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+}
+
+.share-translation-loading::before {
+  width: 12px;
+  height: 12px;
+  margin-right: 7px;
+  border: 2px solid #93c5fd;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  content: "";
+  animation: share-translation-spin .8s linear infinite;
+}
+
+@keyframes share-translation-spin {
+  to { transform: rotate(360deg); }
+}
+
+.share-review-translation-preview {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #bbf7d0;
+  border-left: 3px solid var(--accent, #16a34a);
+  border-radius: 0 7px 7px 0;
+  background: #f0fdf4;
+}
+
+.share-review-translation-label {
+  margin-bottom: 6px;
+  color: var(--accent, #16a34a);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.share-review-translation-text {
+  max-height: 360px;
+  overflow: auto;
+  color: var(--text-primary, #14211a);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 

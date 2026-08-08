@@ -16,6 +16,9 @@
 
   var JS = "(function(){'use strict';var progressBar=document.querySelector('.progress-bar');var backTop=document.querySelector('.back-to-top');function onScroll(){var st=document.documentElement.scrollTop||document.body.scrollTop;var sh=(document.documentElement.scrollHeight||document.body.scrollHeight)-document.documentElement.clientHeight;if(progressBar&&sh>0)progressBar.style.width=Math.min(100,Math.round(st/sh*100))+'%';if(backTop)backTop.classList.toggle('show',st>400);}window.addEventListener('scroll',onScroll,{passive:true});onScroll();if(backTop)backTop.addEventListener('click',function(){window.scrollTo({top:0,behavior:'smooth'});});var currentPatent=0;var currentTab='basic';function applyVisibility(){document.querySelectorAll('.patent-panels').forEach(function(p){p.classList.toggle('active',String(p.dataset.patentIndex)===String(currentPatent));});document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.dataset.tab===currentTab);});document.querySelectorAll('.patent-panels.active .panel').forEach(function(p){p.classList.toggle('active',p.dataset.panel===currentTab);});if(backTop){}var activePanels=document.querySelector('.patent-panels.active');if(activePanels){var top=activePanels.getBoundingClientRect().top+window.scrollY-80;if(top<window.scrollY-50){}}document.querySelectorAll('.patent-nav-item').forEach(function(n){n.classList.toggle('active',String(n.dataset.patentIndex)===String(currentPatent));});}document.querySelectorAll('.patent-nav-item').forEach(function(item){item.addEventListener('click',function(){currentPatent=item.dataset.patentIndex;applyVisibility();var sidebar=document.querySelector('.sidebar');if(sidebar)sidebar.scrollTop=0;window.scrollTo({top:document.querySelector('.content').offsetTop-70,behavior:'smooth'});});});document.querySelectorAll('.tab').forEach(function(tab){tab.addEventListener('click',function(){currentTab=tab.dataset.tab;applyVisibility();});});document.querySelectorAll('.figure-card img').forEach(function(img){img.parentElement.addEventListener('click',function(){var lb=document.querySelector('.lightbox');if(!lb)return;lb.querySelector('img').src=img.src;lb.classList.add('open');});});document.querySelectorAll('.fig-mini img').forEach(function(img){var fig=img.closest('.fig-mini');if(!fig)return;fig.addEventListener('click',function(){var lb=document.querySelector('.lightbox');if(!lb)return;lb.querySelector('img').src=img.src;lb.classList.add('open');});});document.addEventListener('click',function(e){var ref=e.target.closest&&e.target.closest('.fig-ref');if(!ref)return;e.preventDefault();var idx=ref.getAttribute('data-fig-index');if(!idx)return;var panels=ref.closest('.patent-panels');if(!panels)return;var target=panels.querySelector('.fig-mini[data-fig-index=\\\"'+idx+'\\\"]');if(!target)return;var rail=target.closest('.source-figures');if(rail){rail.scrollTop=target.offsetTop-rail.offsetTop-8;}target.classList.add('flash');setTimeout(function(){target.classList.remove('flash');},1400);});var lb=document.querySelector('.lightbox');if(lb){lb.addEventListener('click',function(){lb.classList.remove('open');});document.addEventListener('keydown',function(e){if(e.key==='Escape')lb.classList.remove('open');});}applyVisibility();})();";
 
+  var EXTRA_CSS = ".sidebar{transition:width .2s ease,padding .2s ease,transform .2s ease}.sidebar-toggle{display:flex;align-items:center;justify-content:center;width:100%;margin:0 0 10px;padding:6px 8px;border:1px solid var(--c-border);border-radius:6px;background:var(--c-primary-soft);color:var(--c-primary);font-size:12px;font-weight:600;cursor:pointer}.sidebar-toggle:hover{background:var(--c-accent-soft)}.sidebar-edge-trigger{display:none}.layout.sidebar-collapsed{gap:8px}.layout.sidebar-collapsed .sidebar{position:sticky;width:24px;height:58px;min-height:58px;max-height:58px;padding:0;border-color:var(--c-primary);background:var(--c-primary-soft);overflow:visible;cursor:e-resize}.layout.sidebar-collapsed .sidebar>*:not(.sidebar-edge-trigger){visibility:hidden;pointer-events:none}.layout.sidebar-collapsed .sidebar-edge-trigger{display:flex;position:absolute;inset:0;align-items:center;justify-content:center;color:var(--c-primary);font-size:18px;font-weight:700;cursor:e-resize}.layout.sidebar-collapsed .sidebar:hover{width:var(--sidebar-w);height:auto;min-height:0;max-height:calc(100vh - var(--nav-h) - 36px);padding:12px 10px;overflow-y:auto;cursor:default;background:var(--c-surface)}.layout.sidebar-collapsed .sidebar:hover>*:not(.sidebar-edge-trigger){visibility:visible;pointer-events:auto}.layout.sidebar-collapsed .sidebar:hover .sidebar-edge-trigger{display:none}.bilingual-header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.bilingual-header .col-label{flex:1;min-width:90px}.bilingual-actions{display:flex;gap:6px;margin-left:auto}.bilingual-toggle{padding:4px 8px;border:1px solid var(--c-border);border-radius:5px;background:var(--c-surface);color:var(--c-muted);font-size:11px;cursor:pointer}.bilingual-toggle:hover{border-color:var(--c-primary);color:var(--c-primary);background:var(--c-primary-soft)}.bilingual-header.hide-original .col-label.original,.bilingual-header.hide-translated .col-label.translated{display:none}.bilingual.hide-original .original{display:none}.bilingual.hide-translated .translated{display:none}.bilingual.hide-original,.bilingual.hide-translated{grid-template-columns:1fr}.bilingual.hide-original.hide-translated{display:none}.source-split{grid-template-columns:minmax(0,1fr) 12px var(--figure-rail-width,280px);gap:0}.source-split-resizer{width:12px;min-height:160px;position:relative;cursor:col-resize;touch-action:none}.source-split-resizer::after{content:'';position:absolute;top:8px;bottom:8px;left:5px;width:2px;border-radius:2px;background:var(--c-border)}.source-split-resizer:hover::after,.source-split-resizer.dragging::after{background:var(--c-primary);width:3px;left:4px}.source-split .source-figures{width:var(--figure-rail-width,280px);max-width:none}.resizing-figures{cursor:col-resize!important;user-select:none!important}.bilingual-loading{padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-left:3px solid #2563eb;border-radius:0 var(--radius-sm) var(--radius-sm) 0;color:#1e40af;font-size:13px}.processed-translation{padding:12px 14px;background:var(--c-primary-soft);border:1px solid var(--c-border-soft);border-radius:var(--radius-sm);white-space:pre-wrap;overflow-wrap:anywhere}.processed-translation-label{margin-bottom:6px;color:var(--c-primary);font-size:12px;font-weight:700}.lightbox{flex-direction:column;gap:12px}.lightbox .lb-stage{display:flex;align-items:center;justify-content:center;max-width:94vw;max-height:82vh;overflow:hidden}.lightbox .lb-stage img{max-width:92vw;max-height:82vh;object-fit:contain;transform-origin:center center;will-change:transform}.lb-toolbar{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid rgba(255,255,255,.3);border-radius:7px;background:rgba(20,33,26,.72);z-index:1}.lb-toolbar button{min-width:34px;height:30px;padding:0 8px;border:1px solid rgba(255,255,255,.35);border-radius:5px;background:rgba(255,255,255,.12);color:#fff;font-size:16px;line-height:1;cursor:pointer}.lb-toolbar button:hover{background:rgba(255,255,255,.24)}.lb-toolbar .lb-scale{min-width:48px;color:#fff;font-size:12px;text-align:center}@media(max-width:860px){.layout.sidebar-collapsed .sidebar{position:fixed;left:0;top:calc(var(--nav-h) + 14px);z-index:950}.layout.sidebar-collapsed .sidebar:hover{width:min(var(--sidebar-w),calc(100vw - 28px))}.source-split{grid-template-columns:1fr}.source-split-resizer{display:none}.source-split .source-figures{width:auto}.bilingual-header{align-items:flex-start}.bilingual-actions{width:100%;margin-left:0}}";
+  var EXTRA_JS = "(function(){'use strict';var layout=document.querySelector('.layout');var sidebar=document.querySelector('.sidebar');var sidebarToggle=document.querySelector('.sidebar-toggle');if(layout&&sidebar&&sidebarToggle){sidebarToggle.addEventListener('click',function(){var collapsed=layout.classList.toggle('sidebar-collapsed');sidebarToggle.setAttribute('aria-expanded',String(!collapsed));sidebarToggle.textContent=collapsed?'展开专利侧栏':'收起专利侧栏';});}document.querySelectorAll('.bilingual-header').forEach(function(header){var bilingual=header.nextElementSibling;if(!bilingual||!bilingual.classList.contains('bilingual'))return;header.querySelectorAll('.bilingual-toggle').forEach(function(button){button.addEventListener('click',function(){var target=button.getAttribute('data-bilingual-toggle');var hiddenClass=target==='original'?'hide-original':'hide-translated';var labelClass=target==='original'?'hide-original':'hide-translated';bilingual.classList.toggle(hiddenClass);header.classList.toggle(labelClass);var hidden=bilingual.classList.contains(hiddenClass);button.textContent=(hidden?'显示':'隐藏')+(target==='original'?'原文':'翻译');});});});var activeResize=null;document.querySelectorAll('.source-split-resizer').forEach(function(resizer){resizer.addEventListener('pointerdown',function(event){var split=resizer.closest('.source-split');if(!split)return;var rail=split.querySelector('.source-figures');if(!rail)return;activeResize={split:split,resizer:resizer};resizer.classList.add('dragging');document.body.classList.add('resizing-figures');if(resizer.setPointerCapture)resizer.setPointerCapture(event.pointerId);event.preventDefault();});});document.addEventListener('pointermove',function(event){if(!activeResize)return;var rect=activeResize.split.getBoundingClientRect();var width=Math.max(180,Math.min(520,rect.right-event.clientX));activeResize.split.style.setProperty('--figure-rail-width',width+'px');});function endResize(){if(!activeResize)return;activeResize.resizer.classList.remove('dragging');document.body.classList.remove('resizing-figures');activeResize=null;}document.addEventListener('pointerup',endResize);document.addEventListener('pointercancel',endResize);var lb=document.querySelector('.lightbox');var lbImg=lb&&lb.querySelector('img');var lbScale=1;var lbRotation=0;function updateLightbox(){if(!lbImg)return;lbImg.style.transform='scale('+lbScale+') rotate('+lbRotation+'deg)';var scaleLabel=lb&&lb.querySelector('.lb-scale');if(scaleLabel)scaleLabel.textContent=Math.round(lbScale*100)+'%';}function resetLightbox(){lbScale=1;lbRotation=0;updateLightbox();}function openLightboxState(){if(!lb)return;resetLightbox();lb.classList.add('open');}if(lb&&lbImg){document.querySelectorAll('.figure-card img,.fig-mini img').forEach(function(img){img.addEventListener('click',openLightboxState);});var toolbar=lb.querySelector('.lb-toolbar');if(toolbar)toolbar.addEventListener('click',function(event){event.stopPropagation();var action=event.target.closest('[data-lb-action]');if(!action)return;var name=action.getAttribute('data-lb-action');if(name==='zoom-in')lbScale=Math.min(4,Math.round((lbScale+.25)*100)/100);if(name==='zoom-out')lbScale=Math.max(.25,Math.round((lbScale-.25)*100)/100);if(name==='reset')resetLightbox();if(name==='rotate-left')lbRotation-=90;if(name==='rotate-right')lbRotation+=90;updateLightbox();});lb.addEventListener('wheel',function(event){if(!lb.classList.contains('open'))return;event.preventDefault();lbScale=Math.max(.25,Math.min(4,Math.round((lbScale+(event.deltaY<0?.15:-.15))*100)/100));updateLightbox();},{passive:false});lb.addEventListener('click',function(event){if(event.target===lb)return;if(event.target.closest&&event.target.closest('.lb-close'))return;event.stopPropagation();},true);var close=lb.querySelector('.lb-close');if(close)close.addEventListener('click',function(event){event.stopPropagation();lb.classList.remove('open');});}updateLightbox();})();";
+
   function cleanText(value) { return typeof value === "string" ? value.trim() : ""; }
   function escapeHtml(value) {
     return String(value == null ? "" : value).replace(/[&<>"']/g, function (character) {
@@ -276,7 +279,7 @@
     if (!claims.length) return '<p class="missing">来源未提供权利要求</p>';
     var originalHtml = renderClaimsHtml(claims, config, record.claimsAnnotations, figures);
     var translation = cleanText(record.claimsTranslation);
-    var html = '<div class="bilingual-header"><span class="col-label">原文</span><span class="col-label translated">中文翻译</span></div>';
+    var html = '<div class="bilingual-header"><span class="col-label original">原文</span><span class="col-label translated">中文翻译</span><span class="bilingual-actions"><button class="bilingual-toggle" type="button" data-bilingual-toggle="original">隐藏原文</button><button class="bilingual-toggle" type="button" data-bilingual-toggle="translated">隐藏翻译</button></span></div>';
     html += '<div class="bilingual">';
     html += '<div class="bilingual-col original">' + originalHtml + '</div>';
     if (translation) {
@@ -298,7 +301,7 @@
     var translation = cleanText(record.descriptionTranslation);
     var transText = translation;
     if (mode === "lite" && transText.length > 3000) transText = transText.slice(0, 3000) + "\n\n...（内容过长，已截断）";
-    var html = '<div class="bilingual-header"><span class="col-label">原文</span><span class="col-label translated">中文翻译</span></div>';
+    var html = '<div class="bilingual-header"><span class="col-label original">原文</span><span class="col-label translated">中文翻译</span><span class="bilingual-actions"><button class="bilingual-toggle" type="button" data-bilingual-toggle="original">隐藏原文</button><button class="bilingual-toggle" type="button" data-bilingual-toggle="translated">隐藏翻译</button></span></div>';
     html += '<div class="bilingual">';
     html += '<div class="bilingual-col original">' + linkFigureRefs(applyAnnotationsToHtml(origText, record.descriptionAnnotations, ""), figures) + '</div>';
     if (transText) {
@@ -536,14 +539,9 @@
     if (moduleEnabled(config, "S4")) {
       var claimsBody = '';
       claimsBody += '<div class="section-title"><span class="bar"></span>权利要求书（原文 / 中文翻译对照）</div>';
-      if (record.claimsTranslation) {
-        claimsBody += renderClaimsBilingual(record, config, figures);
-      } else {
-        claimsBody += renderClaimsHtml(record.claims, config, record.claimsAnnotations, figures);
-        claimsBody += '<div class="translate-hint">尚未生成中文翻译。可在分享工作台「数据审核」中点击"翻译权利要求"生成双栏对照。</div>';
-      }
+      claimsBody += renderClaimsBilingual(record, config, figures);
       if (useSplit) {
-        html += '<div class="card"><div class="card-body"><div class="source-split"><div class="source-text">' + claimsBody + '</div>' + figureRail + '</div></div></div>';
+        html += '<div class="card"><div class="card-body"><div class="source-split"><div class="source-text">' + claimsBody + '</div><div class="source-split-resizer" role="separator" aria-label="调节附图栏宽度" tabindex="0"></div>' + figureRail + '</div></div></div>';
       } else {
         html += '<div class="card"><div class="card-body">' + claimsBody + '</div></div>';
       }
@@ -551,21 +549,9 @@
     if (moduleEnabled(config, "S5")) {
       var descBody = '';
       descBody += '<div class="section-title"><span class="bar"></span>说明书（原文 / 中文翻译对照）</div>';
-      if (record.descriptionTranslation) {
-        descBody += renderDescriptionBilingual(record, config, figures);
-      } else {
-        var description = cleanText(record.description);
-        if (!description) {
-          descBody += '<p class="missing">来源未提供说明书内容</p>';
-        } else {
-          var mode = moduleMode(config, "S5");
-          var origText = mode === "lite" && description.length > 3000 ? description.slice(0, 3000) + "\n\n...（内容过长，已截断）" : description;
-          descBody += '<div class="bilingual-col original">' + linkFigureRefs(applyAnnotationsToHtml(origText, record.descriptionAnnotations, ""), figures) + '</div>';
-          descBody += '<div class="translate-hint">尚未生成中文翻译。可在分享工作台「数据审核」中点击"翻译说明书"生成双栏对照。</div>';
-        }
-      }
+      descBody += renderDescriptionBilingual(record, config, figures);
       if (useSplit) {
-        html += '<div class="card"><div class="card-body"><div class="source-split"><div class="source-text">' + descBody + '</div>' + figureRail + '</div></div></div>';
+        html += '<div class="card"><div class="card-body"><div class="source-split"><div class="source-text">' + descBody + '</div><div class="source-split-resizer" role="separator" aria-label="调节附图栏宽度" tabindex="0"></div>' + figureRail + '</div></div></div>';
       } else {
         html += '<div class="card"><div class="card-body">' + descBody + '</div></div>';
       }
@@ -666,8 +652,24 @@
   }
 
   // 加工信息面板：手工字段固定在顶部，R 系列模块严格按照 moduleOrder 输出。
+  function renderTranslationProcessing(record) {
+    var html = "";
+    if (Array.isArray(record.claims) && record.claims.length) {
+      html += processedCard("权利要求中文翻译", record.claimsTranslation
+        ? '<div class="processed-translation"><div class="processed-translation-label">已完成翻译</div>' + escapeHtml(record.claimsTranslation) + '</div>'
+        : '<div class="bilingual-loading">尚未生成权利要求翻译。可在内容加工与审核中发起翻译。</div>');
+    }
+    if (cleanText(record.description)) {
+      html += processedCard("说明书中文翻译", record.descriptionTranslation
+        ? '<div class="processed-translation"><div class="processed-translation-label">已完成翻译</div>' + escapeHtml(record.descriptionTranslation) + '</div>'
+        : '<div class="bilingual-loading">尚未生成说明书翻译。可在内容加工与审核中发起翻译。</div>');
+    }
+    return html;
+  }
+
   function renderProcessedPanel(record, config, project) {
     var html = '<div class="panel" data-panel="processed">';
+    html += renderTranslationProcessing(record);
     if (record.processedFields && record.processedFields.length) html += processedCard("加工字段", renderProcessedFields(record, "full"));
     var defaultOrder = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9"];
     var order = config.moduleOrder && Array.isArray(config.moduleOrder.processed) ? config.moduleOrder.processed : defaultOrder;
@@ -696,14 +698,14 @@
     var patents = Array.isArray(input.patents) ? input.patents : [];
     var generatedAt = new Date().toISOString();
     var projectName = input.name || "未命名分享项目";
-    var html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escapeHtml(projectName) + '</title><style>' + CSS + '</style></head><body>';
+    var html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + escapeHtml(projectName) + '</title><style>' + CSS + EXTRA_CSS + '</style></head><body>';
     html += '<div class="progress-bar"></div>';
     html += '<nav class="topnav"><span class="brand">' + escapeHtml(projectName) + '</span><span class="spacer"></span>';
     html += '<button class="nav-btn" onclick="window.print()">打印 / 导出PDF</button>';
     html += '</nav>';
     html += '<div class="layout">';
     // 左侧分栏：专利列表导航
-    html += '<aside class="sidebar">';
+    html += '<aside class="sidebar"><button class="sidebar-toggle" type="button" aria-expanded="true" aria-label="收起专利侧栏">收起专利侧栏</button><span class="sidebar-edge-trigger" title="悬浮展开专利侧栏" aria-hidden="true">›</span>';
     if (moduleEnabled(config, "S1")) {
       html += '<div class="cover" style="margin:0 0 14px;padding:18px 16px;border-radius:10px"><h1 style="font-size:16px;margin:0 0 4px">' + escapeHtml(projectName) + '</h1><p class="subtitle" style="font-size:11px">专利技术分享报告</p><div class="meta-row" style="margin-top:10px"><span class="chip">' + patents.length + ' 篇</span><span class="chip">' + escapeHtml(generatedAt.slice(0, 10)) + '</span></div></div>';
     }
@@ -747,9 +749,9 @@
     html += '</main>';
     html += '</div>';
     html += '<button class="back-to-top" title="返回顶部" aria-label="返回顶部">↑</button>';
-    html += '<div class="lightbox"><span class="lb-close">×</span><img alt="附图预览" /></div>';
+    html += '<div class="lightbox"><span class="lb-close" role="button" tabindex="0" aria-label="关闭附图预览">×</span><div class="lb-toolbar" role="toolbar" aria-label="附图操作"><button type="button" data-lb-action="zoom-out" title="缩小">−</button><button type="button" data-lb-action="zoom-in" title="放大">＋</button><button type="button" data-lb-action="reset" title="重置">100%</button><button type="button" data-lb-action="rotate-left" title="向左旋转">↶</button><button type="button" data-lb-action="rotate-right" title="向右旋转">↷</button><span class="lb-scale">100%</span></div><div class="lb-stage"><img alt="附图预览" /></div></div>';
     html += '<div class="patentlens-watermark" aria-hidden="true">由 <span class="wl-brand">PatentLens</span> 制作</div>';
-    html += '<script>' + JS + '<\/script>';
+    html += '<script>' + JS + EXTRA_JS + '<\/script>';
     html += '</body></html>';
     var findings = scanSensitive(input, html);
     var conflicts = findPendingConflicts(input);

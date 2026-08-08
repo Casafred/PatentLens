@@ -20,6 +20,7 @@
   var priorHomeMode = false;
   var notice = null;
   var aiRunning = false;
+  var translationState = null;
   var reviewPatentIndex = 0;
 
   // 批量 AI 处理状态：在一次输入多篇专利后，统一选定字段类型并发处理。
@@ -945,6 +946,23 @@
 
     // Section: 加工信息字段（移到基本信息下方，排第二）
     card.appendChild(buildReviewSection("加工信息字段（AI 抽取 / 手工录入）", "processed", function (body) {
+      var translationRunning = translationState && translationState.patentId === patent.id && translationState.status === "running";
+      if (translationRunning || patent.claimsTranslation || patent.descriptionTranslation) {
+        var translationPanel = makeElement("div", "share-review-translation-preview");
+        translationPanel.appendChild(makeElement("div", "share-review-translation-label", "权利要求与说明书翻译"));
+        if (translationRunning) {
+          translationPanel.appendChild(makeElement("div", "share-translation-loading", "正在翻译" + (translationState.kind === "claims" ? "权利要求" : "说明书") + "，请稍候…"));
+        }
+        if (patent.claimsTranslation) {
+          translationPanel.appendChild(makeElement("div", "share-review-translation-label", "权利要求中文"));
+          translationPanel.appendChild(makeElement("div", "share-review-translation-text", patent.claimsTranslation));
+        }
+        if (patent.descriptionTranslation) {
+          translationPanel.appendChild(makeElement("div", "share-review-translation-label", "说明书中文"));
+          translationPanel.appendChild(makeElement("div", "share-review-translation-text", patent.descriptionTranslation));
+        }
+        body.appendChild(translationPanel);
+      }
       var pfList = Array.isArray(patent.processedFields) ? patent.processedFields : [];
       if (pfList.length) {
         pfList.forEach(function (pf) {
@@ -1047,7 +1065,9 @@
         trClaimsBtn.dataset.patentId = patent.id;
         trClaimsBtn.disabled = aiRunning;
         claimActions.appendChild(trClaimsBtn);
-        if (patent.claimsTranslation) {
+        if (translationState && translationState.patentId === patent.id && translationState.kind === "claims" && translationState.status === "running") {
+          claimActions.appendChild(makeElement("span", "share-translation-loading", "正在翻译权利要求，请稍候…"));
+        } else if (patent.claimsTranslation) {
           claimActions.appendChild(makeElement("span", "share-processed-badge ai", "已翻译"));
         }
       }
@@ -1073,6 +1093,12 @@
           claimGrid.appendChild(claimItem);
         });
         body.appendChild(claimGrid);
+        if (patent.claimsTranslation) {
+          var claimsTranslationPreview = makeElement("div", "share-review-translation-preview");
+          claimsTranslationPreview.appendChild(makeElement("div", "share-review-translation-label", "中文翻译"));
+          claimsTranslationPreview.appendChild(makeElement("div", "share-review-translation-text", patent.claimsTranslation));
+          body.appendChild(claimsTranslationPreview);
+        }
       }
     }));
 
@@ -1092,7 +1118,9 @@
         trDescBtn.dataset.patentId = patent.id;
         trDescBtn.disabled = aiRunning;
         descActions.appendChild(trDescBtn);
-        if (patent.descriptionTranslation) {
+        if (translationState && translationState.patentId === patent.id && translationState.kind === "description" && translationState.status === "running") {
+          descActions.appendChild(makeElement("span", "share-translation-loading", "正在翻译说明书，请稍候…"));
+        } else if (patent.descriptionTranslation) {
           descActions.appendChild(makeElement("span", "share-processed-badge ai", "已翻译"));
         }
       }
@@ -1107,6 +1135,12 @@
         body.appendChild(descPreview);
         var descAnnoList = buildAnnotationList(patent, "description", "");
         if (descAnnoList) body.appendChild(descAnnoList);
+        if (patent.descriptionTranslation) {
+          var descriptionTranslationPreview = makeElement("div", "share-review-translation-preview");
+          descriptionTranslationPreview.appendChild(makeElement("div", "share-review-translation-label", "中文翻译"));
+          descriptionTranslationPreview.appendChild(makeElement("div", "share-review-translation-text", patent.descriptionTranslation));
+          body.appendChild(descriptionTranslationPreview);
+        }
       } else {
         body.appendChild(makeElement("div", "review-drawings-empty", "尚未提供说明书内容，点击上方「编辑说明书」按钮添加"));
       }
@@ -1591,6 +1625,27 @@
     container.appendChild(toolbar);
     if (result.findings.length) container.appendChild(makeElement("div", "share-inline-notice error", "预览发现：" + result.findings.join("；")));
     else container.appendChild(makeElement("div", "share-inline-notice", "AI生成内容已标注，请在导出前人工核验关键技术信息。"));
+    var exportSummary = makeElement("div", "share-export-summary");
+    exportSummary.appendChild(makeElement("strong", "", "HTML 导出检查"));
+    exportSummary.appendChild(makeElement("p", "", "" + project.patents.length + " 篇专利 · " + Math.ceil(result.size / 1024) + " KB · 离线 CSS 已内联，无外部依赖"));
+    var hardBlockFindings = result.findings.filter(function (f) { return /密钥|Token|Cookie/.test(f); });
+    var softWarningFindings = result.findings.filter(function (f) { return !/密钥|Token|Cookie/.test(f); });
+    var canExport = project.patents.length > 0 && !aiRunning && hardBlockFindings.length === 0;
+    var exportAction = makeElement("button", "share-primary-action", "保存 HTML");
+    exportAction.type = "button";
+    exportAction.dataset.shareAction = "save-html";
+    exportAction.disabled = !canExport;
+    exportSummary.appendChild(exportAction);
+    if (hardBlockFindings.length) {
+      exportSummary.appendChild(makeElement("div", "share-inline-notice error", "导出已阻止：" + hardBlockFindings.join("；")));
+    } else if (softWarningFindings.length) {
+      exportSummary.appendChild(makeElement("div", "share-inline-notice", "导出前提示：" + softWarningFindings.join("；") + "。点击「保存 HTML」后将弹确认框，确认后可继续导出。"));
+    } else if (project.patents.length === 0) {
+      exportSummary.appendChild(makeElement("div", "share-inline-notice error", "请先加入至少一篇专利。"));
+    } else {
+      exportSummary.appendChild(makeElement("div", "share-inline-notice", "未发现密钥、本机路径或本地代理地址。保存后可在无网络环境打开分享给研发团队。"));
+    }
+    container.appendChild(exportSummary);
     var frame = document.createElement("iframe");
     frame.className = "share-preview-frame";
     frame.title = "专利分享离线预览";
@@ -1785,8 +1840,10 @@
     else if (activeView === "modules") renderModules(container, project);
     else if (activeView === "insights") renderInsights(container, project);
     else if (activeView === "prompts") renderPrompts(container, project);
-    else if (activeView === "preview") renderPreview(container, project);
-    else if (activeView === "export") renderExport(container, project);
+    else if (activeView === "preview" || activeView === "export") {
+      activeView = "preview";
+      renderPreview(container, project);
+    }
     else renderPlaceholder(container, activeView, project);
 
     var navItems = document.querySelectorAll(".share-workspace-nav-item");
@@ -2117,6 +2174,7 @@
       text = patent.description;
     }
     aiRunning = true;
+    translationState = { patentId: patentId, kind: kind, status: "running" };
     setNotice("AI正在翻译" + label + "，内容较长时请耐心等候...", false);
     render();
     AI.translatePatentText(text, kind).then(function (result) {
@@ -2130,6 +2188,7 @@
       setNotice(label + "翻译出错：" + (err && err.message ? err.message : String(err)), true);
     }).then(function () {
       aiRunning = false;
+      translationState = null;
       render();
     });
   }
