@@ -33,13 +33,13 @@
   var batchState = null;
 
   var viewMeta = {
-    overview: { title: "项目设定", description: "明确分享对象、目的、技术关注点和内部使用边界。" },
-    sources: { title: "专利与材料", description: "从当前查询、审查档案、PDF 和表格汇集可追溯的专利材料。" },
-    review: { title: "内容加工与审核", description: "核对来源字段、制作分享字段、标注关键原文，并确认可对外呈现的内容。" },
+    overview: { title: "编辑分享属性", description: "记录分享时间、部门、主题、分享人及其他分享信息。" },
+    sources: { title: "导入待分享专利", description: "从当前查询、审查档案、PDF 和表格汇集可追溯的专利材料。" },
+    review: { title: "分享内容加工", description: "核对来源字段、制作分享字段、标注关键原文，并确认可对外呈现的内容。" },
     insights: { title: "组合判断", description: "生成并审核单篇技术解读和多专利技术路线对比；所有 AI 内容先作为草稿。" },
     prompts: { title: "提示词与原文范围", description: "集中管理组合判断与加工字段的提示词，以及 AI 分析纳入的原文范围。" },
-    modules: { title: "编排与展示", description: "选择研发分享中真正需要展示的内容，并调整加工模块在报告中的顺序。" },
-    preview: { title: "预览", description: "在隔离 iframe 中检查研发团队最终会看到的离线页面。" },
+    modules: { title: "分享模块编排", description: "选择研发分享中真正需要展示的内容，并调整加工模块在报告中的顺序。" },
+    preview: { title: "预览与导出", description: "检查研发团队最终会看到的离线页面，并导出自包含 HTML。" },
     export: { title: "发布", description: "完成审核和敏感信息检查后保存单文件 HTML。" },
   };
 
@@ -50,6 +50,14 @@
     if (className) el.className = className;
     if (text != null) el.textContent = text;
     return el;
+  }
+
+  function formatDateTimeLocal(value) {
+    if (!value) return "";
+    var date = new Date(value);
+    if (isNaN(date.getTime())) return String(value).slice(0, 16);
+    function pad(number) { return String(number).padStart(2, "0"); }
+    return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + "T" + pad(date.getHours()) + ":" + pad(date.getMinutes());
   }
 
   function currentProject() {
@@ -114,7 +122,7 @@
     { key: "abstract", label: "摘要", hint: "专利摘要文本" },
     { key: "claims", label: "权利要求", hint: "完整权利要求文本" },
     { key: "description", label: "说明书", hint: "说明书 / 具体实施方式全文" },
-    { key: "annotations", label: "IPR 标注", hint: "在「内容加工与审核」中标注的关键段落" },
+    { key: "annotations", label: "IPR 标注", hint: "在「分享内容加工」中标注的关键段落" },
   ];
 
   // 构建原文范围勾选面板。opts.actionName 决定 onChange 派发到哪个 action；
@@ -214,11 +222,11 @@
     return row;
   }
 
-  // 构建提示词与原文范围管理面板（编排与展示视图顶部）。
+  // 构建提示词与原文范围管理面板（分享模块编排视图顶部）。
   function buildPromptManagementPanel(project) {
     var panel = makeElement("section", "share-prompt-panel");
     panel.appendChild(makeElement("h4", "", "提示词管理"));
-    panel.appendChild(makeElement("p", "share-module-hint", "组合判断的 4 类内置提示词与加工字段的预设提示词均在此集中管理；修改后立即生效，影响后续 AI 草稿生成。您也可以新增自定义预置模板，快速添加到「内容加工与审核」中。"));
+    panel.appendChild(makeElement("p", "share-module-hint", "组合判断的 4 类内置提示词与加工字段的预设提示词均在此集中管理；修改后立即生效，影响后续 AI 草稿生成。您也可以新增自定义预置模板，快速添加到「分享内容加工」中。"));
 
     // 组合判断 4 类内置提示词
     var aiGroup = makeElement("div", "share-prompt-group");
@@ -242,7 +250,7 @@
 
     // 加工字段预设提示词（内置 + 自定义）
     var fieldGroup = makeElement("div", "share-prompt-group");
-    fieldGroup.appendChild(makeElement("div", "share-prompt-group-title", "加工字段预设（应用于「内容加工与审核」中的快速添加字段）"));
+    fieldGroup.appendChild(makeElement("div", "share-prompt-group-title", "加工字段预设（应用于「分享内容加工」中的快速添加字段）"));
     var presets = window.PatentShareModules && window.PatentShareModules.fieldPresets ? window.PatentShareModules.fieldPresets() : [];
     presets.forEach(function (preset) {
       fieldGroup.appendChild(buildPromptRow({
@@ -263,7 +271,7 @@
     // 项目级 AI 原文范围
     var scopeGroup = makeElement("div", "share-prompt-group");
     scopeGroup.appendChild(makeElement("div", "share-prompt-group-title", "AI 分析纳入的原文范围（项目级默认）"));
-    scopeGroup.appendChild(makeElement("p", "share-module-hint", "勾选后，所有组合判断与加工字段的 AI 抽取都会基于此处勾选的原文内容生成；字段级可在「内容加工与审核」中单独覆盖。"));
+    scopeGroup.appendChild(makeElement("p", "share-module-hint", "勾选后，所有组合判断与加工字段的 AI 抽取都会基于此处勾选的原文内容生成；字段级可在「分享内容加工」中单独覆盖。"));
     var projectScope = window.PatentShareStore && window.PatentShareStore.getAIContextScope ? window.PatentShareStore.getAIContextScope() : { abstract: true, claims: true, description: true, annotations: true };
     scopeGroup.appendChild(buildContextScopePanel(projectScope, { actionName: "toggle-context-scope" }));
     panel.appendChild(scopeGroup);
@@ -299,34 +307,38 @@
     actions.appendChild(rename);
     container.appendChild(actions);
 
-    var brief = project.brief || {};
-    var briefPanel = makeElement("section", "share-project-brief");
-    briefPanel.appendChild(makeElement("h4", "", "分享设定"));
-    briefPanel.appendChild(makeElement("p", "share-module-hint", "这些设定会连同专利材料一起传给 AI，用于约束生成内容的对象和重点。"));
-    var briefGrid = makeElement("div", "share-brief-grid");
+    var attributes = project.shareAttributes || {};
+    var attributesPanel = makeElement("section", "share-project-brief share-project-attributes");
+    attributesPanel.appendChild(makeElement("h4", "", "编辑分享属性"));
+    attributesPanel.appendChild(makeElement("p", "share-module-hint", "这里仅记录和维护本次分享的信息，不会作为 AI 提示词内容。"));
+    var attributesGrid = makeElement("div", "share-brief-grid");
     [
-      ["audience", "分享对象", brief.audience || "研发团队", "例如：电池材料研发组"],
-      ["purpose", "分享目的", brief.purpose || "技术分享", "例如：技术预研评审"],
-      ["focus", "技术关注点", brief.focus || "", "例如：界面材料、循环寿命、工艺边界"],
-      ["confidentiality", "使用边界", brief.confidentiality || "内部使用", "例如：内部使用，不构成法律意见"],
+      ["shareTime", "分享时间", "", "datetime-local"],
+      ["department", "分享部门", "例如：研发部 / 专利部", "text"],
+      ["topic", "分享主题", "例如：某技术路线预研评审", "text"],
+      ["sharer", "分享人", "例如：张三", "text"],
+      ["audience", "分享对象", "例如：电池材料研发组", "text"],
+      ["location", "分享地点", "例如：会议室 / 线上会议", "text"],
+      ["confidentiality", "使用边界", "例如：内部使用", "text"],
+      ["notes", "备注", "补充说明、后续安排或维护记录", "textarea"],
     ].forEach(function (item) {
       var label = makeElement("label", "share-research-label", item[1]);
-      var input = document.createElement(item[0] === "focus" ? "textarea" : "input");
+      var input = document.createElement(item[3] === "textarea" ? "textarea" : "input");
       input.className = "share-research-input";
-      input.id = "share-brief-" + item[0];
-      input.value = item[2];
-      input.placeholder = item[3];
-      if (item[0] === "focus") { input.rows = 2; input.maxLength = 2000; }
-      else input.maxLength = 300;
+      input.id = "share-attribute-" + item[0];
+      input.value = item[0] === "shareTime" ? formatDateTimeLocal(attributes[item[0]]) : (attributes[item[0]] || "");
+      input.placeholder = item[2];
+      input.maxLength = item[0] === "notes" ? 5000 : 300;
+      if (item[3] === "textarea") input.rows = 3;
       label.appendChild(input);
-      briefGrid.appendChild(label);
+      attributesGrid.appendChild(label);
     });
-    briefPanel.appendChild(briefGrid);
-    var saveBrief = makeElement("button", "share-secondary-action", "保存分享设定");
-    saveBrief.type = "button";
-    saveBrief.dataset.shareAction = "save-project-brief";
-    briefPanel.appendChild(saveBrief);
-    container.appendChild(briefPanel);
+    attributesPanel.appendChild(attributesGrid);
+    var saveAttributes = makeElement("button", "share-secondary-action", "保存分享属性");
+    saveAttributes.type = "button";
+    saveAttributes.dataset.shareAction = "save-share-attributes";
+    attributesPanel.appendChild(saveAttributes);
+    container.appendChild(attributesPanel);
 
     renderProjectList(container, project);
 
@@ -1419,7 +1431,7 @@
   function renderPrompts(container, project) {
     addHeading(container, viewMeta.prompts);
     addNotice(container);
-    var hint = makeElement("p", "share-module-hint", "这里集中管理「组合判断」4 类内置提示词（技术解读 / 技术要素 / 实施例与验证 / 多专利对比）与「内容加工与审核」中加工字段的预设提示词；修改后立即生效，影响后续 AI 草稿生成。下方还可设置 AI 分析纳入的原文范围（项目级默认，字段级可在加工字段中单独覆盖）。");
+    var hint = makeElement("p", "share-module-hint", "这里集中管理「组合判断」4 类内置提示词（技术解读 / 技术要素 / 实施例与验证 / 多专利对比）与「分享内容加工」中加工字段的预设提示词；修改后立即生效，影响后续 AI 草稿生成。下方还可设置 AI 分析纳入的原文范围（项目级默认，字段级可在加工字段中单独覆盖）。");
     container.appendChild(hint);
     container.appendChild(buildPromptManagementPanel(project));
   }
@@ -1819,7 +1831,7 @@
     addHeading(container, viewMeta[viewId]);
     var panel = makeElement("div", "share-placeholder-panel");
     panel.appendChild(makeElement("h4", "", "此区域已预留，等待后续功能接入"));
-    var prerequisite = project.patents.length ? "当前项目已有 " + project.patents.length + " 篇专利，可在后续切片直接接入这里。" : "请先在「材料来源」加入至少一篇专利；完成后这里会显示对应的操作。";
+    var prerequisite = project.patents.length ? "当前项目已有 " + project.patents.length + " 篇专利，可在后续切片直接接入这里。" : "请先在「导入待分享专利」加入至少一篇专利；完成后这里会显示对应的操作。";
     panel.appendChild(makeElement("p", "", prerequisite));
     container.appendChild(panel);
   }
@@ -2257,7 +2269,7 @@
 
     var promise;
     if (type === "summary") {
-      promise = AI.generatePatentSummary(patent, project.brief).then(function(result) {
+      promise = AI.generatePatentSummary(patent).then(function(result) {
         if (result.ok) {
           window.PatentShareStore.setAIAnalysis(patentId, "summary", result);
           setNotice("已生成" + patent.patentNumber + "的技术解读草稿，请审核后确认用于分享。", false);
@@ -2266,7 +2278,7 @@
         }
       });
     } else if (type === "elements") {
-      promise = AI.generateTechnicalElements(patent, project.brief).then(function(result) {
+      promise = AI.generateTechnicalElements(patent).then(function(result) {
         if (result.ok) {
           window.PatentShareStore.setAIAnalysis(patentId, "elements", result);
           setNotice("已提取" + patent.patentNumber + "的技术要素和系统结构。", false);
@@ -2275,7 +2287,7 @@
         }
       });
     } else if (type === "embodiments") {
-      promise = AI.generateEmbodiments(patent, project.brief).then(function(result) {
+      promise = AI.generateEmbodiments(patent).then(function(result) {
         if (result.ok) {
           window.PatentShareStore.setAIAnalysis(patentId, "embodiments", result);
           setNotice("已生成" + patent.patentNumber + "的实施例分析。", false);
@@ -2305,7 +2317,7 @@
     aiRunning = true;
     setNotice("AI正在抽取「" + field.label + "」，请稍候...", false);
     render();
-    AI.generateProcessedField(patent, field, project.brief).then(function (result) {
+    AI.generateProcessedField(patent, field).then(function (result) {
       if (result.ok) {
         window.PatentShareStore.updateProcessedField(patentId, fieldId, {
           value: result.value,
@@ -2314,7 +2326,7 @@
           generatedAt: result.generatedAt,
           reviewState: "pending",
         });
-        setNotice("AI已抽取「" + field.label + "」内容，请在内容加工与审核中确认后分享。", false);
+        setNotice("AI已抽取「" + field.label + "」内容，请在分享内容加工中确认后分享。", false);
       } else {
         setNotice("AI抽取失败: " + (result.error || "未知错误"), true);
       }
@@ -2336,7 +2348,7 @@
     setNotice("AI正在进行多专利对比分析（" + project.patents.length + "篇），请稍候...", false);
     render();
 
-    AI.generateMultiPatentComparison(project.patents, project.brief).then(function(result) {
+    AI.generateMultiPatentComparison(project.patents).then(function(result) {
       if (result.ok) {
         window.PatentShareStore.setProjectAIAnalysis("comparison", result);
         setNotice("已生成" + project.patents.length + "篇专利的技术路线对比分析。", false);
@@ -2365,12 +2377,12 @@
     render();
 
     var tasks = project.patents.map(function(patent) {
-      return AI.generatePatentSummary(patent, project.brief).then(function(result) {
+      return AI.generatePatentSummary(patent).then(function(result) {
         if (result.ok) window.PatentShareStore.setAIAnalysis(patent.id, "summary", result);
         else failed++;
         completed++;
         setNotice("AI批量分析进度: " + completed + "/" + total + "...", false);
-        return AI.generateTechnicalElements(patent, project.brief);
+        return AI.generateTechnicalElements(patent);
       }).then(function(result) {
         if (result.ok) window.PatentShareStore.setAIAnalysis(patent.id, "elements", result);
         else failed++;
@@ -2380,7 +2392,7 @@
     });
     if (project.patents.length >= 2) {
       tasks.push(Promise.resolve().then(function() {
-        return AI.generateMultiPatentComparison(project.patents, project.brief);
+        return AI.generateMultiPatentComparison(project.patents);
       }).then(function(result) {
         if (result.ok) window.PatentShareStore.setProjectAIAnalysis("comparison", result);
         else failed++;
@@ -2446,7 +2458,7 @@
     var patentBox = makeElement("div", "share-batch-patent-list");
     var selectedPatents = (batchState && batchState.patentIds) || patents.map(function (p) { return p.id; });
     if (!patents.length) {
-      patentBox.appendChild(makeElement("div", "share-batch-empty", "尚未加入专利。请先在「专利与材料」中导入。"));
+      patentBox.appendChild(makeElement("div", "share-batch-empty", "尚未加入专利。请先在「导入待分享专利」中导入。"));
     } else {
       // 全选 / 取消全选
       var allCb = document.createElement("input");
@@ -2660,24 +2672,24 @@
       var patent = patentsById[task.patentId];
       var promise;
       if (task.type === "summary") {
-        promise = AI.generatePatentSummary(patent, project.brief).then(function (r) {
+        promise = AI.generatePatentSummary(patent).then(function (r) {
           if (r.ok) { window.PatentShareStore.setAIAnalysis(task.patentId, "summary", r); task.status = "done"; }
           else { task.status = "failed"; task.error = r.error || "未知错误"; }
         });
       } else if (task.type === "elements") {
-        promise = AI.generateTechnicalElements(patent, project.brief).then(function (r) {
+        promise = AI.generateTechnicalElements(patent).then(function (r) {
           if (r.ok) { window.PatentShareStore.setAIAnalysis(task.patentId, "elements", r); task.status = "done"; }
           else { task.status = "failed"; task.error = r.error || "未知错误"; }
         });
       } else if (task.type === "embodiments") {
-        promise = AI.generateEmbodiments(patent, project.brief).then(function (r) {
+        promise = AI.generateEmbodiments(patent).then(function (r) {
           if (r.ok) { window.PatentShareStore.setAIAnalysis(task.patentId, "embodiments", r); task.status = "done"; }
           else { task.status = "failed"; task.error = r.error || "未知错误"; }
         });
       } else if (task.type === "processed") {
         var field = patent.processedFields && patent.processedFields.find(function (f) { return f.id === task.fieldId; });
         if (!field) { task.status = "skipped"; return Promise.resolve(); }
-        promise = AI.generateProcessedField(patent, field, project.brief).then(function (r) {
+        promise = AI.generateProcessedField(patent, field).then(function (r) {
           if (r.ok) {
             window.PatentShareStore.updateProcessedField(task.patentId, task.fieldId, {
               value: r.content, source: "ai", model: r.model, generatedAt: r.generatedAt, reviewState: "pending",
@@ -2930,14 +2942,18 @@
       if (actionName === "import-pdf") startPdfImport();
       if (actionName === "refresh-preview") render();
       if (actionName === "save-html") saveHtml();
-      if (actionName === "save-project-brief") {
-        window.PatentShareStore.setProjectBrief({
-          audience: byId("share-brief-audience") ? byId("share-brief-audience").value : "",
-          purpose: byId("share-brief-purpose") ? byId("share-brief-purpose").value : "",
-          focus: byId("share-brief-focus") ? byId("share-brief-focus").value : "",
-          confidentiality: byId("share-brief-confidentiality") ? byId("share-brief-confidentiality").value : "",
+      if (actionName === "save-share-attributes") {
+        window.PatentShareStore.setShareAttributes({
+          shareTime: byId("share-attribute-shareTime") ? byId("share-attribute-shareTime").value : "",
+          department: byId("share-attribute-department") ? byId("share-attribute-department").value : "",
+          topic: byId("share-attribute-topic") ? byId("share-attribute-topic").value : "",
+          sharer: byId("share-attribute-sharer") ? byId("share-attribute-sharer").value : "",
+          audience: byId("share-attribute-audience") ? byId("share-attribute-audience").value : "",
+          location: byId("share-attribute-location") ? byId("share-attribute-location").value : "",
+          confidentiality: byId("share-attribute-confidentiality") ? byId("share-attribute-confidentiality").value : "",
+          notes: byId("share-attribute-notes") ? byId("share-attribute-notes").value : "",
         });
-        setNotice("分享设定已保存，后续 AI 草稿会按此对象和重点生成。", false);
+        setNotice("分享属性已保存。", false);
         render();
       }
       if (actionName === "save-research-summary") {
@@ -2947,7 +2963,7 @@
           effect: byId("share-research-effect") ? byId("share-research-effect").value : "",
           openQuestions: byId("share-research-openQuestions") ? byId("share-research-openQuestions").value : "",
         });
-        setNotice("项目级结论已保存；请在“编排与展示”中启用相应内容后导出。", false);
+        setNotice("项目级结论已保存；请在“分享模块编排”中启用相应内容后导出。", false);
         render();
       }
       if ((actionName === "save-ai-analysis" || actionName === "accept-ai-analysis" || actionName === "return-ai-analysis") && action.dataset.aiType) {
@@ -2966,7 +2982,7 @@
       if (actionName === "ai-elements" && action.dataset.patentId) runAIAnalysis(action.dataset.patentId, "elements");
       if (actionName === "ai-embodiments" && action.dataset.patentId) runAIAnalysis(action.dataset.patentId, "embodiments");
       if (actionName === "ai-comparison") runAIComparison();
-      // 跳转到独立的「提示词与原文范围」视图（不再嵌在编排与展示里）
+      // 跳转到独立的「提示词与原文范围」视图（不再嵌在分享模块编排里）
       if (actionName === "go-prompts" || actionName === "go-modules-prompts") {
         activeView = "prompts";
         render();

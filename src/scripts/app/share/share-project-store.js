@@ -46,13 +46,19 @@
     };
   }
 
-  function normalizeProjectBrief(value) {
+  // 分享属性只用于记录和展示，不参与任何 AI 提示词上下文。
+  function normalizeShareAttributes(value, legacyBrief) {
     var source = value && typeof value === "object" ? value : {};
+    var legacy = legacyBrief && typeof legacyBrief === "object" ? legacyBrief : {};
     return {
-      audience: cleanText(source.audience).slice(0, 200) || "研发团队",
-      purpose: cleanText(source.purpose).slice(0, 300) || "技术分享",
-      focus: cleanText(source.focus).slice(0, 2000),
-      confidentiality: cleanText(source.confidentiality).slice(0, 100) || "内部使用",
+      shareTime: cleanText(source.shareTime).slice(0, 40) || cleanText(legacy.shareTime).slice(0, 40) || now(),
+      department: cleanText(source.department).slice(0, 200),
+      topic: cleanText(source.topic).slice(0, 300) || cleanText(source.purpose).slice(0, 300) || cleanText(legacy.topic).slice(0, 300) || cleanText(legacy.purpose).slice(0, 300),
+      sharer: cleanText(source.sharer).slice(0, 120),
+      audience: cleanText(source.audience).slice(0, 300) || cleanText(legacy.audience).slice(0, 300),
+      location: cleanText(source.location).slice(0, 200),
+      confidentiality: cleanText(source.confidentiality).slice(0, 100) || cleanText(legacy.confidentiality).slice(0, 100),
+      notes: cleanText(source.notes).slice(0, 5000) || cleanText(legacy.notes).slice(0, 5000) || cleanText(legacy.focus).slice(0, 5000),
     };
   }
 
@@ -203,7 +209,7 @@
       updatedAt: now(),
       patents: [],
       sources: [],
-      brief: normalizeProjectBrief(),
+      shareAttributes: normalizeShareAttributes(),
       researchSummary: {},
       moduleConfig: defaultModules,
       aiAnalysis: {},
@@ -222,7 +228,7 @@
       updatedAt: cleanText(raw.updatedAt) || now(),
       patents: [],
       sources: [],
-      brief: normalizeProjectBrief(raw.brief),
+      shareAttributes: normalizeShareAttributes(raw.shareAttributes, raw.brief),
       researchSummary: normalizeResearchSummary(raw.researchSummary),
       moduleConfig: raw.moduleConfig && typeof raw.moduleConfig === "object" ? clone(raw.moduleConfig) : {},
       aiAnalysis: raw.aiAnalysis && typeof raw.aiAnalysis === "object" ? clone(raw.aiAnalysis) : {},
@@ -549,11 +555,26 @@
 
   function setProjectBrief(brief) {
     var active = ensureProject();
-    active.brief = normalizeProjectBrief(brief);
+    // 兼容旧调用方：旧的分享设定写入新的分享属性，但不再作为 AI 上下文。
+    active.shareAttributes = normalizeShareAttributes({
+      topic: brief && brief.purpose,
+      audience: brief && brief.audience,
+      confidentiality: brief && brief.confidentiality,
+      notes: brief && brief.focus,
+    }, active.shareAttributes);
     active.updatedAt = now();
     queuePersist();
     notify();
-    return clone(active.brief);
+    return clone(active.shareAttributes);
+  }
+
+  function setShareAttributes(attributes) {
+    var active = ensureProject();
+    active.shareAttributes = normalizeShareAttributes(attributes, active.shareAttributes);
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return clone(active.shareAttributes);
   }
 
   function getPromptOverrides() {
@@ -1235,6 +1256,7 @@
     renameProject: renameProject,
     setResearchSummary: setResearchSummary,
     setProjectBrief: setProjectBrief,
+    setShareAttributes: setShareAttributes,
     setModuleConfig: setModuleConfig,
     setModuleMode: setModuleMode,
     getPromptOverrides: getPromptOverrides,
