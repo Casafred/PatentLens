@@ -79,12 +79,18 @@
     }
   }
 
-  function buildPatentContext(patent, brief, scope) {
-    var s = scope && typeof scope === "object" ? scope : defaultContextScope();
+  function resolveContextScope(value) {
+    if (!value || typeof value !== "object") return defaultContextScope();
+    var hasScopeKey = ["abstract", "claims", "description", "annotations"].some(function (key) {
+      return Object.prototype.hasOwnProperty.call(value, key);
+    });
+    return hasScopeKey ? value : defaultContextScope();
+  }
+
+  // 第二个参数保留为兼容位；旧的 brief 不再读取，也不会进入 AI 上下文。
+  function buildPatentContext(patent, legacyBriefOrScope, scope) {
+    var s = resolveContextScope(scope || legacyBriefOrScope);
     var parts = [];
-    if (brief && typeof brief === "object") {
-      parts.push("【分享任务】面向" + (brief.audience || "研发团队") + "的" + (brief.purpose || "技术分享") + "。关注重点：" + (brief.focus || "未指定"));
-    }
     parts.push("【专利号】" + (patent.patentNumber || "未知"));
     parts.push("【标题】" + (patent.title || "未提供"));
     if (s.abstract && patent.fields && patent.fields.abstract && patent.fields.abstract.value) {
@@ -127,9 +133,9 @@
     return parts.join("\n");
   }
 
-  function buildMultiPatentContext(patents, brief, scope) {
+  function buildMultiPatentContext(patents, legacyBriefOrScope, scope) {
     return patents.map(function (p, idx) {
-      return "===== 专利" + (idx + 1) + " =====\n" + buildPatentContext(p, brief, scope);
+      return "===== 专利" + (idx + 1) + " =====\n" + buildPatentContext(p, legacyBriefOrScope, scope);
     }).join("\n\n");
   }
 
@@ -156,10 +162,10 @@
     return { content: fullContent, reasoning: fullReasoning, model: provider.model };
   }
 
-  async function generatePatentSummary(patent, brief, scope) {
+  async function generatePatentSummary(patent, scope) {
     try {
       if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
-      var context = buildPatentContext(patent, brief, scope || getProjectContextScope());
+      var context = buildPatentContext(patent, scope || getProjectContextScope());
       var messages = [
         { role: "system", content: getAIPrompt("summary") },
         { role: "user", content: "请分析以下专利：\n\n" + context }
@@ -178,10 +184,10 @@
     }
   }
 
-  async function generateTechnicalElements(patent, brief, scope) {
+  async function generateTechnicalElements(patent, scope) {
     try {
       if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
-      var context = buildPatentContext(patent, brief, scope || getProjectContextScope());
+      var context = buildPatentContext(patent, scope || getProjectContextScope());
       var messages = [
         { role: "system", content: getAIPrompt("elements") },
         { role: "user", content: "请提取以下专利的技术要素：\n\n" + context }
@@ -207,12 +213,12 @@
     }
   }
 
-  async function generateMultiPatentComparison(patents, brief, scope) {
+  async function generateMultiPatentComparison(patents, scope) {
     try {
       if (!patents || !patents.length) throw new Error("未选择要对比的专利");
       var patentList = Array.isArray(patents) ? patents : [patents];
       if (patentList.length < 2) throw new Error("需要至少2篇专利才能进行对比分析");
-      var context = buildMultiPatentContext(patentList, brief, scope || getProjectContextScope());
+      var context = buildMultiPatentContext(patentList, scope || getProjectContextScope());
       var messages = [
         { role: "system", content: getAIPrompt("comparison") },
         { role: "user", content: "请对比分析以下多篇专利：\n\n" + context }
@@ -232,11 +238,11 @@
     }
   }
 
-  async function generateEmbodiments(patent, brief, scope) {
+  async function generateEmbodiments(patent, scope) {
     try {
       if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
       if (!patent.description) throw new Error("该专利缺少说明书内容，无法提取实施例");
-      var context = buildPatentContext(patent, brief, scope || getProjectContextScope());
+      var context = buildPatentContext(patent, scope || getProjectContextScope());
       var messages = [
         { role: "system", content: getAIPrompt("embodiments") },
         { role: "user", content: "请从以下专利中提取实施例及验证证据：\n\n" + context }
@@ -257,7 +263,7 @@
 
   // 加工字段抽取：基于用户自定义提示词，抽取一个聚焦的结构化字段值。
   // 字段级 contextScope 为 null 时继承项目级 aiContextScope。
-  async function generateProcessedField(patent, field, brief) {
+  async function generateProcessedField(patent, field) {
     try {
       if (!patent || typeof patent !== "object") throw new Error("无效的专利数据");
       if (!field || typeof field !== "object") throw new Error("无效的加工字段");
@@ -265,7 +271,7 @@
       var label = cleanText(field.label) || "加工字段";
       if (!prompt) throw new Error("该字段未配置提示词，无法进行AI抽取");
       var fieldScope = field.contextScope && typeof field.contextScope === "object" ? field.contextScope : getProjectContextScope();
-      var context = buildPatentContext(patent, brief, fieldScope);
+      var context = buildPatentContext(patent, fieldScope);
       var systemPrompt = '你是一位专利技术信息分析师。请严格根据提供的专利内容回答问题，不提供侵权、自由实施、无效或规避结论。\n\n要求：\n- 结论必须基于提供的专利内容，不要编造未给出的细节\n- 没有明确依据时写“未找到明确依据”\n- 语言精炼准确，适合研发人员阅读\n- 使用中文输出，专业术语可保留英文原文\n- 直接输出结论内容，不要添加标题或引导语\n- 如果是列表，用 "- " 开头每行一个要点';
       var userPrompt = "【抽取任务】" + label + "\n\n【抽取要求】\n" + prompt + "\n\n【专利内容】\n" + context;
       var messages = [

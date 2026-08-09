@@ -36,6 +36,34 @@ test('share project snapshots are isolated and deduplicate patent numbers', () =
   assert.equal(PatentShareStore.getSnapshot().sources.length, 0);
 });
 
+test('share attributes are persisted independently from AI context settings', () => {
+  const { PatentShareStore } = loadShareModules();
+  const saved = PatentShareStore.setShareAttributes({
+    shareTime: '2026-08-08T10:30',
+    department: '研发部',
+    topic: '技术路线评审',
+    sharer: '张三',
+    audience: '材料团队',
+    location: '线上会议',
+    notes: '会后跟进验证计划',
+  });
+  assert.equal(saved.department, '研发部');
+  assert.equal(saved.topic, '技术路线评审');
+  assert.equal(PatentShareStore.getSnapshot().shareAttributes.sharer, '张三');
+  assert.equal(Object.prototype.hasOwnProperty.call(PatentShareStore.getSnapshot(), 'brief'), false);
+});
+
+test('legacy project brief migrates to share attributes without remaining as an AI field', () => {
+  const { PatentShareStore } = loadShareModules();
+  assert.equal(PatentShareStore.setProjectBrief({
+    audience: '旧团队', purpose: '旧主题', focus: '旧备注', confidentiality: '内部',
+  }).topic, '旧主题');
+  const snapshot = PatentShareStore.getSnapshot();
+  assert.equal(snapshot.shareAttributes.audience, '旧团队');
+  assert.equal(snapshot.shareAttributes.notes, '旧备注');
+  assert.equal(Object.prototype.hasOwnProperty.call(snapshot, 'brief'), false);
+});
+
 test('manual review values are isolated from imported snapshots', () => {
   const { PatentShareStore } = loadShareModules();
   PatentShareStore.addPatent({
@@ -582,6 +610,19 @@ test('buildPatentContext filters content by AI context scope', () => {
   assert.equal(empty.includes('摘要内容'), false);
   assert.equal(empty.includes('权项内容'), false);
   assert.equal(empty.includes('说明书内容'), false);
+});
+
+test('share attributes never become part of the AI patent context', () => {
+  const { PatentShareAI } = loadShareModules();
+  const patent = { patentNumber: 'US1', title: 'Context isolation' };
+  const context = PatentShareAI.buildPatentContext(patent, {
+    audience: '只用于记录的分享对象',
+    topic: '只用于记录的分享主题',
+    sharer: '只用于记录的分享人',
+  });
+  assert.equal(context.includes('只用于记录的分享对象'), false);
+  assert.equal(context.includes('只用于记录的分享主题'), false);
+  assert.equal(context.includes('只用于记录的分享人'), false);
 });
 
 test('multiple patents each carry independent processedFields for batch AI processing', () => {

@@ -73,9 +73,30 @@ test('share HTML keeps bilingual controls available before translation exists', 
   assert.match(result.html, /尚未生成权利要求翻译/);
 });
 
+test('absolute paths are checked only when embedded in exported HTML', () => {
+  const renderer = loadRenderer();
+  const project = { importedFilePath: 'C:\\Users\\tester\\patents\\source.xlsx' };
+  assert.equal(renderer.scanSensitive(project, '').some((finding) => finding.includes('绝对本机路径')), false);
+  assert.equal(renderer.scanSensitive({}, '<p>C:\\Users\\tester\\patents\\source.xlsx</p>').some((finding) => finding.includes('绝对本机路径')), true);
+});
+
+test('share attributes are embedded in the offline HTML report', () => {
+  const { renderer, project } = makeProject();
+  project.shareAttributes = { shareTime: '2026-08-08T10:30', department: '研发部', topic: '技术路线评审', sharer: '张三' };
+  const result = renderer.render(project);
+  assert.match(result.html, /分享属性/);
+  assert.match(result.html, /研发部/);
+  assert.match(result.html, /技术路线评审/);
+  assert.equal(result.findings.some((finding) => finding.includes('绝对本机路径')), false);
+});
+
 test('workbench exposes one preview and export navigation entry', () => {
   const html = fs.readFileSync(path.resolve(__dirname, '../src/web.html'), 'utf8');
   assert.equal((html.match(/data-share-view="preview"/g) || []).length, 1);
   assert.equal((html.match(/data-share-view="export"/g) || []).length, 0);
   assert.match(html, /data-share-view="preview"><span class="share-nav-step">06<\/span>预览与导出/);
+  assert.match(html, /data-share-view="overview"><span class="share-nav-step">01<\/span>编辑分享属性/);
+  assert.match(html, /data-share-view="sources"><span class="share-nav-step">02<\/span>导入待分享专利/);
+  assert.match(html, /data-share-view="review"><span class="share-nav-step">03<\/span>分享内容加工/);
+  assert.match(html, /data-share-view="modules"><span class="share-nav-step">05<\/span>分享模块编排/);
 });

@@ -17,7 +17,7 @@
     { id: "S5", label: "说明书", description: "专利说明书/具体实施方式全文。", required: false, defaultMode: "off", category: "source" },
     { id: "S7", label: "附图", description: "专利附图、流程图或用户上传的图片。", required: false, defaultMode: "full", category: "source" },
     // ===== 加工信息：AI 抽取或手工录入的结构化字段 =====
-    // dataSource/analysisKey 用于在「编排与展示」中提示该模块的内容来自哪一处生成入口。
+    // dataSource/analysisKey 用于在「分享模块编排」中提示该模块的内容来自哪一处生成入口。
     { id: "R1", label: "技术问题-方案-效果", description: "AI 抽取或人工编辑的技术问题、技术方案、技术效果三要素。", required: false, defaultMode: "off", category: "processed", dataSource: "组合判断 · 技术解读 + 项目级结论", analysisKey: "summary" },
     { id: "R2", label: "技术要素提取", description: "AI 提取的核心部件、方法步骤、参数和接口关系。", required: false, defaultMode: "off", category: "processed", dataSource: "组合判断 · 技术要素", analysisKey: "elements" },
     { id: "R3", label: "关键参数与边界", description: "数值范围、材料、工艺、性能指标及适用条件。", required: false, defaultMode: "off", category: "processed", dataSource: "组合判断 · 技术要素（参数）", analysisKey: "elements" },

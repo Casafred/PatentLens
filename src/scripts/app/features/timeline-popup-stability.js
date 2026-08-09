@@ -33,11 +33,10 @@
     var margin = Math.max(0, Number(options.margin) || 8);
     var gap = Math.max(0, Number(options.gap) || 8);
     var flipMargin = Math.max(0, Number(options.flipMargin) || 24);
-    var minUsable = Math.max(1, Number(options.minUsable) || 90);
-    var hardCap = Math.max(1, Number(options.hardCap) || Math.floor(vh * 0.55));
+    var viewportHeight = Math.max(1, vh - margin * 2);
+    var hardCap = Math.max(1, Number(options.hardCap) || viewportHeight);
     var popupWidth = Math.max(1, Number(options.popupWidth) || 1);
     var popupHeight = Math.max(1, Number(options.popupHeight) || 1);
-    var viewportHeight = Math.max(1, vh - margin * 2);
     var preferredBelow = !!options.preferredBelow;
 
     var width = Math.min(popupWidth, Math.max(1, vw - margin * 2));
@@ -51,9 +50,13 @@
     var alternateSpace = preferredBelow ? aboveSpace : belowSpace;
     var placeBelow = preferredBelow;
 
-    // Flip only when the preferred side is genuinely unusable. The margin
-    // prevents a node near the boundary from changing sides on every scroll.
-    if (preferredSpace < Math.min(minUsable, popupHeight) && alternateSpace > preferredSpace + flipMargin) {
+    var desiredHeight = Math.min(popupHeight, hardCap, viewportHeight);
+
+    // Use the side with more usable space whenever the preferred side cannot
+    // show the full list. This prevents a small but technically usable lower
+    // area from trapping the popup below a node near the middle of the page.
+    // Keep a margin so tiny scroll/resize changes do not flip the popup.
+    if (preferredSpace < desiredHeight && alternateSpace > preferredSpace + flipMargin) {
       placeBelow = !preferredBelow;
     } else if (preferredSpace <= 0 && alternateSpace > 0) {
       placeBelow = !preferredBelow;
@@ -61,12 +64,12 @@
 
     var available = placeBelow ? belowSpace : aboveSpace;
     var otherAvailable = placeBelow ? aboveSpace : belowSpace;
-    if (available < Math.min(minUsable, popupHeight) && otherAvailable > available + flipMargin) {
+    if (available < desiredHeight && otherAvailable > available + flipMargin) {
       placeBelow = !placeBelow;
       available = placeBelow ? belowSpace : aboveSpace;
     }
 
-    var maxHeight = Math.min(popupHeight, hardCap, viewportHeight);
+    var maxHeight = desiredHeight;
     var top;
     if (available >= 1) {
       maxHeight = Math.min(maxHeight, available);
@@ -77,8 +80,8 @@
       top = margin;
     }
 
-    if (available < Math.min(minUsable, popupHeight) && otherAvailable < Math.min(minUsable, popupHeight)) {
-      maxHeight = Math.min(popupHeight, hardCap, viewportHeight);
+    if (available < desiredHeight && otherAvailable < desiredHeight) {
+      maxHeight = desiredHeight;
       top = Number(rect.top) - maxHeight / 2;
     }
 
@@ -148,7 +151,7 @@
     var vw = window.innerWidth || document.documentElement.clientWidth || 1;
     var vh = window.innerHeight || document.documentElement.clientHeight || 1;
     var margin = 8;
-    var hardCap = Math.max(120, Math.floor(vh * 0.65));
+    var hardCap = Math.max(120, vh - margin * 2);
     var popupWidth = Math.min(320, Math.max(1, vw - margin * 2));
 
     popup.style.boxSizing = "border-box";
@@ -228,6 +231,15 @@
         if (event.relatedTarget === node || (event.relatedTarget && node.contains(event.relatedTarget))) return;
         window._tlScheduleClosePopup();
       });
+      popup.addEventListener("wheel", function (event) {
+        var maxScrollTop = Math.max(0, popup.scrollHeight - popup.clientHeight);
+        var delta = event.deltaY || 0;
+        if (event.deltaMode === 1) delta *= 16;
+        else if (event.deltaMode === 2) delta *= popup.clientHeight || 1;
+        popup.scrollTop = clamp(popup.scrollTop + delta, 0, maxScrollTop);
+        event.preventDefault();
+        event.stopPropagation();
+      }, { passive: false });
       popup._tlStableHoverBound = true;
     }
 

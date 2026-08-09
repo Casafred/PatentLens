@@ -138,12 +138,14 @@
   }
 
   function scanSensitive(project, html) {
-    var text = String(html || "") + "\n" + JSON.stringify(project || {});
+    var embeddedText = String(html || "");
+    var projectText = JSON.stringify(project || {});
+    var text = embeddedText + "\n" + projectText;
     var findings = [];
     if (/["']?(?:api[_-]?key|access[_-]?token|token|secret|cookie)["']?\s*[:=]/i.test(text)) findings.push("可能包含密钥、Token 或 Cookie 字段");
-    if (/https?:\/\/127\.0\.0\.1(?::\d+)?|https?:\/\/localhost(?::\d+)?|127\.0\.0\.1:\d+/i.test(text)) findings.push("可能包含本机代理或本地服务地址");
+    if (/https?:\/\/127\.0\.0\.1(?::\d+)?|https?:\/\/localhost(?::\d+)?|127\.0\.0\.1:\d+/i.test(embeddedText)) findings.push("可能包含本机代理或本地服务地址");
     // 收紧路径正则：至少两层目录（/Users/foo/、C:\Users\foo\），避免误命中字段名或 CSS 转义
-    if (/[A-Z]:\\[^\n"<>\\]+\\[^\n"<>\\]+|\/(?:Users|home|private|var)\/[^\n"<>\/]+\/[^\n"<>\/]+/i.test(text)) findings.push("可能包含绝对本机路径");
+    if (/[A-Z]:\\[^\n"<>\\]+\\[^\n"<>\\]+|\/(?:Users|home|private|var)\/[^\n"<>\/]+\/[^\n"<>\/]+/i.test(embeddedText)) findings.push("可能包含绝对本机路径");
     return findings;
   }
 
@@ -657,12 +659,12 @@
     if (Array.isArray(record.claims) && record.claims.length) {
       html += processedCard("权利要求中文翻译", record.claimsTranslation
         ? '<div class="processed-translation"><div class="processed-translation-label">已完成翻译</div>' + escapeHtml(record.claimsTranslation) + '</div>'
-        : '<div class="bilingual-loading">尚未生成权利要求翻译。可在内容加工与审核中发起翻译。</div>');
+        : '<div class="bilingual-loading">尚未生成权利要求翻译。可在分享内容加工中发起翻译。</div>');
     }
     if (cleanText(record.description)) {
       html += processedCard("说明书中文翻译", record.descriptionTranslation
         ? '<div class="processed-translation"><div class="processed-translation-label">已完成翻译</div>' + escapeHtml(record.descriptionTranslation) + '</div>'
-        : '<div class="bilingual-loading">尚未生成说明书翻译。可在内容加工与审核中发起翻译。</div>');
+        : '<div class="bilingual-loading">尚未生成说明书翻译。可在分享内容加工中发起翻译。</div>');
     }
     return html;
   }
@@ -676,7 +678,7 @@
     var researchRendered = { value: false };
     order.forEach(function (moduleId) { if (moduleEnabled(config, moduleId)) html += renderProcessedModule(record, config, project, moduleId, researchRendered); });
     var hasAnyProcessed = (record.processedFields && record.processedFields.length) || order.some(function (id) { return moduleEnabled(config, id); });
-    if (!hasAnyProcessed) html += '<p class="missing">尚未添加加工信息。可在“内容加工与审核”中添加字段或运行 AI 草稿，并在“编排与展示”中启用 R 系列模块。</p>';
+    if (!hasAnyProcessed) html += '<p class="missing">尚未添加加工信息。可在“分享内容加工”中添加字段或运行 AI 草稿，并在“分享模块编排”中启用 R 系列模块。</p>';
     html += '</div>';
     return html;
   }
@@ -688,6 +690,29 @@
     html += renderSourcePanel(record, config);
     html += renderProcessedPanel(record, config, project);
     html += '</div>';
+    return html;
+  }
+
+  function renderShareAttributes(attributes) {
+    if (!attributes || typeof attributes !== "object") return "";
+    var fields = [
+      ["分享时间", attributes.shareTime],
+      ["分享部门", attributes.department],
+      ["分享主题", attributes.topic],
+      ["分享人", attributes.sharer],
+      ["分享对象", attributes.audience],
+      ["分享地点", attributes.location],
+      ["使用边界", attributes.confidentiality],
+      ["备注", attributes.notes],
+    ].filter(function (item) { return cleanText(item[1]); });
+    if (!fields.length) return "";
+    var html = '<section class="card share-meta-card" style="margin-bottom:18px"><div class="card-body">';
+    html += '<div class="section-title"><span class="bar"></span>分享属性</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 18px">';
+    fields.forEach(function (item) {
+      html += '<div class="field-item"><span class="fl">' + escapeHtml(item[0]) + '</span><span class="fv">' + escapeHtml(item[1]) + '</span></div>';
+    });
+    html += '</div></div></section>';
     return html;
   }
 
@@ -724,6 +749,7 @@
     html += '</aside>';
     // 右侧内容：三大标签页
     html += '<main class="content">';
+    html += renderShareAttributes(input.shareAttributes);
     if (!patents.length) {
       // 无专利时仍渲染项目级研发结论（R1/R6），便于在加入专利前先整理研发结论
       var projectBlocks = renderProjectResearchBlocks(input, config);
