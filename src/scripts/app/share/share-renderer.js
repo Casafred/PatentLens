@@ -352,12 +352,14 @@
     return html;
   }
 
-  function renderProcessedFields(patent, mode) {
+  function renderProcessedFields(patent, mode, disabledIds) {
     var fields = Array.isArray(patent.processedFields) ? patent.processedFields : [];
     if (!fields.length) return '<p class="missing">尚未添加加工字段。可在「数据审核」中添加预设或自定义加工字段，支持AI抽取或手工录入。</p>';
+    var disabledSet = Array.isArray(disabledIds) ? disabledIds : [];
+    var visible = fields.filter(function (f) { return f.value && disabledSet.indexOf(f.id) < 0; });
+    if (!visible.length) return '<p class="missing">暂无可展示的加工字段。可在「分享模块编排」中启用被关闭的字段。</p>';
     var html = '';
-    fields.forEach(function (f) {
-      if (!f.value) return;
+    visible.forEach(function (f) {
       var isAI = f.source === "ai";
       var badge = isAI ? '<span class="pf-badge ai">' + (f.reviewState === "accepted" ? "AI 抽取，已确认" : "AI 草稿，待审核") + '</span>' : '<span class="pf-badge manual">手工录入</span>';
       html += '<div class="pf-card">';
@@ -660,26 +662,12 @@
     return "";
   }
 
-  // 加工信息面板：手工字段固定在顶部，R 系列模块严格按照 moduleOrder 输出。
-  function renderTranslationProcessing(record) {
-    var html = "";
-    if (Array.isArray(record.claims) && record.claims.length) {
-      html += processedCard("权利要求中文翻译", record.claimsTranslation
-        ? '<div class="processed-translation"><div class="processed-translation-label">已完成翻译</div>' + escapeHtml(record.claimsTranslation) + '</div>'
-        : '<div class="bilingual-loading">尚未生成权利要求翻译。可在分享内容加工中发起翻译。</div>');
-    }
-    if (cleanText(record.description)) {
-      html += processedCard("说明书中文翻译", record.descriptionTranslation
-        ? '<div class="processed-translation"><div class="processed-translation-label">已完成翻译</div>' + escapeHtml(record.descriptionTranslation) + '</div>'
-        : '<div class="bilingual-loading">尚未生成说明书翻译。可在分享内容加工中发起翻译。</div>');
-    }
-    return html;
-  }
-
+  // 加工信息面板：加工字段固定在顶部，R 系列模块严格按照 moduleOrder 输出。
+  // 翻译内容仅在「原文信息」标签页的双栏对照中展示，不再纳入加工信息面板。
   function renderProcessedPanel(record, config, project) {
     var html = '<div class="panel" data-panel="processed">';
-    html += renderTranslationProcessing(record);
-    if (record.processedFields && record.processedFields.length) html += processedCard("加工字段", renderProcessedFields(record, "full"));
+    var disabledIds = config && Array.isArray(config.disabledProcessedFieldIds) ? config.disabledProcessedFieldIds : [];
+    if (record.processedFields && record.processedFields.length) html += processedCard("加工字段", renderProcessedFields(record, "full", disabledIds));
     var defaultOrder = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9"];
     var order = config.moduleOrder && Array.isArray(config.moduleOrder.processed) ? config.moduleOrder.processed : defaultOrder;
     var researchRendered = { value: false };
