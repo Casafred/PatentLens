@@ -1506,6 +1506,9 @@
       procDropZone.appendChild(buildModuleBlock(m, config));
     });
     procPanel.appendChild(procDropZone);
+    // 加工字段编排：仅展示用户已添加的加工字段，每条可单独开关是否纳入分享。
+    var pfSection = buildProcessedFieldOrchestration(project, config);
+    if (pfSection) procPanel.appendChild(pfSection);
     contentArea.appendChild(procPanel);
 
     bodyZone.appendChild(contentArea);
@@ -1515,6 +1518,51 @@
 
     // 绑定拖拽事件
     bindModuleDragAndDrop(container);
+  }
+
+  // 加工字段编排区：从所有专利中收集已添加的加工字段，按字段 ID 展示开关。
+  // 未添加的字段不会出现，与用户在「分享内容加工」中的操作保持同步。
+  function buildProcessedFieldOrchestration(project, config) {
+    var patents = Array.isArray(project.patents) ? project.patents : [];
+    var disabledIds = config && Array.isArray(config.disabledProcessedFieldIds) ? config.disabledProcessedFieldIds : [];
+    var entries = [];
+    patents.forEach(function (patent) {
+      var pfList = Array.isArray(patent.processedFields) ? patent.processedFields : [];
+      pfList.forEach(function (pf) {
+        if (!pf || !pf.id) return;
+        entries.push({
+          fieldId: pf.id,
+          label: pf.label || "未命名字段",
+          patentNumber: patent.patentNumber || "",
+          enabled: disabledIds.indexOf(pf.id) < 0,
+          source: pf.source === "ai" ? "AI" : "手工",
+        });
+      });
+    });
+    if (!entries.length) return null;
+    var section = makeElement("div", "share-module-pf-section");
+    section.appendChild(makeElement("div", "share-module-pf-title", "加工字段（与已添加字段同步）"));
+    var hint = makeElement("p", "share-module-hint", "以下仅展示你在「分享内容加工」中已添加的加工字段；可单独开关是否纳入分享报告，未添加的字段不会出现。");
+    section.appendChild(hint);
+    var list = makeElement("div", "share-module-pf-list");
+    entries.forEach(function (entry) {
+      var row = makeElement("div", "share-module-pf-row" + (entry.enabled ? "" : " disabled"));
+      var info = makeElement("div", "share-module-pf-info");
+      info.appendChild(makeElement("span", "share-module-pf-label", entry.label));
+      info.appendChild(makeElement("span", "share-module-pf-pn", entry.patentNumber));
+      info.appendChild(makeElement("span", "share-module-pf-badge " + (entry.source === "AI" ? "ai" : "manual"), entry.source));
+      row.appendChild(info);
+      var toggle = makeElement("button", "share-module-pf-toggle" + (entry.enabled ? " active" : ""), entry.enabled ? "纳入" : "已关闭");
+      toggle.type = "button";
+      toggle.dataset.shareAction = "toggle-processed-field";
+      toggle.dataset.fieldId = entry.fieldId;
+      toggle.dataset.enabled = String(entry.enabled);
+      toggle.disabled = aiRunning;
+      row.appendChild(toggle);
+      list.appendChild(row);
+    });
+    section.appendChild(list);
+    return section;
   }
 
   function buildModuleBlock(module, config) {
@@ -2851,6 +2899,14 @@
           setNotice("模块配置已保存。", false);
         } else {
           setNotice("该模块配置不可用。", true);
+        }
+        render();
+        return;
+      }
+      if (actionName === "toggle-processed-field" && action.dataset.fieldId) {
+        var nextEnabled = action.dataset.enabled !== "true";
+        if (window.PatentShareStore.setProcessedFieldEnabled(action.dataset.fieldId, nextEnabled)) {
+          setNotice(nextEnabled ? "已将该加工字段纳入分享。" : "已将该加工字段从分享中关闭。", false);
         }
         render();
         return;

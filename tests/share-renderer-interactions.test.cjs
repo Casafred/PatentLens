@@ -59,7 +59,32 @@ test('share HTML exposes stable sidebar, bilingual, figure and lightbox controls
   assert.match(result.html, /data-lb-action="rotate-left"/);
   assert.match(result.html, /data-lb-action="rotate-right"/);
   assert.match(result.html, /addEventListener\('wheel'/);
-  assert.match(result.html, /class="processed-translation"/);
+  // 翻译内容不再纳入加工信息面板，仅在原文信息双栏对照中展示
+  assert.doesNotMatch(result.html, /class="processed-translation"/);
+  assert.doesNotMatch(result.html, /权利要求中文翻译/);
+});
+
+test('processed fields can be disabled via disabledProcessedFieldIds and are filtered from export', () => {
+  const { renderer, project } = makeProject();
+  const pfId = 'pf-test-1';
+  project.patents[0].processedFields = [
+    { id: pfId, label: '技术优势', value: '内容A', source: 'manual' },
+    { id: 'pf-test-2', label: '避让方案', value: '内容B', source: 'manual' },
+  ];
+  project.moduleConfig.disabledProcessedFieldIds = [pfId];
+  const result = renderer.render(project);
+  assert.match(result.html, /避让方案/);
+  assert.doesNotMatch(result.html, /技术优势/);
+});
+
+test('orchestration config resolves disabledProcessedFieldIds from project moduleConfig', () => {
+  const modules = vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/scripts/app/share/share-module-registry.js'), 'utf8') + ';window.PatentShareModules', { window: {} });
+  const resolved = modules.resolveConfig({ disabledProcessedFieldIds: ['pf-1', 'pf-2', 'pf-3'] });
+  assert.equal(resolved.disabledProcessedFieldIds.length, 3);
+  assert.equal(resolved.disabledProcessedFieldIds[0], 'pf-1');
+  assert.equal(resolved.disabledProcessedFieldIds[2], 'pf-3');
+  const empty = modules.resolveConfig({});
+  assert.equal(empty.disabledProcessedFieldIds.length, 0);
 });
 
 test('share HTML keeps bilingual controls available before translation exists', () => {
@@ -70,7 +95,8 @@ test('share HTML keeps bilingual controls available before translation exists', 
 
   assert.match(result.html, /data-bilingual-toggle="original"/);
   assert.match(result.html, /尚未生成中文翻译/);
-  assert.match(result.html, /尚未生成权利要求翻译/);
+  // 翻译提示仅在原文信息双栏对照中展示，加工信息面板不再包含翻译卡片
+  assert.doesNotMatch(result.html, /尚未生成权利要求翻译/);
 });
 
 test('absolute paths are checked only when embedded in exported HTML', () => {

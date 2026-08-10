@@ -103,6 +103,10 @@
       if (config.modules[id] && ["full", "lite", "off"].indexOf(incoming[id]) >= 0) config.modules[id] = incoming[id];
     });
     config.patentOverrides = input.patentOverrides && typeof input.patentOverrides === "object" ? clone(input.patentOverrides) : {};
+    // 用户在「分享模块编排」中关闭的加工字段 ID 列表；渲染时跳过这些字段。
+    config.disabledProcessedFieldIds = Array.isArray(input.disabledProcessedFieldIds)
+      ? input.disabledProcessedFieldIds.filter(function (id) { return typeof id === "string" && id.length; }).slice(0, 5000)
+      : [];
     var processedIds = MODULES.filter(function (m) { return m.category === "processed"; }).map(function (m) { return m.id; });
     var requestedOrder = input.moduleOrder && Array.isArray(input.moduleOrder.processed) ? input.moduleOrder.processed : [];
     var seen = {};

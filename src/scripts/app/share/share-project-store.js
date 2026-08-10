@@ -703,6 +703,27 @@
     return true;
   }
 
+  // 在「分享模块编排」中切换某个加工字段是否纳入分享 HTML。
+  // fieldId 为加工字段 ID；enabled=false 时加入禁用列表，true 时移除。
+  function setProcessedFieldEnabled(fieldId, enabled) {
+    var active = ensureProject();
+    var id = cleanText(fieldId);
+    if (!id) return false;
+    if (!active.moduleConfig || typeof active.moduleConfig !== "object") active.moduleConfig = {};
+    if (!Array.isArray(active.moduleConfig.disabledProcessedFieldIds)) active.moduleConfig.disabledProcessedFieldIds = [];
+    var list = active.moduleConfig.disabledProcessedFieldIds;
+    var idx = list.indexOf(id);
+    if (!enabled) {
+      if (idx < 0) list.push(id);
+    } else {
+      if (idx >= 0) list.splice(idx, 1);
+    }
+    active.updatedAt = now();
+    queuePersist();
+    notify();
+    return true;
+  }
+
   function addAnnotation(patentId, annotation) {
     var active = ensureProject();
     var patent = active.patents.find(function (p) { return p.id === patentId; });
@@ -1291,6 +1312,7 @@
     updateProjectAIAnalysis: updateProjectAIAnalysis,
     removePatent: removePatent,
     setModuleOrder: setModuleOrder,
+    setProcessedFieldEnabled: setProcessedFieldEnabled,
     addAnnotation: addAnnotation,
     removeAnnotation: removeAnnotation,
     clearAnnotations: clearAnnotations,
