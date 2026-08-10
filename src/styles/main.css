@@ -5709,6 +5709,7 @@ body {
 .tl-s-key-tl-dot-response { border-left-color: #3b82f6; box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 0 12px rgba(59,130,246,0.08); }
 .tl-s-key-tl-dot-oa { border-left-color: #ef4444; box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 0 12px rgba(239,68,68,0.08); }
 .tl-s-key-tl-dot-patentdoc { border-left-color: #6366f1; box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 0 12px rgba(99,102,241,0.1); }
+.tl-s-key-tl-dot-allowance { border-left-color: #22c55e; box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 0 12px rgba(34,197,94,0.1); }
 .tl-s-selected { outline: 2px solid var(--primary, #22c55e); outline-offset: 1px; }
 
 .tl-s-cn { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
