@@ -957,24 +957,8 @@
     }));
 
     // Section: 加工信息字段（移到基本信息下方，排第二）
+    // 翻译内容仅在「权利要求」「说明书」各原文区域下方展示，不再在加工信息面板重复显示。
     card.appendChild(buildReviewSection("加工信息字段（AI 抽取 / 手工录入）", "processed", function (body) {
-      var translationRunning = translationState && translationState.patentId === patent.id && translationState.status === "running";
-      if (translationRunning || patent.claimsTranslation || patent.descriptionTranslation) {
-        var translationPanel = makeElement("div", "share-review-translation-preview");
-        translationPanel.appendChild(makeElement("div", "share-review-translation-label", "权利要求与说明书翻译"));
-        if (translationRunning) {
-          translationPanel.appendChild(makeElement("div", "share-translation-loading", "正在翻译" + (translationState.kind === "claims" ? "权利要求" : "说明书") + "，请稍候…"));
-        }
-        if (patent.claimsTranslation) {
-          translationPanel.appendChild(makeElement("div", "share-review-translation-label", "权利要求中文"));
-          translationPanel.appendChild(makeElement("div", "share-review-translation-text", patent.claimsTranslation));
-        }
-        if (patent.descriptionTranslation) {
-          translationPanel.appendChild(makeElement("div", "share-review-translation-label", "说明书中文"));
-          translationPanel.appendChild(makeElement("div", "share-review-translation-text", patent.descriptionTranslation));
-        }
-        body.appendChild(translationPanel);
-      }
       var pfList = Array.isArray(patent.processedFields) ? patent.processedFields : [];
       if (pfList.length) {
         pfList.forEach(function (pf) {
