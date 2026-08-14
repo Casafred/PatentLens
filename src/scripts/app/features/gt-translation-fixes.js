@@ -6,6 +6,7 @@
   var _claimsRestored = false;
   var _gtTargetTab = "description";
   var _originalClaimTexts = {};
+  var _gtHardKilled = false;
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -38,6 +39,66 @@
   function _getCacheKey(scope) {
     var data = _getPatentData(scope);
     return data && data.patent_number ? data.patent_number : "_default_";
+  }
+
+  // ── Hard-kill GT internals ───────────────────────────────────────────────
+  // Replaces window.google.translate with a no-op mock so GT's in-flight
+  // callbacks (MutationObserver, promises) don't crash with
+  // "Cannot read properties of undefined (reading 'J')".
+  // Also removes GT script tags and disconnects GT iframes.
+
+  function _hardKillGtInternals() {
+    try {
+      // 1. Replace window.google.translate with a no-op mock
+      if (window.google && window.google.translate) {
+        // Keep the structure but replace methods with no-ops
+        var mockTranslateElement = function () {};
+        mockTranslateElement.InlineLayout = { SIMPLE: 0, HORIZONTAL: 1, VERTICAL: 2 };
+        window.google.translate.TranslateElement = mockTranslateElement;
+        // Remove any other translate properties that might trigger callbacks
+        try {
+          delete window.google.translate.dom;
+        } catch (_) {}
+        try {
+          delete window.google.translate.secure;
+        } catch (_) {}
+      }
+
+      // 2. Remove GT script tags
+      var gtScripts = document.querySelectorAll(
+        'script#google-translate-script, script[src*="translate.google.com"], script[src*="translate_a/element.js"]'
+      );
+      gtScripts.forEach(function (s) {
+        try { s.remove(); } catch (_) {}
+      });
+
+      // 3. Remove GT container element
+      var gtContainer = document.getElementById("google_translate_element");
+      if (gtContainer) {
+        try { gtContainer.remove(); } catch (_) {}
+      }
+
+      // 4. Remove/hide all GT iframes (they contain the spinner)
+      document.querySelectorAll("iframe.skiptranslate, iframe.goog-te-banner-frame, iframe[src*='translate.google']").forEach(function (iframe) {
+        try {
+          iframe.style.cssText = "display:none !important;visibility:hidden !important;width:0 !important;height:0 !important;position:absolute !important;top:-9999px !important;left:-9999px !important;";
+          // Some iframes can't be removed (cross-origin), but we can hide them
+          try { iframe.remove(); } catch (_) {}
+        } catch (_) {}
+      });
+
+      // 5. Remove GT toolbar/container divs
+      document.querySelectorAll(".goog-te-banner-frame, .goog-te-banner, .goog-te-balloon-frame, .goog-te-balloon, .goog-te-spinner-pos, .goog-te-spinner, .skiptranslate").forEach(function (el) {
+        if (el.tagName !== "IFRAME") {
+          try { el.remove(); } catch (_) {}
+        }
+      });
+
+      _gtHardKilled = true;
+      console.log("[GT-fixes] GT internals hard-killed (scripts removed, google.translate mocked)");
+    } catch (e) {
+      console.warn("[GT-fixes] error in _hardKillGtInternals:", e);
+    }
   }
 
   // ── Save original global functions ───────────────────────────────────────
@@ -156,6 +217,7 @@
     try {
       _googleTranslateInjected = true;
       _googleTranslateActive = true;
+      _gtHardKilled = false;
       if (typeof _installGtChromeShield === "function") _installGtChromeShield();
       window._updateGtButtonState();
 
@@ -407,7 +469,7 @@
     _claimsTranslated = true;
     _claimsRestored = false;
 
-    // Gently disable GT
+    // Gently disable GT, then hard-kill to stop the spinner
     if (typeof _gentleDisableGt === "function") _gentleDisableGt();
     _googleTranslateActive = false;
     if (typeof _gtActivationTriggered !== "undefined") _gtActivationTriggered = false;
@@ -415,6 +477,8 @@
       clearTimeout(_figLinkPollTimer);
       _figLinkPollTimer = null;
     }
+    // Hard-kill GT internals after capture to stop the spinner
+    setTimeout(function () { _hardKillGtInternals(); }, 500);
     window._updateGtButtonState();
     showToast("权利要求已翻译");
   }
@@ -469,6 +533,8 @@
       clearTimeout(_figLinkPollTimer);
       _figLinkPollTimer = null;
     }
+    // Hard-kill GT to stop the spinner
+    _hardKillGtInternals();
     window._updateGtButtonState();
   }
 
@@ -495,8 +561,6 @@
       '.pd-header-link[onclick*="toggleGoogleTranslate"], #ppv-translate-btn'
     );
     allBtns.forEach(function (btn) {
-      // Priority: actively translating > claims translated > description translated
-      // > description restored (cache) > claims restored > idle
       if (_googleTranslateActive) {
         btn.textContent = "翻译中…";
         btn.classList.add("gt-active");
@@ -553,10 +617,8 @@
         ".goog-te-banner-frame", ".goog-te-banner", "iframe.goog-te-banner-frame",
         "#goog-gt-tt", ".goog-te-balloon", ".goog-te-balloon-frame", ".goog-te-pos",
         ".goog-te-menu2", ".goog-te-ftab-float", "iframe.goog-te-menu-frame",
-        // Additional selectors for newer GT UI variants
         "iframe[src*='translate.google']",
-        ".goog-tooltip", ".goog-tooltip:hover",
-        ".goog-text-highlight",
+        ".goog-tooltip", ".goog-text-highlight",
         "#goog-gt-vt", "#goog-gt-bc"
       ];
       var HIDE_STYLE = "display:none !important;visibility:hidden !important;opacity:0 !important;pointer-events:none !important;height:0 !important;width:0 !important;overflow:hidden !important;position:absolute !important;top:-9999px !important;left:-9999px !important;";
@@ -581,7 +643,6 @@
         } catch (_) {}
       });
 
-      // Force window scroll restoration - ensure page can scroll
       window.scrollTo(window.scrollX, window.scrollY);
     } catch (e) {
       console.warn("[GT-fixes] error in enhanced _gentleDisableGt:", e);
@@ -589,16 +650,23 @@
   };
 
   // ── Override: _purgeGoogleTranslateCompletely ────────────────────────────
-  // Also reset scroll styles on full purge.
+  // Enhanced: hard-kill GT internals + reset scroll styles on full purge.
 
   if (window._purgeGoogleTranslateCompletely) {
     window._purgeGoogleTranslateCompletely = function () {
       _origPurgeGoogleTranslateCompletely.call(this);
       try {
+        // Hard-kill GT internals to stop the spinner and prevent
+        // "Cannot read properties of undefined (reading 'J')" errors
+        _hardKillGtInternals();
+
+        // Reset scroll styles
         document.body.style.overflow = "";
         document.body.style.overflowX = "";
         document.body.style.marginTop = "";
         document.body.style.paddingTop = "";
+        document.body.style.top = "";
+        document.body.style.position = "";
         var htmlEl = document.documentElement;
         if (htmlEl) {
           htmlEl.style.overflow = "";
@@ -615,7 +683,6 @@
   }
 
   // ── Install enhanced CSS shield ──────────────────────────────────────────
-  // Add stronger rules to prevent scroll lock and hide all GT chrome variants.
   (function installEnhancedGtCssShield() {
     var styleId = "gt-translation-fixes-shield";
     if (document.getElementById(styleId)) return;
@@ -654,18 +721,12 @@
       "#patent-detail-content .pd-tab-panel.active:not(.pd-split-view) {",
       "  overflow-y: visible !important;",
       "  max-height: none !important;",
-      "}",
-      "/* Ensure the bookmark tabs column still works with natural page scroll */",
-      "#patent-detail-content .pd-bookmark-tabs {",
-      "  max-height: none !important;",
-      "  overflow-y: visible !important;",
       "}"
     ].join("\n");
     document.head.appendChild(style);
   })();
 
   // ── Reset claims state when new patent is rendered ───────────────────────
-  // Hook into renderPatentDetail to reset claims translation state.
   var _origRenderPatentDetail = window.renderPatentDetail;
   if (_origRenderPatentDetail) {
     window.renderPatentDetail = function (data) {
@@ -704,5 +765,69 @@
     };
   }
 
-  console.log("[GT-fixes] GT translation fixes module loaded (claims support + spinner/scroll fixes)");
+  // ── Global back-to-top button ────────────────────────────────────────────
+  (function installBackToTopButton() {
+    var btnId = "gt-fixes-back-to-top";
+    if (document.getElementById(btnId)) return;
+
+    var btn = document.createElement("button");
+    btn.id = btnId;
+    btn.title = "回到顶部";
+    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>';
+    btn.style.cssText = [
+      "position: fixed",
+      "bottom: 32px",
+      "right: 32px",
+      "z-index: 9999",
+      "width: 44px",
+      "height: 44px",
+      "border-radius: 50%",
+      "border: 1px solid var(--border, #3a3d4a)",
+      "background: var(--bg-secondary, #1a1d2a)",
+      "color: var(--text-primary, #e0e0e0)",
+      "cursor: pointer",
+      "display: none",
+      "align-items: center",
+      "justify-content: center",
+      "box-shadow: 0 4px 12px rgba(0,0,0,0.3)",
+      "transition: opacity 0.25s, transform 0.25s",
+      "opacity: 0"
+    ].join(";");
+
+    document.body.appendChild(btn);
+
+    // Show/hide based on scroll position
+    function updateVisibility() {
+      if (window.scrollY > 300) {
+        btn.style.display = "flex";
+        // Force reflow then set opacity for transition
+        void btn.offsetHeight;
+        btn.style.opacity = "1";
+      } else {
+        btn.style.opacity = "0";
+        setTimeout(function () {
+          if (window.scrollY <= 300) btn.style.display = "none";
+        }, 250);
+      }
+    }
+
+    // Throttle scroll listener
+    var _scrollTimer = null;
+    window.addEventListener("scroll", function () {
+      if (_scrollTimer) return;
+      _scrollTimer = setTimeout(function () {
+        _scrollTimer = null;
+        updateVisibility();
+      }, 100);
+    }, { passive: true });
+
+    btn.addEventListener("click", function () {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    // Initial check
+    updateVisibility();
+  })();
+
+  console.log("[GT-fixes] GT translation fixes module v2 loaded (claims support + hard-kill + scroll fixes + back-to-top)");
 })();
