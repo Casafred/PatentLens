@@ -2,7 +2,7 @@
  * PatentLens - 智能比对模块 - UI渲染
  * Copyright (c) 2026 Alfred Shi. All rights reserved.
  * @author Alfred Shi
- * @version 260727
+ * @version 260822
  */
 
 var ComparisonUI = (function () {
@@ -128,7 +128,11 @@ var ComparisonUI = (function () {
     }
 
     if (activeTab === 'prepare') {
-      ComparisonInput.renderInputArea(document.getElementById('comparison-input-area'), inputMode);
+      if (inputMode === 'specdiff' && typeof ComparisonSpecDiff !== 'undefined') {
+        ComparisonSpecDiff.renderInputArea(document.getElementById('comparison-input-area'));
+      } else {
+        ComparisonInput.renderInputArea(document.getElementById('comparison-input-area'), inputMode);
+      }
     }
     if (activeTab === 'result') {
       renderResultArea(document.getElementById('comparison-result-container'));
@@ -156,6 +160,7 @@ var ComparisonUI = (function () {
     html += '<div class="comparison-input-tabs">';
     html += '  <button class="comparison-input-tab' + (inputMode === 'manual' ? ' active' : '') + '" data-input-mode="manual">手动输入文本</button>';
     html += '  <button class="comparison-input-tab' + (inputMode === 'patent' ? ' active' : '') + '" data-input-mode="patent">专利号查询</button>';
+    html += '  <button class="comparison-input-tab' + (inputMode === 'specdiff' ? ' active' : '') + '" data-input-mode="specdiff" title="说明书变动点一键定位：输入两个公开号，以一个为锚点检查说明书实质性文本变化">说明书变动定位</button>';
     html += '</div>';
     html += '<div id="comparison-input-area"></div>';
 
@@ -235,7 +240,9 @@ var ComparisonUI = (function () {
     } else if (activeTab === 'prepare') {
       var hint = '';
       var items = ComparisonCore.getItems();
-      if (items.length === 0) {
+      if (ComparisonCore.getState().inputMode === 'specdiff') {
+        hint = '说明书变动定位模式：输入锚点与对比公开号后，点击「开始定位变动点」';
+      } else if (items.length === 0) {
         hint = '请先添加文本或查询专利权利要求';
       } else {
         hint = '已添加 ' + items.length + ' 项，可继续添加或进入下一步选择锚点';

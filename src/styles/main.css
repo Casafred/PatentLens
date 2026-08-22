@@ -13453,4 +13453,153 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   overflow-wrap: anywhere;
 }
 
+/* ═══ 说明书实施例总结（description-summary 增强模块） ═══ */
+
+.pd-desc-summary-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.pd-desc-summary-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.pd-desc-summary-panel {
+  margin: 0 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg-card, #fff);
+  overflow: hidden;
+}
+.pd-desc-summary-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(37, 99, 235, 0.06);
+  border-bottom: 1px solid var(--border);
+}
+.pd-desc-summary-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.pd-desc-summary-title svg {
+  width: 15px;
+  height: 15px;
+}
+.pd-desc-summary-badge {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-main, #f1f5f9);
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+.pd-desc-summary-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.pd-desc-summary-actions button {
+  font-size: 11px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.pd-desc-summary-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.pd-desc-summary-actions button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.pd-desc-summary-panel.collapsed .pd-desc-summary-body,
+.pd-desc-summary-panel.collapsed .pd-desc-summary-foot {
+  display: none;
+}
+.pd-desc-summary-body {
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.8;
+  max-height: 460px;
+  overflow-y: auto;
+}
+.pd-desc-summary-body .pd-desc-summary-hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.pd-desc-summary-cachetag {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.pd-desc-summary-foot {
+  padding: 6px 14px;
+  border-top: 1px dashed var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* 段落号溯源标签 */
+.pd-desc-ref {
+  display: inline-block;
+  font-family: monospace;
+  font-size: 11.5px;
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin: 0 1px;
+  cursor: pointer;
+  text-decoration: none;
+  line-height: 1.5;
+}
+.pd-desc-ref:hover {
+  background: rgba(37, 99, 235, 0.16);
+}
+.pd-desc-ref.missing {
+  color: var(--text-secondary);
+  background: var(--bg-main, #f1f5f9);
+  border-color: var(--border);
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+.pd-desc-ref-flash {
+  animation: pd-desc-flash 1.2s ease-in-out 2;
+}
+@keyframes pd-desc-flash {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(250, 204, 21, 0.45); }
+}
+
+/* 同族栏说明书变动对比勾选列 */
+.specdiff-th {
+  width: 44px;
+  text-align: center;
+}
+.specdiff-check-cell {
+  text-align: center;
+}
+.specdiff-fam-cb {
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+.spec-diff-family-btn {
+  margin-left: 8px;
+}
+
 
