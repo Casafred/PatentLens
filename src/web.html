@@ -742,6 +742,12 @@
           <span id="patent-ask-pn" class="patent-ask-pn"></span>
           <div class="patent-ask-header-actions">
             <select class="chat-provider-select" id="patent-ask-provider-select" title="选择AI服务商"></select>
+            <select class="chat-provider-select hidden" id="patent-ask-thinking-select" title="DeepSeek 思考强度（思考模式默认开启，思维链计入 max_tokens）">
+              <option value="default">思考·默认</option>
+              <option value="high">思考·高</option>
+              <option value="max">思考·最深</option>
+              <option value="off">思考·关闭</option>
+            </select>
             <input type="text" class="chat-model-select" id="patent-ask-model-select" list="patent-ask-model-select-datalist" title="选择或输入模型名称" placeholder="选择或输入模型">
             <datalist id="patent-ask-model-select-datalist"></datalist>
             <button id="patent-ask-export-btn" class="ppv-close-btn" title="导出对话记录为Word" style="font-size:14px;">&#x2913;</button>
@@ -1264,7 +1270,7 @@
   <script src="scripts/FileSaver.min.js?v=20260623c"></script>
   <script src="scripts/pdf-lib.min.js?v=20260623c"></script>
   <script src="scripts/fontkit.umd.min.js?v=260710"></script>
-  <script src="scripts/web-ai.js?v=260717d"></script>
+  <script src="scripts/web-ai.js?v=260822a"></script>
   <script src="scripts/patent-status.js?v=260729c"></script>
   <script src="scripts/app/shared/constants.js?v=260731a"></script>
   <script src="scripts/app/shared/icons.js?v=260731a"></script>
@@ -1291,6 +1297,7 @@
   <script src="scripts/app/features/favorites-ui.js?v=260805a"></script>
   <script src="scripts/app/features/kanban-select-state.js?v=260806a"></script>
   <script src="scripts/app/features/review-analysis-ocr-retry.js?v=260806a"></script>
+  <script src="scripts/app/features/deepseek-thinking.js?v=260822a"></script>
   <script src="scripts/comparison/comparison-utils.js?v=260717d"></script>
   <script src="scripts/comparison/comparison-prompts.js?v=260717d"></script>
   <script src="scripts/comparison/comparison-core.js?v=260717d"></script>
