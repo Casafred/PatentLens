@@ -10,7 +10,7 @@
  * before using, copying, or distributing this code.
  *
  * @author Alfred Shi
- * @version 260711
+ * @version 260822
  */
 var AI = (function () {
   var STORAGE_KEY = "history-helper-ai-config";
@@ -229,14 +229,32 @@ var AI = (function () {
     };
 
     if (providerType === "deepseek") {
-      if (params.thinking && params.thinking.type === "enabled") {
-        body.thinking = { type: "enabled" };
-        if (params.thinking.budgetTokens) {
-          body.thinking.budget_tokens = params.thinking.budgetTokens;
-        }
-      } else {
-        body.temperature = params.temperature != null ? params.temperature : 0.1;
+      // DeepSeek V4：思考模式默认开启（默认强度 high），且思维链与最终回答共用
+      // max_tokens 预算。参考 https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
+      // thinking 参数：{ type: "enabled"|"disabled", effort: "high"|"max" }
+      var thinking = params.thinking || null;
+      // AI 问一问（app/features/deepseek-thinking.js）在流式期间注入的思考偏好
+      if (!thinking && window.DeepSeekAskThinking &&
+          typeof window.DeepSeekAskThinking.getActiveThinking === "function") {
+        var askThinking = window.DeepSeekAskThinking.getActiveThinking();
+        if (askThinking) thinking = askThinking;
       }
+      var thinkingOn = !(thinking && thinking.type === "disabled");
+      if (thinking && thinking.type === "enabled") {
+        body.thinking = { type: "enabled" };
+        if (thinking.effort) body.reasoning_effort = thinking.effort;
+      } else if (thinking && thinking.type === "disabled") {
+        body.thinking = { type: "disabled" };
+      }
+      if (thinkingOn) {
+        // 思维链会计入 max_tokens：预算过小会先被思考耗尽（finish_reason=length），
+        // 导致最终回答 content 为空（界面显示"未返回内容"）。
+        // 在调用方 maxTokens 基础上追加思考余量，保证最终回答有预算可用。
+        var effort = (thinking && thinking.effort) || "high";
+        body.max_tokens = (params.maxTokens || 32768) + (effort === "max" ? 32768 : 16384);
+      }
+      // 思考模式下 temperature 会被 API 忽略（不报错），统一发送以兼容非思考模型
+      body.temperature = params.temperature != null ? params.temperature : 0.1;
       body.stream_options = { include_usage: true };
     } else if (providerType === "zhipu") {
       body.temperature = params.temperature != null ? params.temperature : 0.1;
