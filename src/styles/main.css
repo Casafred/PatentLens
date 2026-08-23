@@ -10165,6 +10165,26 @@ body {
 .pd-ai-interpret-content ul { margin: 2px 0 6px 18px; padding: 0; }
 .pd-ai-interpret-content p { margin: 2px 0; }
 .pd-ai-interpret-hint { color: var(--text-secondary, #888); font-size: 12px; margin: 0; }
+/* AI 解读缓存标记（ai-session-cache.js） */
+.pd-ai-interpret-cachetag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+.pd-ai-interpret-refresh-btn {
+  border: 1px solid var(--border-color, #ccc);
+  background: transparent;
+  color: var(--text-secondary, #888);
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.pd-ai-interpret-refresh-btn:hover { color: var(--accent, #16a34a); border-color: var(--accent, #16a34a); }
 
 /* AI 问一问 按钮（详情头部） */
 .pd-links {
