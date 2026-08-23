@@ -104,6 +104,9 @@ var DescriptionSummary = (function () {
     var body = root.querySelector('.pd-tab-panel[data-panel="description"] .pd-tab-panel-body');
     if (!body) return null;
 
+    // 先增强说明书段落锚点（拆分大 <p>、包装 [00XX]），保证溯源跳转可用
+    try { enhanceDescriptionParagraphs(scope); } catch (e) { /* ignore */ }
+
     var panel = body.querySelector(".pd-desc-summary-panel");
     if (!panel) {
       panel = document.createElement("div");
@@ -145,41 +148,124 @@ var DescriptionSummary = (function () {
     return panel;
   }
 
+  // ── 说明书段落锚点增强 ───────────────────────────────────
+  // web-app.js 的 renderDescriptionHtml 按空行拆分段落：若说明书原文为单换行
+  // 连接（无空行），整篇会渲染成一个大 <p>（<br> 分隔），段首号正则的 $ 无法
+  // 匹配多行文本，导致没有任何 .pd-para-num 锚点。此处做 DOM 后处理：
+  //   1. 把含 <br> 的大 <p> 拆分为独立 <p>（保留子节点）
+  //   2. 段首 [00XX] 文本包装为 <span class="pd-para-num"> 锚点
+  // 幂等：已处理的 <p> 不再含有 <br>，重跑无副作用；翻译重渲染后可再次增强。
+
+  function wrapLeadingParaNum(p) {
+    var first = p.firstChild;
+    if (!first) return;
+    if (first.nodeType === 1 && first.classList && first.classList.contains("pd-para-num")) return;
+    if (first.nodeType !== 3) return; // 文本节点
+    var m = first.textContent.match(/^(\[\d+\])\s*/);
+    if (!m) return;
+    var span = document.createElement("span");
+    span.className = "pd-para-num";
+    span.textContent = m[1];
+    p.insertBefore(span, first);
+    first.textContent = first.textContent.slice(m[0].length);
+    if (!first.textContent) first.remove();
+  }
+
+  function enhanceDescriptionParagraphs(scope) {
+    var root = getScopeRoot(scope);
+    if (!root) return;
+    var descText = root.querySelector(
+      '.pd-tab-panel-body[data-panel-body="description"] .pd-description-text');
+    if (!descText) return;
+
+    Array.prototype.slice.call(descText.querySelectorAll("p")).forEach(function (p) {
+      if (!p.querySelector("br")) {
+        wrapLeadingParaNum(p);
+        return;
+      }
+      // 按 <br> 拆分为独立 <p>
+      var groups = [[]];
+      Array.prototype.slice.call(p.childNodes).forEach(function (node) {
+        if (node.nodeName === "BR") groups.push([]);
+        else groups[groups.length - 1].push(node);
+      });
+      var frag = document.createDocumentFragment();
+      groups.forEach(function (nodes) {
+        var np = document.createElement("p");
+        nodes.forEach(function (n) { np.appendChild(n); });
+        if (np.textContent.trim() === "" && !np.querySelector("img")) return; // 跳过空段
+        wrapLeadingParaNum(np);
+        frag.appendChild(np);
+      });
+      if (p.parentNode) p.parentNode.replaceChild(frag, p);
+    });
+  }
+
   // ── 段落溯源：[00XX] → 跳转高亮 ─────────────────────────
 
-  function paraNumExists(root, num) {
+  function paraNumExists(scope, num) {
     var target = "[" + num + "]";
-    var els = root.querySelectorAll('.pd-tab-panel-body[data-panel-body="description"] .pd-para-num');
-    for (var i = 0; i < els.length; i++) {
-      if (els[i].textContent.trim() === target) return true;
+    var root = getScopeRoot(scope);
+    if (root) {
+      var els = root.querySelectorAll(
+        '.pd-tab-panel-body[data-panel-body="description"] .pd-para-num');
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].textContent.trim() === target) return true;
+      }
+      // 首段可能被渲染为章节标题（renderDescriptionHtml 把 section 第一行当标题）
+      var titles = root.querySelectorAll(
+        '.pd-tab-panel-body[data-panel-body="description"] .pd-desc-section-title');
+      for (var j = 0; j < titles.length; j++) {
+        if (titles[j].textContent.trim().indexOf(target) === 0) return true;
+      }
+    }
+    // 数据源兜底：说明书原文含该段落号
+    var data = getPatentData(scope);
+    if (data && data.description) {
+      return data.description.indexOf(target) !== -1;
     }
     return false;
   }
 
+  function flashParagraph(el) {
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.remove("pd-desc-ref-flash");
+    void el.offsetWidth; // 重启闪烁动画
+    el.classList.add("pd-desc-ref-flash");
+    setTimeout(function () { el.classList.remove("pd-desc-ref-flash"); }, 2400);
+  }
+
   function jumpToPara(scope, num) {
+    if (!num) return;
+    // 确保段落锚点存在（说明书可能被翻译等功能重渲染而丢失增强）
+    enhanceDescriptionParagraphs(scope);
     var root = getScopeRoot(scope);
-    if (!root || !num) return;
+    if (!root) return;
     var target = "[" + num + "]";
-    var els = root.querySelectorAll('.pd-tab-panel-body[data-panel-body="description"] .pd-para-num');
+    var els = root.querySelectorAll(
+      '.pd-tab-panel-body[data-panel-body="description"] .pd-para-num');
     for (var i = 0; i < els.length; i++) {
       if (els[i].textContent.trim() === target) {
-        var p = els[i].closest("p");
-        if (p) {
-          p.scrollIntoView({ behavior: "smooth", block: "center" });
-          p.classList.remove("pd-desc-ref-flash");
-          void p.offsetWidth; // 重启闪烁动画
-          p.classList.add("pd-desc-ref-flash");
-          setTimeout(function () { p.classList.remove("pd-desc-ref-flash"); }, 2400);
-        }
+        flashParagraph(els[i].closest("p") || els[i]);
+        return;
+      }
+    }
+    // 兜底：首段被渲染为章节标题的情况
+    var titles = root.querySelectorAll(
+      '.pd-tab-panel-body[data-panel-body="description"] .pd-desc-section-title');
+    for (var j = 0; j < titles.length; j++) {
+      if (titles[j].textContent.trim().indexOf(target) === 0) {
+        flashParagraph(titles[j]);
         return;
       }
     }
   }
 
   // 渲染完成的 HTML：把 [00XX]（含 [00XX]-[00YY] 范围）转为可点击溯源标签
-  function linkifyRefs(html, root) {
+  function linkifyRefs(html, scope) {
     return html.replace(/\[(\d{3,5})\](\s*[-–]\s*\[(\d{3,5})\])?/g, function (m, a, _sep, b) {
-      var ok = paraNumExists(root, a) && (!b || paraNumExists(root, b));
+      var ok = paraNumExists(scope, a) && (!b || paraNumExists(scope, b));
       return '<a class="pd-desc-ref' + (ok ? "" : " missing") + '" data-para="' + a + '"' +
         (b ? ' data-para-end="' + b + '"' : "") + ' title="' +
         (ok ? "跳转到段落 " + m : "说明书中未找到该段落号") + '">' + m + "</a>";
@@ -268,6 +354,12 @@ var DescriptionSummary = (function () {
       if (!contentStarted) {
         bodyEl.innerHTML = '<p class="pd-desc-summary-hint">未返回内容</p>';
       } else {
+        // 取消未执行的流式渲染帧：rAF 回调是异步的，若不取消会在 renderDone
+        // 之后执行并覆盖掉带段落号溯源链接的最终渲染
+        if (renderRaf && typeof cancelAnimationFrame === "function") {
+          cancelAnimationFrame(renderRaf);
+          renderRaf = null;
+        }
         renderDone(scope, bodyEl, acc, false);
         saveCache(pn, acc);
         if (badge) badge.textContent = "已完成";
@@ -284,9 +376,8 @@ var DescriptionSummary = (function () {
 
   // 完成态渲染：markdown + 段落号溯源链接
   function renderDone(scope, bodyEl, content, isCached) {
-    var root = getScopeRoot(scope);
     var html = window.renderMarkdown ? window.renderMarkdown(content) : "<pre>" + esc(content) + "</pre>";
-    if (root) html = linkifyRefs(html, root);
+    html = linkifyRefs(html, scope);
     bodyEl.innerHTML =
       html +
       (isCached ? '<p class="pd-desc-summary-cachetag">（已缓存结果，可点击「重新总结」刷新）</p>' : "");
