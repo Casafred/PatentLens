@@ -21,8 +21,61 @@ var DescriptionSummary = (function () {
   var _observer = null;
   var _scheduled = false;
   var _running = {};      // scope → bool，防止重复触发
+  var _loading = {};      // scope → bool，缓存读取（异步）期间防重复触发
   var CACHE_PREFIX = "patentlens-desc-summary-";
   var MAX_DESC_CHARS = 80000;
+
+  // ── IndexedDB 兜底存储 ──────────────────────────────────
+  // GPCache（web-app.js）把最多 50 条完整 GP 专利数据塞进 localStorage 单键，
+  // 极易触发配额溢出，导致本模块 localStorage 写入静默失败（表现为总结结果
+  // 没有被缓存）。此处用独立 DB 兜底：localStorage 写失败时落 IndexedDB，
+  // 读取时先查 localStorage 再查 IndexedDB。
+  var DESC_DB = {
+    DB_NAME: "patentlens-ai-cache",
+    DB_VERSION: 1,
+    STORE_NAME: "desc-summary",
+    _db: null,
+    open: function () {
+      var self = this;
+      if (self._db) return Promise.resolve(self._db);
+      if (typeof indexedDB === "undefined") return Promise.reject(new Error("no idb"));
+      return new Promise(function (resolve, reject) {
+        try {
+          var req = indexedDB.open(self.DB_NAME, self.DB_VERSION);
+          req.onupgradeneeded = function (e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains(self.STORE_NAME)) {
+              db.createObjectStore(self.STORE_NAME, { keyPath: "key" });
+            }
+          };
+          req.onsuccess = function (e) { self._db = e.target.result; resolve(self._db); };
+          req.onerror = function (e) { reject(e.target.error || new Error("idb open error")); };
+        } catch (e) { reject(e); }
+      });
+    },
+    put: function (key, obj) {
+      var self = this;
+      return self.open().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(self.STORE_NAME, "readwrite");
+          tx.objectStore(self.STORE_NAME).put({ key: key, entry: obj });
+          tx.oncomplete = function () { resolve(true); };
+          tx.onerror = function () { reject(tx.error || new Error("idb put error")); };
+        });
+      });
+    },
+    get: function (key) {
+      var self = this;
+      return self.open().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction(self.STORE_NAME, "readonly");
+          var req = tx.objectStore(self.STORE_NAME).get(key);
+          req.onsuccess = function () { resolve(req.result ? req.result.entry : null); };
+          req.onerror = function () { reject(req.error || new Error("idb get error")); };
+        });
+      });
+    }
+  };
 
   // ── 工具 ─────────────────────────────────────────────────
 
@@ -51,7 +104,22 @@ var DescriptionSummary = (function () {
     return CACHE_PREFIX + (pn || "unknown");
   }
 
-  function loadCache(pn) {
+  // 缓存键专利号：优先读 DOM 当前显示的号码（详情页/弹层/翻译重渲染后保持
+  // 一致），避免不同数据源字段差异导致同一专利生成不同键（缓存永不命中）
+  function resolveCachePn(scope, data) {
+    try {
+      var el = scope === "popup"
+        ? document.getElementById("ppv-patent-number")
+        : document.querySelector("#patent-detail-content .pd-patent-number");
+      if (el) {
+        var t = (el.textContent || "").trim();
+        if (t) return t;
+      }
+    } catch (e) { /* ignore */ }
+    return String((data && (data.patent_number || data.publication_number)) || "");
+  }
+
+  function readLS(pn) {
     try {
       var raw = localStorage.getItem(cacheKey(pn));
       if (!raw) return null;
@@ -61,10 +129,66 @@ var DescriptionSummary = (function () {
     return null;
   }
 
-  function saveCache(pn, content) {
+  // 异步读取：localStorage 优先，未命中查 IndexedDB 兜底；
+  // 同时兼容旧键（data 字段直接生成的键），命中后迁移到新键
+  async function loadCache(pn, legacyPn) {
+    var obj = readLS(pn);
+    if (obj) return obj;
+    if (legacyPn && legacyPn !== pn) {
+      obj = readLS(legacyPn);
+      if (obj) return obj; // 旧键命中（迁移在下次保存时自然发生）
+    }
     try {
-      localStorage.setItem(cacheKey(pn), JSON.stringify({ ts: Date.now(), content: content }));
-    } catch (e) { /* ignore */ }
+      var entry = await DESC_DB.get(pn);
+      if (entry && entry.content && entry.ts) return entry;
+      if (legacyPn && legacyPn !== pn) {
+        entry = await DESC_DB.get(legacyPn);
+        if (entry && entry.content && entry.ts) return entry;
+      }
+    } catch (e) { /* IndexedDB 不可用时忽略 */ }
+    return null;
+  }
+
+  // 保存：localStorage 优先；配额溢出时清理本模块最旧条目重试一次，
+  // 仍失败则落 IndexedDB（不阻塞调用方）
+  function saveCache(pn, content) {
+    var obj = { ts: Date.now(), content: content };
+    var payload = JSON.stringify(obj);
+    var ok = false;
+    try {
+      localStorage.setItem(cacheKey(pn), payload);
+      ok = true;
+    } catch (e) {
+      try {
+        evictOldestEntries();
+        localStorage.setItem(cacheKey(pn), payload);
+        ok = true;
+      } catch (e2) { /* 仍失败 → IndexedDB 兜底 */ }
+    }
+    if (!ok) {
+      DESC_DB.put(pn, obj).catch(function () { /* ignore */ });
+    }
+  }
+
+  // 删除本模块在 localStorage 中最旧的若干条缓存，为写入腾出配额
+  function evictOldestEntries() {
+    var entries = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (!key || key.indexOf(CACHE_PREFIX) !== 0) continue;
+      try {
+        var obj = JSON.parse(localStorage.getItem(key) || "null");
+        if (obj && obj.ts) entries.push({ key: key, ts: obj.ts });
+      } catch (e) {
+        entries.push({ key: key, ts: 0 }); // 损坏条目优先清理
+      }
+    }
+    if (entries.length === 0) return;
+    entries.sort(function (a, b) { return a.ts - b.ts; });
+    var toRemove = Math.max(1, Math.floor(entries.length / 4)); // 清掉最旧的 1/4
+    for (var j = 0; j < toRemove && j < entries.length; j++) {
+      try { localStorage.removeItem(entries[j].key); } catch (e2) {}
+    }
   }
 
   // ── DOM 注入（按钮 + 结果面板容器） ──────────────────────
@@ -81,7 +205,7 @@ var DescriptionSummary = (function () {
       btn.title = "AI 总结说明书整体结构、各部分摘要与并列实施例，结果可溯源跳转到对应段落";
       btn.innerHTML =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;">' +
-        '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>实施例总结';
+        '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>AI实施例总结';
       btn.addEventListener("click", function () { run(scope, false); });
       actions.insertBefore(btn, actions.firstChild);
     });
@@ -283,10 +407,11 @@ var DescriptionSummary = (function () {
     "输出使用 Markdown，结构清晰、简明扼要。";
 
   async function run(scope, forceRefresh) {
-    if (_running[scope]) return;
+    if (_running[scope] || _loading[scope]) return;
     var data = getPatentData(scope);
     if (!data) { alert("暂无专利数据"); return; }
-    var pn = data.patent_number || data.publication_number || "";
+    var pn = resolveCachePn(scope, data);
+    var legacyPn = String((data.patent_number || data.publication_number) || "");
     var description = data.description || "";
     if (!description || !description.trim()) { alert("本篇专利暂无说明书数据，无法总结"); return; }
 
@@ -301,9 +426,15 @@ var DescriptionSummary = (function () {
     var refreshBtn = panel.querySelector(".pd-desc-summary-refresh");
     panel.classList.remove("collapsed");
 
-    // 缓存命中直接展示
+    // 缓存命中直接展示（localStorage → IndexedDB 异步双查）
     if (!forceRefresh) {
-      var cached = loadCache(pn);
+      _loading[scope] = true;
+      var cached = null;
+      try {
+        cached = await loadCache(pn, legacyPn);
+      } finally {
+        _loading[scope] = false;
+      }
       if (cached) {
         renderDone(scope, bodyEl, cached.content, true);
         if (badge) badge.textContent = "缓存 " + new Date(cached.ts).toLocaleDateString();
