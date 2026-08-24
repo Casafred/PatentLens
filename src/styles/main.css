@@ -6885,6 +6885,12 @@ body {
   font-size: 11px;
   color: var(--text-muted);
 }
+/* 最近一次通过历史记录恢复查询的时间（history-access-tracker.js） */
+.history-item-access {
+  font-size: 11px;
+  color: var(--accent);
+  margin-top: 1px;
+}
 .history-item-badges {
   display: flex;
   gap: 4px;
@@ -13476,18 +13482,29 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 /* ═══ 说明书实施例总结（description-summary 增强模块） ═══ */
 
 .pd-desc-summary-btn {
-  font-size: 11px;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: 4px;
+  font-size: 12px;            /* 与「图文对照」按钮字号一致 */
+  padding: 5px 10px;          /* 与「图文对照」按钮尺寸一致 */
+  border: 1.5px solid var(--accent);
+  background: var(--accent-dim, rgba(34, 197, 94, 0.08));
+  color: var(--accent);
+  font-weight: 600;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 .pd-desc-summary-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.pd-desc-summary-btn:active {
+  transform: translateY(1px);
+}
+/* 全局 reset（* { margin:0; padding:0 }）清掉了列表缩进，而总结结果
+   未包在 .markdown-body 内，导致 ol/ul 序号被面板左边缘遮挡 */
+.pd-desc-summary-body ol,
+.pd-desc-summary-body ul {
+  padding-left: 24px;
 }
 .pd-desc-summary-panel {
   margin: 0 0 14px;
