@@ -126,3 +126,22 @@ test('workbench exposes one preview and export navigation entry', () => {
   assert.match(html, /data-share-view="review"><span class="share-nav-step">03<\/span>分享内容加工/);
   assert.match(html, /data-share-view="modules"><span class="share-nav-step">05<\/span>分享模块编排/);
 });
+
+test('figure dataUrl is escaped to prevent attribute injection in exported HTML', () => {
+  const { renderer, project } = makeProject();
+  project.patents[0].figures = [{ dataUrl: 'data:image/svg+xml,<svg" onload="alert(1)" x="', caption: 'evil' }];
+  const result = renderer.render(project);
+  assert.doesNotMatch(result.html, /onload="alert\(1\)"/);
+  assert.match(result.html, /src="data:image\/svg\+xml,&lt;svg&quot; onload=&quot;alert\(1\)&quot; x=&quot;/);
+});
+
+test('figures render when only the S7 module is enabled', () => {
+  const { renderer, project } = makeProject();
+  project.moduleConfig.modules.S4 = 'off';
+  project.moduleConfig.modules.S5 = 'off';
+  project.moduleConfig.modules.S7 = 'full';
+  const result = renderer.render(project);
+  assert.match(result.html, /class="figures-grid"/);
+  assert.match(result.html, /class="figure-card"/);
+  assert.doesNotMatch(result.html, /class="source-split"/);
+});

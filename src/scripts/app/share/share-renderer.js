@@ -327,7 +327,7 @@
     figures.forEach(function (fig, idx) {
       var n = idx + 1;
       html += '<figure class="fig-mini" data-fig-index="' + n + '" id="fig-' + n + '">';
-      html += '<img src="' + fig.dataUrl + '" alt="' + escapeHtml(fig.caption || "附图" + n) + '"' + (fig.width ? ' style="max-width:' + fig.width + 'px"' : '') + ' />';
+      html += '<img src="' + escapeHtml(fig.dataUrl) + '" alt="' + escapeHtml(fig.caption || "附图" + n) + '"' + (fig.width ? ' style="max-width:' + fig.width + 'px"' : '') + ' />';
       html += figureToolbarHtml();
       html += '<figcaption>图 ' + n + (fig.caption ? ' · ' + escapeHtml(fig.caption) : '') + '</figcaption>';
       html += '</figure>';
@@ -342,7 +342,7 @@
     var html = '<div class="figures-grid">';
     items.forEach(function (fig) {
       html += '<figure class="figure-card">';
-      html += '<img src="' + fig.dataUrl + '" alt="' + escapeHtml(fig.caption || "附图") + '"' + (fig.width ? ' style="max-width:' + fig.width + 'px"' : '') + ' />';
+      html += '<img src="' + escapeHtml(fig.dataUrl) + '" alt="' + escapeHtml(fig.caption || "附图") + '"' + (fig.width ? ' style="max-width:' + fig.width + 'px"' : '') + ' />';
       html += figureToolbarHtml();
       if (fig.caption) html += '<figcaption>' + escapeHtml(fig.caption) + '</figcaption>';
       html += '</figure>';
@@ -545,7 +545,7 @@
     var html = '<div class="panel" data-panel="source">';
     var figures = Array.isArray(record.figures) ? record.figures : [];
     var hasFigures = figures && figures.length > 0;
-    var useSplit = hasFigures && moduleEnabled(config, "S7");
+    var useSplit = hasFigures && moduleEnabled(config, "S7") && (moduleEnabled(config, "S4") || moduleEnabled(config, "S5"));
     var figureRail = useSplit ? renderFigureRail(figures) : "";
     if (moduleEnabled(config, "S4")) {
       var claimsBody = '';
