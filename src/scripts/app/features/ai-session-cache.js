@@ -96,7 +96,7 @@
   function dossierPatentKey() {
     try {
       if (typeof currentData !== "undefined" && currentData) {
-        return String(currentData.raw || (currentData.office + currentData.applicationNumber) || "");
+        return String(currentData.raw || (currentData.office && currentData.applicationNumber ? currentData.office + currentData.applicationNumber : "") || "");
       }
     } catch (e) {}
     return "";

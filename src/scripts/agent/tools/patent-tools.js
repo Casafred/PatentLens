@@ -80,7 +80,7 @@ var AgentPatentTools = (function () {
           applicantName = currentData.applicantName || "";
         } catch (e) { /* ignore */ }
         return {
-          patentNumber: currentData.raw || (currentData.office + currentData.applicationNumber) || "",
+          patentNumber: currentData.raw || (currentData.office && currentData.applicationNumber ? currentData.office + currentData.applicationNumber : "") || "",
           applicationNumber: currentData.applicationNumber || "",
           office: currentData.office || "",
           title: title,
