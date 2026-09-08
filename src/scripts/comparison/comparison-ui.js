@@ -52,6 +52,7 @@ var ComparisonUI = (function () {
     var inputMode = ComparisonCore.getState().inputMode;
     var activeTab = ComparisonCore.getActiveTab();
 
+    var isLocalDiffMode = inputMode === 'specdiff' || inputMode === 'claimdiff';
     var canGoAnchor = items.length >= 1;
     var canPreview = selected.length >= 2 && anchor && !isLoading;
     var hasResult = !!result;
@@ -74,8 +75,8 @@ var ComparisonUI = (function () {
     html += '<div class="comparison-header">';
     html += '  <div class="comparison-title">';
     html += '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/><path d="M9 9l6 6"/><path d="M15 9l-6 6"/></svg>';
-    html += '    智能比对';
-    html += '    <span class="comparison-mode-badge">锚定模式</span>';
+    html += isLocalDiffMode && inputMode === 'claimdiff' ? '    权利要求变动定位' : (isLocalDiffMode ? '    说明书变动定位' : '    智能比对');
+    html += '    <span class="comparison-mode-badge">' + (isLocalDiffMode ? '本地算法' : '锚定模式') + '</span>';
     html += '  </div>';
     html += '  <div class="comparison-header-actions">';
     html += '    <button class="btn-secondary btn-small cmp-history-btn" onclick="ComparisonUI.toggleHistoryDropdown(event)" title="比对历史记录">';
@@ -87,17 +88,19 @@ var ComparisonUI = (function () {
     html += '  </div>';
     html += '</div>';
 
-    html += '<div class="cmp-step-tabs">';
-    html += renderStepTab('prepare', '①', '准备数据', '添加文本或查询专利权利要求', activeTab === 'prepare', true);
-    html += '<div class="cmp-step-connector' + (canGoAnchor || activeTab !== 'prepare' ? ' done' : '') + '"></div>';
-    var anchorEnabled = canGoAnchor || activeTab === 'anchor' || activeTab === 'preview' || activeTab === 'result' || hasResult;
-    html += renderStepTab('anchor', '②', '选择锚点', '设置锚点与勾选比对项', activeTab === 'anchor', anchorEnabled);
-    html += '<div class="cmp-step-connector' + (canPreview || hasResult || activeTab === 'preview' || activeTab === 'result' ? ' done' : '') + '"></div>';
-    var previewEnabled = canPreview || activeTab === 'preview' || activeTab === 'result' || hasResult;
-    html += renderStepTab('preview', '③', '预览确认', '确认锚点与并排对照', activeTab === 'preview', previewEnabled);
-    html += '<div class="cmp-step-connector' + (hasResult ? ' done' : '') + '"></div>';
-    html += renderStepTab('result', '④', '分析结果', 'AI比对分析报告', activeTab === 'result', hasResult);
-    html += '</div>';
+    if (!isLocalDiffMode) {
+      html += '<div class="cmp-step-tabs">';
+      html += renderStepTab('prepare', '①', '准备数据', '添加文本或查询专利权利要求', activeTab === 'prepare', true);
+      html += '<div class="cmp-step-connector' + (canGoAnchor || activeTab !== 'prepare' ? ' done' : '') + '"></div>';
+      var anchorEnabled = canGoAnchor || activeTab === 'anchor' || activeTab === 'preview' || activeTab === 'result' || hasResult;
+      html += renderStepTab('anchor', '②', '选择锚点', '设置锚点与勾选比对项', activeTab === 'anchor', anchorEnabled);
+      html += '<div class="cmp-step-connector' + (canPreview || hasResult || activeTab === 'preview' || activeTab === 'result' ? ' done' : '') + '"></div>';
+      var previewEnabled = canPreview || activeTab === 'preview' || activeTab === 'result' || hasResult;
+      html += renderStepTab('preview', '③', '预览确认', '确认锚点与并排对照', activeTab === 'preview', previewEnabled);
+      html += '<div class="cmp-step-connector' + (hasResult ? ' done' : '') + '"></div>';
+      html += renderStepTab('result', '④', '分析结果', 'AI比对分析报告', activeTab === 'result', hasResult);
+      html += '</div>';
+    }
 
     html += '<div class="cmp-tab-content">';
 
@@ -113,7 +116,7 @@ var ComparisonUI = (function () {
 
     html += '</div>';
 
-    html += renderActionBar(activeTab, isLoading, selected, anchor, result, canPreview, canGoAnchor);
+    if (!isLocalDiffMode) html += renderActionBar(activeTab, isLoading, selected, anchor, result, canPreview, canGoAnchor);
 
     container.innerHTML = html;
     bindEvents(container);
@@ -130,6 +133,8 @@ var ComparisonUI = (function () {
     if (activeTab === 'prepare') {
       if (inputMode === 'specdiff' && typeof ComparisonSpecDiff !== 'undefined') {
         ComparisonSpecDiff.renderInputArea(document.getElementById('comparison-input-area'));
+      } else if (inputMode === 'claimdiff' && typeof ComparisonClaimDiff !== 'undefined') {
+        ComparisonClaimDiff.renderInputArea(document.getElementById('comparison-input-area'));
       } else {
         ComparisonInput.renderInputArea(document.getElementById('comparison-input-area'), inputMode);
       }
@@ -161,6 +166,7 @@ var ComparisonUI = (function () {
     html += '  <button class="comparison-input-tab' + (inputMode === 'manual' ? ' active' : '') + '" data-input-mode="manual">手动输入文本</button>';
     html += '  <button class="comparison-input-tab' + (inputMode === 'patent' ? ' active' : '') + '" data-input-mode="patent">专利号查询</button>';
     html += '  <button class="comparison-input-tab' + (inputMode === 'specdiff' ? ' active' : '') + '" data-input-mode="specdiff" title="说明书变动点一键定位：输入两个公开号，以一个为锚点检查说明书实质性文本变化">说明书变动定位</button>';
+    html += '  <button class="comparison-input-tab' + (inputMode === 'claimdiff' ? ' active' : '') + '" data-input-mode="claimdiff" title="公开版与授权版权利要求先对齐，再定位修改内容">权利要求变动定位</button>';
     html += '</div>';
     html += '<div id="comparison-input-area"></div>';
 
@@ -455,6 +461,7 @@ var ComparisonUI = (function () {
       tab.addEventListener('click', function() {
         var mode = this.dataset.inputMode;
         ComparisonCore.setInputMode(mode);
+        if (mode === 'specdiff' || mode === 'claimdiff') ComparisonCore.setActiveTab('prepare');
         render();
       });
     });

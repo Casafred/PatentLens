@@ -1674,3 +1674,41 @@
   .specdiff-input-row { align-items: stretch; flex-direction: column; }
   .specdiff-run-btn { align-self: flex-start; }
 }
+
+/* ===== 权利要求变动定位（本地算法） ===== */
+.claimdiff-panel { display:flex; flex-direction:column; gap:14px; }
+.claimdiff-intro { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 14px; border:1px solid var(--border,#e2e8f0); border-radius:8px; background:var(--bg-main,#f8fafc); }
+.claimdiff-intro strong { color:var(--text-primary,#0f172a); font-size:14px; }
+.claimdiff-intro span { margin-left:8px; padding:2px 7px; border-radius:4px; background:#e0f2fe; color:#075985; font-size:11px; font-weight:600; }
+.claimdiff-intro p { margin:0; color:var(--text-secondary,#64748b); font-size:12.5px; line-height:1.6; }
+.claimdiff-input-row { display:grid; grid-template-columns:minmax(180px,1fr) 34px minmax(180px,1fr) auto; gap:10px; align-items:end; }
+.claimdiff-input-card { display:flex; flex-direction:column; gap:5px; padding:10px; border:1px solid var(--border,#e2e8f0); border-radius:7px; }
+.claimdiff-input-card.base { background:#fffbeb; border-color:#fde68a; }
+.claimdiff-input-card.compare { background:#eff6ff; border-color:#bfdbfe; }
+.claimdiff-input-card label { font-size:12px; font-weight:700; color:var(--text-primary,#0f172a); }
+.claimdiff-input-card input { min-width:0; padding:7px 9px; border:1px solid var(--border,#e2e8f0); border-radius:5px; background:#fff; font-size:13px; color:var(--text-primary,#0f172a); }
+.claimdiff-input-card input:focus { outline:none; border-color:var(--accent,#2563eb); }
+.claimdiff-swap { width:34px; height:34px; display:grid; place-items:center; padding:0; border:1px solid var(--border,#e2e8f0); border-radius:6px; color:var(--text-secondary,#64748b); background:var(--bg-card,#fff); cursor:pointer; }
+.claimdiff-swap:hover { border-color:var(--accent,#2563eb); color:var(--accent,#2563eb); }
+.claimdiff-swap svg { width:17px; height:17px; }
+.claimdiff-run { white-space:nowrap; }
+.claimdiff-titles { display:flex; gap:16px; flex-wrap:wrap; color:var(--text-secondary,#64748b); font-size:12px; }
+.claimdiff-status:empty { display:none; }
+.claimdiff-progress { color:var(--accent,#2563eb); font-size:13px; }
+.claimdiff-error { display:inline-block; padding:6px 10px; border:1px solid #fecaca; border-radius:6px; color:#b91c1c; background:#fef2f2; font-size:13px; }
+.claimdiff-stats { display:flex; gap:10px; flex-wrap:wrap; padding:10px 14px; border-radius:8px; background:var(--bg-main,#f8fafc); color:var(--text-secondary,#64748b); font-size:12.5px; }
+.claimdiff-stats b { color:var(--text-primary,#0f172a); font-size:14px; }
+.claimdiff-stats .same b { color:#15803d; }.claimdiff-stats .changed b { color:#b45309; }.claimdiff-stats .added b { color:#2563eb; }.claimdiff-stats .deleted b { color:#dc2626; }
+.claimdiff-filterbar { display:flex; align-items:center; gap:7px; flex-wrap:wrap; padding-top:2px; font-size:12px; color:var(--text-secondary,#64748b); }
+.claimdiff-filter { padding:5px 9px; border:1px solid var(--border,#e2e8f0); border-radius:5px; color:var(--text-secondary,#64748b); background:var(--bg-card,#fff); font-size:12px; cursor:pointer; }
+.claimdiff-filter.active { color:#fff; border-color:var(--accent,#2563eb); background:var(--accent,#2563eb); }
+.claimdiff-empty { padding:24px 14px; border:1px dashed var(--border,#cbd5e1); border-radius:7px; color:var(--text-secondary,#64748b); text-align:center; font-size:12.5px; background:var(--bg-main,#f8fafc); }
+.claimdiff-map-head, .claimdiff-map-columns { display:grid; grid-template-columns:minmax(150px,1fr) 24px minmax(150px,1fr) 90px minmax(160px,1.35fr); gap:8px; align-items:center; }
+.claimdiff-map-head { padding:8px 12px; border-bottom:1px solid var(--border,#e2e8f0); color:var(--text-secondary,#64748b); background:var(--bg-main,#f8fafc); font-size:11.5px; font-weight:700; }
+.claimdiff-item { display:block; border:1px solid var(--border,#e2e8f0); border-radius:7px; margin-top:8px; overflow:hidden; background:var(--bg-card,#fff); }
+.claimdiff-item[open] { border-color:#cbd5e1; }.claimdiff-item.promoted,.claimdiff-item.demoted { border-color:#fbbf24; }.claimdiff-item.added { border-color:#93c5fd; }.claimdiff-item.deleted { border-color:#fca5a5; }
+.claimdiff-item summary { cursor:pointer; list-style:none; }.claimdiff-item summary::-webkit-details-marker { display:none; }
+.claimdiff-map-columns { padding:10px 12px; font-size:12px; }.claimdiff-map-arrow { text-align:center; color:var(--text-secondary,#94a3b8); }.claimdiff-map-claim { color:var(--text-primary,#0f172a); font-weight:600; }.claimdiff-type { display:inline-block; margin-left:5px; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:600; }.claimdiff-type.independent { color:#166534; background:#dcfce7; }.claimdiff-type.dependent { color:#475569; background:#e2e8f0; }
+.claimdiff-status { width:max-content; padding:3px 6px; border-radius:4px; background:#f1f5f9; color:#475569; font-size:11px; font-weight:700; }.claimdiff-status.modified { color:#92400e; background:#fef3c7; }.claimdiff-status.promoted,.claimdiff-status.demoted { color:#92400e; background:#fef3c7; }.claimdiff-status.added { color:#1d4ed8; background:#dbeafe; }.claimdiff-status.deleted { color:#b91c1c; background:#fee2e2; }.claimdiff-summary { overflow:hidden; color:var(--text-secondary,#64748b); font-size:11.5px; text-overflow:ellipsis; white-space:nowrap; }
+.claimdiff-item-body { padding:0 12px 12px; border-top:1px solid var(--border,#e2e8f0); }.claimdiff-relation { margin:10px 0; padding:7px 9px; border-left:3px solid #f59e0b; border-radius:0 4px 4px 0; background:#fffbeb; color:#78350f; font-size:12px; }.claimdiff-detail-head { display:grid; grid-template-columns:1fr 1fr; gap:1px; margin-left:78px; color:var(--text-secondary,#64748b); font-size:11px; font-weight:700; }.claimdiff-detail-head span { padding:6px 10px; background:var(--bg-main,#f8fafc); }.claimdiff-feature-table { border:1px solid var(--border,#e2e8f0); border-radius:6px; overflow:hidden; }.claimdiff-feature-row { display:grid; grid-template-columns:78px 1fr 1fr; border-bottom:1px solid var(--border,#e2e8f0); font-size:12.5px; line-height:1.7; }.claimdiff-feature-row:last-child { border-bottom:none; }.claimdiff-feature-kind { display:flex; align-items:flex-start; padding:9px; color:var(--text-secondary,#64748b); background:var(--bg-main,#f8fafc); font-size:11px; font-weight:700; }.claimdiff-feature-cell { min-width:0; padding:9px 10px; white-space:pre-wrap; word-break:break-word; }.claimdiff-feature-cell.base { background:#fffbeb; }.claimdiff-feature-cell.compare { border-left:1px solid var(--border,#e2e8f0); background:#eff6ff; }.claimdiff-feature-row.delete .claimdiff-feature-kind { color:#b91c1c; }.claimdiff-feature-row.insert .claimdiff-feature-kind { color:#1d4ed8; }.claimdiff-feature-row.replace .claimdiff-feature-kind { color:#92400e; }.cd-del { padding:0 2px; color:#991b1b; background:#fee2e2; text-decoration:line-through; }.cd-ins { padding:0 2px; color:#166534; background:#dcfce7; }.cd-empty { color:#94a3b8; font-style:italic; }
+@media (max-width:760px) { .claimdiff-intro { align-items:flex-start; flex-direction:column; }.claimdiff-input-row { grid-template-columns:1fr; }.claimdiff-swap { justify-self:start; transform:rotate(90deg); }.claimdiff-run { justify-self:start; }.claimdiff-map-head { display:none; }.claimdiff-map-columns { grid-template-columns:1fr 18px 1fr; }.claimdiff-status,.claimdiff-summary { grid-column:1 / -1; }.claimdiff-detail-head { margin-left:62px; }.claimdiff-feature-row { grid-template-columns:62px 1fr 1fr; }.claimdiff-feature-kind { padding:7px; }.claimdiff-feature-cell { padding:7px; } }

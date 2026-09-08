@@ -52,13 +52,21 @@ var SpecDiffFamily = (function () {
         );
       });
 
-      // 标题栏追加按钮
+      // 标题栏追加入口；两种变动定位复用同一组选中项。
       if (!section.querySelector(".spec-diff-family-btn")) {
         btn.insertAdjacentHTML(
           "afterend",
           '<button class="family-compare-btn spec-diff-family-btn" onclick="SpecDiffFamily.compare(this)" ' +
             'title="勾选同族表格中的两个公开号，跳转到智能比对定位说明书变动点">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>说明书变动对比</button>'
+        );
+      }
+      if (!section.querySelector(".claim-diff-family-btn")) {
+        btn.insertAdjacentHTML(
+          "afterend",
+          '<button class="family-compare-btn claim-diff-family-btn" onclick="SpecDiffFamily.compareClaims(this)" ' +
+            'title="勾选公开版与授权版后，先对齐权利要求再定位修改内容">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px;"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/><path d="M9 9l6 6M15 9l-6 6"/></svg>权利要求变动对比</button>'
         );
       }
 
@@ -120,6 +128,33 @@ var SpecDiffFamily = (function () {
     }, 150);
   }
 
+  function compareClaims(btnEl) {
+    var section = btnEl ? btnEl.closest(".pd-section") : document;
+    var checked = Array.prototype.slice.call(section.querySelectorAll(".specdiff-fam-cb:checked"));
+    if (checked.length !== 2) {
+      alert("请先在同族表格中勾选公开版与授权版两个公开号，再进行权利要求变动对比");
+      return;
+    }
+    var first = checked[0].dataset.pn;
+    var second = checked[1].dataset.pn;
+    if (!first || !second) {
+      alert("勾选的公开号无效，请重试");
+      return;
+    }
+    document.querySelectorAll(".search-mode-btn").forEach(function (button) { button.classList.remove("active"); });
+    var cmpBtn = document.querySelector('.search-mode-btn[data-mode="comparison"]');
+    if (cmpBtn) cmpBtn.click();
+    setTimeout(function () {
+      if (typeof ComparisonClaimDiff === "undefined") {
+        alert("权利要求变动定位模块未加载");
+        return;
+      }
+      ComparisonClaimDiff.enterWithPatents(first, second);
+      var sectionEl = document.getElementById("comparison-section");
+      if (sectionEl) sectionEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+  }
+
   function init() {
     if (_observer) return;
     if (typeof MutationObserver !== "function") return;
@@ -131,6 +166,7 @@ var SpecDiffFamily = (function () {
   return {
     init: init,
     compare: compare,
+    compareClaims: compareClaims,
     onToggle: onToggle
   };
 })();
