@@ -13,7 +13,7 @@ var ComparisonClaimDiff = (function () {
     result: null,
     isLoading: false,
     error: '',
-    filter: 'changed'
+    filter: 'all'
   };
 
   var MATCH_THRESHOLD = 0.34;
@@ -40,7 +40,7 @@ var ComparisonClaimDiff = (function () {
   function splitFeatures(text) {
     var normalized = String(text || '').replace(/\r\n/g, '\n').trim();
     if (!normalized) return [];
-    var parts = normalized.split(/(?<=[;；])\s*|\n+/).map(function (part) {
+    var parts = normalized.split(/(?<=[;；。])\s*|\n+|(?=[，,]\s*(?:其中|所述|并且|且|以及|wherein|and wherein))/i).map(function (part) {
       return part.trim();
     }).filter(Boolean);
     return parts.length ? parts : [normalized];
@@ -110,33 +110,57 @@ var ComparisonClaimDiff = (function () {
     return result;
   }
 
-  function charDiff(a, b) {
-    var start = 0;
-    while (start < a.length && start < b.length && a[start] === b[start]) start++;
-    var end = 0;
-    while (end < a.length - start && end < b.length - start && a[a.length - 1 - end] === b[b.length - 1 - end]) end++;
-    return { prefix: a.slice(0, start), deleted: a.slice(start, a.length - end), inserted: b.slice(start, b.length - end), suffix: a.slice(a.length - end) };
+  // 保留原文顺序的 token：中文按字，英文按词，数字整体，标点独立。
+  function tokenize(text) {
+    var source = String(text || ''), tokens = [], re = /[A-Za-z]+(?:['-][A-Za-z]+)*|\d+(?:\.\d+)?|[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]|[^\sA-Za-z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]|\s+/g, match;
+    while ((match = re.exec(source))) {
+      if (/^\s+$/.test(match[0])) {
+        if (tokens.length && tokens[tokens.length - 1].text.slice(-1) !== ' ') tokens.push({ text: ' ', key: ' ' });
+      } else tokens.push({ text: match[0], key: normalizeText(match[0]) });
+    }
+    return tokens;
+  }
+
+  function tokenDiff(a, b) {
+    var left = tokenize(a), right = tokenize(b);
+    var ops = mergeOps(lcsOps(left.map(function (t) { return t.key; }), right.map(function (t) { return t.key; })));
+    return { left: left, right: right, ops: ops };
+  }
+
+  function pairFeatureOps(base, compare) {
+    var n = base.length, m = compare.length, width = m + 1;
+    var values = new Float64Array((n + 1) * width), dirs = new Uint8Array((n + 1) * width), i, j;
+    for (i = 1; i <= n; i++) for (j = 1; j <= m; j++) {
+      var similarity = diceSimilarity(base[i - 1], compare[j - 1]);
+      var paired = similarity >= 0.2 ? values[(i - 1) * width + j - 1] + similarity : -1000;
+      var deleted = values[(i - 1) * width + j], inserted = values[i * width + j - 1];
+      if (paired >= deleted && paired >= inserted) { values[i * width + j] = paired; dirs[i * width + j] = 3; }
+      else if (deleted >= inserted) { values[i * width + j] = deleted; dirs[i * width + j] = 1; }
+      else { values[i * width + j] = inserted; dirs[i * width + j] = 2; }
+    }
+    var result = []; i = n; j = m;
+    while (i || j) {
+      if (i && j && dirs[i * width + j] === 3) {
+        result.unshift(featureKey(base[i - 1]) === featureKey(compare[j - 1]) ? { type: 'equal', a: i - 1, b: j - 1 } : { type: 'replace', deleted: [i - 1], inserted: [j - 1] }); i--; j--;
+      } else if (i && (!j || dirs[i * width + j] === 1)) { result.unshift({ type: 'delete', deleted: [i - 1] }); i--; }
+      else { result.unshift({ type: 'insert', inserted: [j - 1] }); j--; }
+    }
+    return result;
   }
 
   function buildFeatureDiff(baseText, compareText) {
     var base = splitFeatures(baseText), compare = splitFeatures(compareText);
-    var ops = mergeOps(lcsOps(base.map(featureKey), compare.map(featureKey)));
-    var rows = [], counts = { added: 0, deleted: 0, modified: 0 };
+    var ops = pairFeatureOps(base, compare), rows = [], counts = { added: 0, deleted: 0, modified: 0 };
     ops.forEach(function (op) {
-      if (op.type === 'equal') {
-        rows.push({ type: 'equal', base: base[op.a], compare: compare[op.b] });
-      } else if (op.type === 'delete') {
-        op.deleted.forEach(function (idx) { rows.push({ type: 'delete', base: base[idx], compare: '' }); counts.deleted++; });
-      } else if (op.type === 'insert') {
-        op.inserted.forEach(function (idx) { rows.push({ type: 'insert', base: '', compare: compare[idx] }); counts.added++; });
-      } else {
-        var baseJoined = op.deleted.map(function (idx) { return base[idx]; }).join(' ');
-        var compareJoined = op.inserted.map(function (idx) { return compare[idx]; }).join(' ');
-        rows.push({ type: 'replace', base: baseJoined, compare: compareJoined, diff: charDiff(baseJoined, compareJoined) });
-        counts.modified++;
+      if (op.type === 'equal') rows.push({ type: 'equal', base: base[op.a], compare: compare[op.b] });
+      else if (op.type === 'delete') op.deleted.forEach(function (idx) { rows.push({ type: 'delete', base: base[idx], compare: '' }); counts.deleted++; });
+      else if (op.type === 'insert') op.inserted.forEach(function (idx) { rows.push({ type: 'insert', base: '', compare: compare[idx] }); counts.added++; });
+      else {
+        var left = base[op.deleted[0]], right = compare[op.inserted[0]];
+        rows.push({ type: 'replace', base: left, compare: right, diff: tokenDiff(left, right) }); counts.modified++;
       }
     });
-    return { rows: rows, counts: counts };
+    return { rows: rows, counts: counts, inline: tokenDiff(baseText, compareText) };
   }
 
   function extractDependencies(text) {
@@ -159,10 +183,15 @@ var ComparisonClaimDiff = (function () {
   }
 
   function alignmentText(text) {
-    return String(text || '')
+    var value = String(text || '')
+      .replace(/^\s*\d+[.、]\s*/, '')
       .replace(/^(?:根据|根據|如|按照|依据|依據)\s*(?:权利要求|權利要求|权项|權項)\s*[0-9０-９、,，\-－至和及或\s]+(?:所述的|所述)?/i, '')
       .replace(/^the\s+.+?\s+of\s+claims?\s+[0-9,\s\-andorto]+,?\s*/i, '')
       .trim();
+    var cnWherein = value.search(/[，,]\s*(?:其中|其特征在于|其特徵在於)/);
+    var enWherein = value.search(/,\s*(?:wherein|in which)\b/i);
+    var start = cnWherein >= 0 ? cnWherein + 1 : (enWherein >= 0 ? enWherein + 1 : -1);
+    return start >= 0 ? value.slice(start).trim() : value;
   }
 
   function prepareClaims(claims) {
@@ -175,101 +204,158 @@ var ComparisonClaimDiff = (function () {
         dependencies: extractDependencies(text),
         index: index,
         key: claimKey({ text: text }),
-        alignment: alignmentText(text)
+        alignment: alignmentText(text),
+        ownKey: featureKey(alignmentText(text))
       };
     }).filter(function (claim) { return claim.text; });
   }
 
-  function candidateScore(base, compare, baseTotal, compareTotal) {
-    var text = diceSimilarity(base.alignment, compare.alignment);
-    var feature = diceSimilarity(splitFeatures(base.alignment).join(' '), splitFeatures(compare.alignment).join(' '));
-    var type = base.type === compare.type ? 0.08 : 0;
-    var number = base.num === compare.num ? 0.06 : 0;
-    var position = 0.04 * (1 - Math.min(1, Math.abs((base.index / Math.max(1, baseTotal - 1)) - (compare.index / Math.max(1, compareTotal - 1)))));
-    return { score: text * 0.74 + feature * 0.08 + type + number + position, text: text };
+  function gramOverlap(a, b) {
+    var x = featureKey(a), y = featureKey(b);
+    if (!x || !y) return 0;
+    if (x.indexOf(y) !== -1 || y.indexOf(x) !== -1) return Math.min(x.length, y.length) / Math.max(x.length, y.length) * 0.35 + 0.65;
+    var shortText = x.length <= y.length ? x : y, longText = x.length <= y.length ? y : x;
+    if (shortText.length < 2) return 0;
+    var grams = {}, common = 0, i;
+    for (i = 0; i < longText.length - 1; i++) grams[longText.substr(i, 2)] = true;
+    for (i = 0; i < shortText.length - 1; i++) if (grams[shortText.substr(i, 2)]) common++;
+    return common / (shortText.length - 1);
+  }
+
+  function dependencyScore(base, compare, parentMap) {
+    if (base.type !== 'dependent' || compare.type !== 'dependent') return 0;
+    var mapped = base.dependencies.map(function (num) { return parentMap[num]; }).filter(Boolean);
+    if (!mapped.length) return 0;
+    var hits = mapped.filter(function (num) { return compare.dependencies.indexOf(num) !== -1; }).length;
+    return hits ? 0.18 * hits / mapped.length : -0.1;
+  }
+
+  function candidateScore(base, compare, baseTotal, compareTotal, parentMap) {
+    var full = diceSimilarity(base.text, compare.text);
+    var own = diceSimilarity(base.alignment, compare.alignment);
+    var contained = gramOverlap(base.alignment, compare.text);
+    var content = Math.max(own, contained * 0.86);
+    var type = base.type === compare.type ? 0.08 : -0.02;
+    var number = base.num === compare.num ? 0.035 : 0;
+    var position = 0.035 * (1 - Math.min(1, Math.abs((base.index / Math.max(1, baseTotal - 1)) - (compare.index / Math.max(1, compareTotal - 1)))));
+    var relation = dependencyScore(base, compare, parentMap || {});
+    return { score: full * 0.32 + content * 0.5 + type + number + position + relation, text: Math.max(full, content), full: full, own: own };
+  }
+
+  // 权利要求通常保持大体顺序；序列动态规划可避免局部高分抢走后续正确匹配。
+  function sequenceMatch(bases, compares, scorer, threshold) {
+    var n = bases.length, m = compares.length, width = m + 1;
+    var values = new Float64Array((n + 1) * width), dirs = new Uint8Array((n + 1) * width), i, j;
+    for (i = 1; i <= n; i++) {
+      for (j = 1; j <= m; j++) {
+        var candidate = scorer(bases[i - 1], compares[j - 1]);
+        var match = values[(i - 1) * width + j - 1] + (candidate.score >= threshold && candidate.text >= 0.22 ? candidate.score - threshold + 0.01 : -1000);
+        var skipBase = values[(i - 1) * width + j], skipCompare = values[i * width + j - 1];
+        if (match >= skipBase && match >= skipCompare) { values[i * width + j] = match; dirs[i * width + j] = 3; }
+        else if (skipBase >= skipCompare) { values[i * width + j] = skipBase; dirs[i * width + j] = 1; }
+        else { values[i * width + j] = skipCompare; dirs[i * width + j] = 2; }
+      }
+    }
+    var pairs = []; i = n; j = m;
+    while (i && j) {
+      if (dirs[i * width + j] === 3) { var score = scorer(bases[i - 1], compares[j - 1]); pairs.unshift({ base: bases[i - 1], compare: compares[j - 1], score: score.score }); i--; j--; }
+      else if (dirs[i * width + j] === 1) i--;
+      else j--;
+    }
+    return pairs;
   }
 
   function alignClaims(baseClaims, compareClaims) {
-    var bases = prepareClaims(baseClaims), compares = prepareClaims(compareClaims);
-    var pairs = [], usedBase = {}, usedCompare = {};
-
-    // 完全相同的文本先全局匹配，避免权项编号变化被误报为删除和新增。
-    bases.forEach(function (base) {
-      compares.some(function (compare) {
-        if (usedCompare[compare.index] || base.key !== compare.key) return false;
-        pairs.push({ base: base, compare: compare, score: 1, exact: true });
-        usedBase[base.index] = true;
-        usedCompare[compare.index] = true;
-        return true;
-      });
-    });
-
-    var candidates = [];
-    bases.forEach(function (base) {
-      if (usedBase[base.index]) return;
-      compares.forEach(function (compare) {
-        if (usedCompare[compare.index]) return;
-        var candidate = candidateScore(base, compare, bases.length, compares.length);
-        if (candidate.score >= MATCH_THRESHOLD && candidate.text >= 0.22) {
-          candidates.push({ base: base, compare: compare, score: candidate.score });
-        }
-      });
-    });
-    candidates.sort(function (a, b) {
-      return (b.score - a.score) || (Math.abs(a.base.index - a.compare.index) - Math.abs(b.base.index - b.compare.index));
-    });
-    candidates.forEach(function (candidate) {
-      if (usedBase[candidate.base.index] || usedCompare[candidate.compare.index]) return;
-      pairs.push(candidate);
-      usedBase[candidate.base.index] = true;
-      usedCompare[candidate.compare.index] = true;
-    });
-
-    return { pairs: pairs, deleted: bases.filter(function (claim) { return !usedBase[claim.index]; }), added: compares.filter(function (claim) { return !usedCompare[claim.index]; }) };
+    var bases = prepareClaims(baseClaims), compares = prepareClaims(compareClaims), pairs = [], usedBase = {}, usedCompare = {}, parentMap = {};
+    function accept(next) {
+      next.forEach(function (pair) { pairs.push(pair); usedBase[pair.base.index] = true; usedCompare[pair.compare.index] = true; parentMap[pair.base.num] = pair.compare.num; });
+    }
+    var independentBases = bases.filter(function (claim) { return claim.type === 'independent'; });
+    var independentCompares = compares.filter(function (claim) { return claim.type === 'independent'; });
+    accept(sequenceMatch(independentBases, independentCompares, function (base, compare) {
+      return candidateScore(base, compare, bases.length, compares.length, parentMap);
+    }, 0.35));
+    var remainingBases = bases.filter(function (claim) { return !usedBase[claim.index]; });
+    var remainingCompares = compares.filter(function (claim) { return !usedCompare[claim.index]; });
+    accept(sequenceMatch(remainingBases, remainingCompares, function (base, compare) {
+      return candidateScore(base, compare, bases.length, compares.length, parentMap);
+    }, MATCH_THRESHOLD));
+    pairs.sort(function (a, b) { return a.base.index - b.base.index; });
+    return { bases: bases, compares: compares, pairs: pairs, deleted: bases.filter(function (claim) { return !usedBase[claim.index]; }), added: compares.filter(function (claim) { return !usedCompare[claim.index]; }), parentMap: parentMap };
   }
 
-  function classifyPair(pair) {
-    var base = pair.base, compare = pair.compare;
-    var featureDiff = buildFeatureDiff(base.text, compare.text);
-    var reasons = [];
+  function parentMigration(base, compare, parentMap) {
+    if (base.type !== 'dependent' || compare.type !== 'dependent') return null;
+    var mapped = base.dependencies.map(function (num) { return parentMap[num] || num; });
+    var changed = base.dependencies.join(',') !== compare.dependencies.join(',');
+    return changed ? { from: base.dependencies, mapped: mapped, to: compare.dependencies, coherent: mapped.join(',') === compare.dependencies.join(',') } : null;
+  }
+
+  function classifyPair(pair, parentMap) {
+    var base = pair.base, compare = pair.compare, featureDiff = buildFeatureDiff(base.text, compare.text), reasons = [];
+    var migration = parentMigration(base, compare, parentMap);
     if (base.num !== compare.num) reasons.push('权项编号变化');
     if (base.type !== compare.type) reasons.push(base.type === 'dependent' ? '从属权利要求提升为独立权利要求' : '独立权利要求调整为从属权利要求');
-    if (base.dependencies.join(',') !== compare.dependencies.join(',')) reasons.push('从属关系变化');
-    if (featureDiff.counts.added || featureDiff.counts.deleted || featureDiff.counts.modified) reasons.push('技术特征变化');
+    if (migration) reasons.push(migration.coherent ? '随父项迁移' : '从属关系调整');
+    if (base.key !== compare.key) reasons.push('文字或技术特征变化');
     var status = 'same';
     if (base.type === 'dependent' && compare.type === 'independent') status = 'promoted';
     else if (base.type === 'independent' && compare.type === 'dependent') status = 'demoted';
-    else if (reasons.length) status = 'modified';
-    return { base: base, compare: compare, status: status, reasons: reasons, score: pair.score, featureDiff: featureDiff };
+    else if (migration) status = 'dependency_migrated';
+    else if (base.key === compare.key && base.num !== compare.num) status = 'renumbered';
+    else if (base.key !== compare.key) status = 'modified';
+    return { base: base, compare: compare, primaryGranted: compare, status: status, lineageType: status, reasons: reasons, score: pair.score, featureDiff: featureDiff, parentMigration: migration, mergedInto: null };
+  }
+
+  function findMergedTarget(base, compares, parentMap) {
+    if (base.type !== 'dependent' || base.ownKey.length < 4) return null;
+    var preferred = base.dependencies.map(function (num) { return parentMap[num]; }).filter(Boolean), best = null;
+    var core = base.alignment.replace(/其中|其特征在于|其特徵在於|所述|上述|该|該|还|還|包括|包含|wherein|said|the/gi, '');
+    compares.forEach(function (compare) {
+      var containment = Math.max(gramOverlap(base.alignment, compare.text), gramOverlap(core, compare.text));
+      var similarity = Math.max(diceSimilarity(base.alignment, compare.text), diceSimilarity(core, compare.text));
+      var parentBonus = preferred.indexOf(compare.num) !== -1 ? 0.14 : 0;
+      var score = containment * 0.72 + similarity * 0.28 + parentBonus;
+      if (containment >= 0.58 && (!best || score > best.score)) best = { claim: compare, score: score, containment: containment };
+    });
+    return best;
   }
 
   function computeDiff(baseClaims, compareClaims) {
-    var aligned = alignClaims(baseClaims, compareClaims);
-    var items = aligned.pairs.map(classifyPair);
-    aligned.deleted.forEach(function (claim) {
-      items.push({ base: claim, compare: null, status: 'deleted', reasons: ['整条权利要求删除'], score: 0, featureDiff: buildFeatureDiff(claim.text, '') });
+    var aligned = alignClaims(baseClaims, compareClaims), pairByBase = {};
+    aligned.pairs.forEach(function (pair) { pairByBase[pair.base.index] = pair; });
+    var publicItems = aligned.bases.map(function (base) {
+      if (pairByBase[base.index]) return classifyPair(pairByBase[base.index], aligned.parentMap);
+      var merged = findMergedTarget(base, aligned.compares, aligned.parentMap);
+      if (merged) return { base: base, compare: null, primaryGranted: null, status: 'merged_into', lineageType: 'merged_into', reasons: ['附加限定并入授权权利要求 ' + merged.claim.num], score: merged.score, featureDiff: buildFeatureDiff(base.text, merged.claim.text), parentMigration: null, mergedInto: merged.claim };
+      return { base: base, compare: null, primaryGranted: null, status: 'deleted', lineageType: 'deleted', reasons: ['整条权利要求删除'], score: 0, featureDiff: buildFeatureDiff(base.text, ''), parentMigration: null, mergedInto: null };
     });
-    aligned.added.forEach(function (claim) {
-      items.push({ base: null, compare: claim, status: 'added', reasons: ['新增权利要求'], score: 0, featureDiff: buildFeatureDiff('', claim.text) });
+    var grantedOnly = aligned.added.map(function (claim) { return { base: null, compare: claim, primaryGranted: claim, status: 'added', lineageType: 'added', reasons: ['授权版新增权利要求'], score: 0, featureDiff: buildFeatureDiff('', claim.text) }; });
+    var stats = { baseTotal: aligned.bases.length, compareTotal: aligned.compares.length, same: 0, changed: 0, added: grantedOnly.length, deleted: 0, promoted: 0, demoted: 0, merged: 0, migrated: 0 };
+    publicItems.forEach(function (item) {
+      if (item.status === 'same') stats.same++; else stats.changed++;
+      if (item.status === 'deleted') stats.deleted++;
+      if (item.status === 'promoted') stats.promoted++;
+      if (item.status === 'demoted') stats.demoted++;
+      if (item.status === 'merged_into') stats.merged++;
+      if (item.status === 'dependency_migrated') stats.migrated++;
     });
-    items.sort(function (a, b) {
-      var aIndex = a.base ? a.base.index : (a.compare ? a.compare.index + 0.5 : 0);
-      var bIndex = b.base ? b.base.index : (b.compare ? b.compare.index + 0.5 : 0);
-      return aIndex - bIndex;
-    });
-    var stats = { baseTotal: prepareClaims(baseClaims).length, compareTotal: prepareClaims(compareClaims).length, same: 0, changed: 0, added: 0, deleted: 0, promoted: 0, demoted: 0 };
-    items.forEach(function (item) {
-      if (item.status === 'same') stats.same++;
-      else { stats.changed++; if (stats[item.status] !== undefined) stats[item.status]++; }
-    });
-    return { items: items, stats: stats };
+    return { publicItems: publicItems, grantedOnly: grantedOnly, items: publicItems.concat(grantedOnly), stats: stats };
   }
 
   function renderHighlighted(text, diff, side) {
-    if (!diff || !diff.deleted && !diff.inserted) return esc(text);
-    var changed = side === 'base' ? diff.deleted : diff.inserted;
-    var css = side === 'base' ? 'cd-del' : 'cd-ins';
-    return esc(diff.prefix) + (changed ? '<mark class="' + css + '">' + esc(changed) + '</mark>' : '') + esc(diff.suffix);
+    if (!diff || !diff.ops) return esc(text);
+    var tokens = side === 'base' ? diff.left : diff.right, html = '';
+    diff.ops.forEach(function (op) {
+      if (op.type === 'equal') html += esc(tokens[side === 'base' ? op.a : op.b].text);
+      else {
+        var indexes = side === 'base' ? op.deleted : op.inserted;
+        if (!indexes || !indexes.length) return;
+        var changed = indexes.map(function (idx) { return tokens[idx].text; }).join('');
+        html += '<mark class="' + (side === 'base' ? 'cd-del' : 'cd-ins') + '">' + esc(changed) + '</mark>';
+      }
+    });
+    return html;
   }
 
   function renderFeatureRows(featureDiff) {
@@ -286,7 +372,7 @@ var ComparisonClaimDiff = (function () {
   }
 
   function statusLabel(status) {
-    return { same: '未变化', modified: '内容修改', promoted: '从属转独立', demoted: '独立转从属', added: '新增权项', deleted: '删除权项' }[status] || status;
+    return { same: '未变化', modified: '内容修改', renumbered: '仅编号变化', promoted: '从属转独立', demoted: '独立转从属', dependency_migrated: '随父项迁移', merged_into: '限定并入', added: '授权新增', deleted: '整项删除' }[status] || status;
   }
 
   function claimLabel(claim) {
@@ -294,10 +380,23 @@ var ComparisonClaimDiff = (function () {
     return '权利要求 ' + esc(claim.num) + '<span class="claimdiff-type ' + claim.type + '">' + (claim.type === 'independent' ? '独立' : '从属') + '</span>';
   }
 
+  function relationText(claim) {
+    if (!claim) return '无对应权项';
+    return claim.type === 'independent' ? '独立权利要求' : '从属权利要求' + (claim.dependencies.length ? '，引用权' + claim.dependencies.join('、') : '');
+  }
+
+  function renderFullText(item) {
+    var base = item.base, target = item.compare || item.mergedInto;
+    var diff = target ? item.featureDiff.inline : null;
+    var html = '<div class="claimdiff-full-grid">';
+    html += '<section class="claimdiff-full-text base"><header>公开权利要求 ' + esc(base.num) + '</header><p>' + (target ? renderHighlighted(base.text, diff, 'base') : '<mark class="cd-del">' + esc(base.text) + '</mark>') + '</p></section>';
+    html += '<section class="claimdiff-full-text compare"><header>' + (target ? (item.mergedInto ? '并入授权权利要求 ' : '授权权利要求 ') + esc(target.num) : '授权版') + '</header><p>' + (target ? renderHighlighted(target.text, diff, 'compare') : '<span class="cd-empty">该公开权项未形成对应授权权项</span>') + '</p></section>';
+    return html + '</div>';
+  }
+
   function renderItem(item) {
-    var base = item.base, compare = item.compare;
-    var isChanged = item.status !== 'same';
-    var html = '<details class="claimdiff-item ' + item.status + '"' + (isChanged ? ' open' : '') + '>';
+    var base = item.base, compare = item.compare || item.mergedInto;
+    var html = '<details class="claimdiff-item ' + item.status + '" open>';
     html += '<summary><div class="claimdiff-map-columns">';
     html += '<span class="claimdiff-map-claim">' + claimLabel(base) + '</span>';
     html += '<span class="claimdiff-map-arrow">→</span>';
@@ -306,14 +405,17 @@ var ComparisonClaimDiff = (function () {
     html += '<span class="claimdiff-summary">' + (item.reasons.join(' · ') || '文本和权项关系一致') + '</span>';
     html += '</div></summary>';
     html += '<div class="claimdiff-item-body">';
-    if (base && compare) {
-      var relation = '权项关系：' + (base.type === 'independent' ? '独立权利要求' : '从属权利要求' + (base.dependencies.length ? '（引用权' + base.dependencies.join('、') + '）' : '')) + ' → ' + (compare.type === 'independent' ? '独立权利要求' : '从属权利要求' + (compare.dependencies.length ? '（引用权' + compare.dependencies.join('、') + '）' : ''));
-      html += '<div class="claimdiff-relation">' + esc(relation) + '</div>';
-    }
-    html += '<div class="claimdiff-detail-head"><span>基准版本</span><span>授权版本</span></div>';
-    html += renderFeatureRows(item.featureDiff);
+    html += '<div class="claimdiff-relation"><b>谱系判断</b><span>' + esc(relationText(base) + ' → ' + relationText(compare)) + '</span>';
+    if (item.parentMigration) html += '<span>父项路径：公开权' + esc(item.parentMigration.from.join('、')) + ' → 授权权' + esc(item.parentMigration.to.join('、')) + '</span>';
+    html += '</div>';
+    html += renderFullText(item);
+    if (compare) html += '<details class="claimdiff-features"><summary>查看技术特征拆分</summary><div class="claimdiff-detail-head"><span>公开版本</span><span>授权版本</span></div>' + renderFeatureRows(item.featureDiff) + '</details>';
     html += '</div></details>';
     return html;
+  }
+
+  function renderGrantedOnly(item) {
+    return '<article class="claimdiff-granted-only"><header>' + claimLabel(item.compare) + '<span class="claimdiff-status added">授权新增</span></header><p><mark class="cd-ins">' + esc(item.compare.text) + '</mark></p></article>';
   }
 
   function renderResultHtml() {
@@ -321,10 +423,10 @@ var ComparisonClaimDiff = (function () {
     if (!result) return '';
     var stats = result.stats;
     var filter = _state.filter;
-    var visible = result.items.filter(function (item) {
+    var visible = result.publicItems.filter(function (item) {
       if (filter === 'all') return true;
-      if (filter === 'independent') return (item.base && item.base.type === 'independent') || (item.compare && item.compare.type === 'independent');
-      if (filter === 'structure') return item.status === 'promoted' || item.status === 'demoted' || item.status === 'added' || item.status === 'deleted' || item.reasons.indexOf('从属关系变化') !== -1;
+      if (filter === 'independent') return item.base.type === 'independent' || (item.compare && item.compare.type === 'independent');
+      if (filter === 'structure') return item.status === 'promoted' || item.status === 'demoted' || item.status === 'deleted' || item.status === 'merged_into' || item.status === 'dependency_migrated';
       return item.status !== 'same';
     });
     var html = '<div class="claimdiff-stats">';
@@ -333,12 +435,14 @@ var ComparisonClaimDiff = (function () {
     html += '<span class="added"><b>' + stats.added + '</b> 项新增</span><span class="deleted"><b>' + stats.deleted + '</b> 项删除</span>';
     html += '</div>';
     html += '<div class="claimdiff-filterbar"><span>查看：</span>';
-    [{ id: 'changed', label: '仅变化项' }, { id: 'independent', label: '独立权利要求' }, { id: 'structure', label: '结构变化' }, { id: 'all', label: '全部权项' }].forEach(function (option) {
+    [{ id: 'all', label: '全部公开权项' }, { id: 'changed', label: '仅变化项' }, { id: 'independent', label: '独立权利要求' }, { id: 'structure', label: '谱系变化' }].forEach(function (option) {
       html += '<button class="claimdiff-filter' + (_state.filter === option.id ? ' active' : '') + '" data-filter="' + option.id + '">' + option.label + '</button>';
     });
     html += '</div>';
-    html += '<div class="claimdiff-map-head"><span>公开版（基准）</span><span></span><span>授权版（对比）</span><span>结论</span><span>变化说明</span></div>';
+    html += '<div class="claimdiff-section-title"><strong>公开版权利要求演变</strong><span>以公开版原始顺序完整展示</span></div>';
+    html += '<div class="claimdiff-map-head"><span>公开版（主轴）</span><span></span><span>授权版去向</span><span>结论</span><span>变化说明</span></div>';
     html += '<div class="claimdiff-list">' + (visible.length ? visible.map(renderItem).join('') : '<div class="claimdiff-empty">当前筛选条件下没有对应的权利要求变化。</div>') + '</div>';
+    if (result.grantedOnly.length) html += '<section class="claimdiff-granted-section"><div class="claimdiff-section-title"><strong>授权版新增权利要求</strong><span>未由某一公开权项直接演变而来</span></div>' + result.grantedOnly.map(renderGrantedOnly).join('') + '</section>';
     return html;
   }
 
@@ -431,5 +535,5 @@ var ComparisonClaimDiff = (function () {
     run();
   }
 
-  return { computeDiff: computeDiff, alignClaims: alignClaims, buildFeatureDiff: buildFeatureDiff, extractDependencies: extractDependencies, renderInputArea: renderInputArea, enterWithPatents: enterWithPatents, getState: function () { return JSON.parse(JSON.stringify(_state)); } };
+  return { computeDiff: computeDiff, alignClaims: alignClaims, buildFeatureDiff: buildFeatureDiff, tokenDiff: tokenDiff, extractDependencies: extractDependencies, renderInputArea: renderInputArea, enterWithPatents: enterWithPatents, getState: function () { return JSON.parse(JSON.stringify(_state)); } };
 })();
