@@ -70,3 +70,46 @@ test('识别中文和英文从属关系', () => {
   assert.deepEqual(Array.from(CD.extractDependencies('根据权利要求1或2所述的装置。')), ['1', '2']);
   assert.deepEqual(Array.from(CD.extractDependencies('The apparatus of claims 3 and 4, wherein the processor is configured.')), ['3', '4']);
 });
+
+test('公开版是固定主轴，所有公开权项按原顺序保留', () => {
+  const CD = loadClaimDiff();
+  const result = CD.computeDiff(
+    [{ num: '1', type: 'independent', text: '一种装置，包括处理器和存储器。' },
+      { num: '2', type: 'dependent', text: '根据权利要求1所述的装置，其中所述存储器为非易失性存储器。' },
+      { num: '3', type: 'dependent', text: '根据权利要求1所述的装置，其中所述装置还包括安全模块。' }],
+    [{ num: '1', type: 'independent', text: '一种装置，包括处理器和存储器。' },
+      { num: '2', type: 'independent', text: '一种装置，包括处理器和存储器，其中所述存储器为非易失性存储器。' },
+      { num: '4', type: 'dependent', text: '根据权利要求2所述的装置，其中所述装置还包括安全模块。' }],
+  );
+  assert.deepEqual(result.publicItems.map((item) => item.base.num), ['1', '2', '3']);
+  assert.equal(result.publicItems.length, 3);
+  assert.equal(result.grantedOnly.length, 0);
+  assert.equal(result.publicItems[1].status, 'promoted');
+  assert.equal(result.publicItems[2].status, 'dependency_migrated');
+});
+
+test('局部文字修改使用 token 差异而不是整句替换', () => {
+  const CD = loadClaimDiff();
+  const diff = CD.buildFeatureDiff('一种装置，包括处理器和存储器。', '一种装置，包括控制器和存储器。');
+  const modified = diff.rows.find((row) => row.type === 'replace');
+  assert.ok(modified);
+  assert.ok(modified.diff.ops.some((op) => op.type === 'equal'));
+  const changed = modified.diff.ops.find((op) => op.type === 'replace');
+  assert.ok(changed);
+  assert.ok(changed.deleted.length < modified.diff.left.length);
+  assert.ok(changed.inserted.length < modified.diff.right.length);
+});
+
+test('从权未形成独立授权项时识别附加限定并入', () => {
+  const CD = loadClaimDiff();
+  const result = CD.computeDiff(
+    [{ num: '1', type: 'independent', text: '一种数据处理装置，包括处理器和存储器。' },
+      { num: '2', type: 'dependent', text: '根据权利要求1所述的数据处理装置，其中所述处理器还包括安全认证模块。' }],
+    [{ num: '1', type: 'independent', text: '一种数据处理装置，包括处理器、存储器和安全认证模块。' }],
+  );
+  const lineage = result.publicItems.find((item) => item.base.num === '2');
+  assert.equal(lineage.status, 'merged_into');
+  assert.equal(lineage.mergedInto.num, '1');
+  assert.equal(result.stats.deleted, 0);
+  assert.equal(result.stats.merged, 1);
+});
