@@ -13,7 +13,8 @@ var ComparisonClaimDiff = (function () {
     result: null,
     isLoading: false,
     error: '',
-    filter: 'all'
+    filter: 'all',
+    referenceOnlyExpanded: false
   };
 
   var MATCH_THRESHOLD = 0.34;
@@ -294,13 +295,16 @@ var ComparisonClaimDiff = (function () {
   function classifyPair(pair, parentMap) {
     var base = pair.base, compare = pair.compare, featureDiff = buildFeatureDiff(base.text, compare.text), reasons = [];
     var migration = parentMigration(base, compare, parentMap);
+    var referenceOnly = !!(migration && migration.coherent && base.ownKey === compare.ownKey);
+    if (referenceOnly) featureDiff.counts = { added: 0, deleted: 0, modified: 0 };
     if (base.num !== compare.num) reasons.push('权项编号变化');
     if (base.type !== compare.type) reasons.push(base.type === 'dependent' ? '从属权利要求提升为独立权利要求' : '独立权利要求调整为从属权利要求');
-    if (migration) reasons.push(migration.coherent ? '随父项迁移' : '从属关系调整');
-    if (base.key !== compare.key) reasons.push('文字或技术特征变化');
+    if (migration) reasons.push(referenceOnly ? '仅因父项映射更新引用序号' : (migration.coherent ? '随父项迁移' : '从属关系调整'));
+    if (base.key !== compare.key && !referenceOnly) reasons.push('文字或技术特征变化');
     var status = 'same';
     if (base.type === 'dependent' && compare.type === 'independent') status = 'promoted';
     else if (base.type === 'independent' && compare.type === 'dependent') status = 'demoted';
+    else if (referenceOnly) status = 'reference_only';
     else if (migration) status = 'dependency_migrated';
     else if (base.key === compare.key && base.num !== compare.num) status = 'renumbered';
     else if (base.key !== compare.key) status = 'modified';
@@ -331,7 +335,7 @@ var ComparisonClaimDiff = (function () {
       return { base: base, compare: null, primaryGranted: null, status: 'deleted', lineageType: 'deleted', reasons: ['整条权利要求删除'], score: 0, featureDiff: buildFeatureDiff(base.text, ''), parentMigration: null, mergedInto: null };
     });
     var grantedOnly = aligned.added.map(function (claim) { return { base: null, compare: claim, primaryGranted: claim, status: 'added', lineageType: 'added', reasons: ['授权版新增权利要求'], score: 0, featureDiff: buildFeatureDiff('', claim.text) }; });
-    var stats = { baseTotal: aligned.bases.length, compareTotal: aligned.compares.length, same: 0, changed: 0, added: grantedOnly.length, deleted: 0, promoted: 0, demoted: 0, merged: 0, migrated: 0 };
+    var stats = { baseTotal: aligned.bases.length, compareTotal: aligned.compares.length, same: 0, changed: 0, added: grantedOnly.length, deleted: 0, promoted: 0, demoted: 0, merged: 0, migrated: 0, referenceOnly: 0 };
     publicItems.forEach(function (item) {
       if (item.status === 'same') stats.same++; else stats.changed++;
       if (item.status === 'deleted') stats.deleted++;
@@ -339,6 +343,7 @@ var ComparisonClaimDiff = (function () {
       if (item.status === 'demoted') stats.demoted++;
       if (item.status === 'merged_into') stats.merged++;
       if (item.status === 'dependency_migrated') stats.migrated++;
+      if (item.status === 'reference_only') stats.referenceOnly++;
     });
     return { publicItems: publicItems, grantedOnly: grantedOnly, items: publicItems.concat(grantedOnly), stats: stats };
   }
@@ -372,7 +377,7 @@ var ComparisonClaimDiff = (function () {
   }
 
   function statusLabel(status) {
-    return { same: '未变化', modified: '内容修改', renumbered: '仅编号变化', promoted: '从属转独立', demoted: '独立转从属', dependency_migrated: '随父项迁移', merged_into: '限定并入', added: '授权新增', deleted: '整项删除' }[status] || status;
+    return { same: '未变化', modified: '内容修改', renumbered: '仅编号变化', promoted: '从属转独立', demoted: '独立转从属', dependency_migrated: '随父项迁移', reference_only: '仅引用序号变化', merged_into: '限定并入', added: '授权新增', deleted: '整项删除' }[status] || status;
   }
 
   function claimLabel(claim) {
@@ -396,7 +401,8 @@ var ComparisonClaimDiff = (function () {
 
   function renderItem(item) {
     var base = item.base, compare = item.compare || item.mergedInto;
-    var html = '<details class="claimdiff-item ' + item.status + '" open>';
+    var open = item.status !== 'reference_only' || _state.referenceOnlyExpanded;
+    var html = '<details class="claimdiff-item ' + item.status + '"' + (open ? ' open' : '') + '>';
     html += '<summary><div class="claimdiff-map-columns">';
     html += '<span class="claimdiff-map-claim">' + claimLabel(base) + '</span>';
     html += '<span class="claimdiff-map-arrow">→</span>';
@@ -426,7 +432,7 @@ var ComparisonClaimDiff = (function () {
     var visible = result.publicItems.filter(function (item) {
       if (filter === 'all') return true;
       if (filter === 'independent') return item.base.type === 'independent' || (item.compare && item.compare.type === 'independent');
-      if (filter === 'structure') return item.status === 'promoted' || item.status === 'demoted' || item.status === 'deleted' || item.status === 'merged_into' || item.status === 'dependency_migrated';
+      if (filter === 'structure') return item.status === 'promoted' || item.status === 'demoted' || item.status === 'deleted' || item.status === 'merged_into' || item.status === 'dependency_migrated' || item.status === 'reference_only';
       return item.status !== 'same';
     });
     var html = '<div class="claimdiff-stats">';
@@ -438,6 +444,7 @@ var ComparisonClaimDiff = (function () {
     [{ id: 'all', label: '全部公开权项' }, { id: 'changed', label: '仅变化项' }, { id: 'independent', label: '独立权利要求' }, { id: 'structure', label: '谱系变化' }].forEach(function (option) {
       html += '<button class="claimdiff-filter' + (_state.filter === option.id ? ' active' : '') + '" data-filter="' + option.id + '">' + option.label + '</button>';
     });
+    if (stats.referenceOnly) html += '<button class="claimdiff-reference-toggle" id="claimdiff-toggle-reference" type="button">' + (_state.referenceOnlyExpanded ? '折叠' : '展开') + '仅引用序号变化项（' + stats.referenceOnly + '）</button>';
     html += '</div>';
     html += '<div class="claimdiff-section-title"><strong>公开版权利要求演变</strong><span>以公开版原始顺序完整展示</span></div>';
     html += '<div class="claimdiff-map-head"><span>公开版（主轴）</span><span></span><span>授权版去向</span><span>结论</span><span>变化说明</span></div>';
@@ -482,6 +489,8 @@ var ComparisonClaimDiff = (function () {
     container.querySelector('#claimdiff-run').addEventListener('click', run);
     container.querySelector('#claimdiff-swap').addEventListener('click', function () { var value = _state.baseNum; _state.baseNum = _state.compareNum; _state.compareNum = value; rerender(); });
     container.querySelectorAll('.claimdiff-filter').forEach(function (button) { button.addEventListener('click', function () { _state.filter = this.dataset.filter; rerender(); }); });
+    var referenceToggle = container.querySelector('#claimdiff-toggle-reference');
+    if (referenceToggle) referenceToggle.addEventListener('click', function () { _state.referenceOnlyExpanded = !_state.referenceOnlyExpanded; rerender(); });
   }
 
   function setStatus(message, error) {
@@ -494,7 +503,7 @@ var ComparisonClaimDiff = (function () {
     _state.compareNum = normalizeNum(_state.compareNum);
     if (!_state.baseNum || !_state.compareNum) { _state.error = '请输入公开版本和授权版本的公开号'; rerender(); return; }
     if (_state.baseNum === _state.compareNum) { _state.error = '两个公开号相同，无需比对'; rerender(); return; }
-    _state.isLoading = true; _state.error = ''; _state.result = null; rerender();
+    _state.isLoading = true; _state.error = ''; _state.result = null; _state.referenceOnlyExpanded = false; rerender();
     try {
       setStatus('正在读取公开版权利要求…');
       var base = await fetchPatentData(_state.baseNum);
@@ -529,7 +538,7 @@ var ComparisonClaimDiff = (function () {
 
   function enterWithPatents(first, second) {
     var pair = inferPublicationFirst(first, second);
-    _state.baseNum = pair.base; _state.compareNum = pair.compare; _state.result = null; _state.error = '';
+    _state.baseNum = pair.base; _state.compareNum = pair.compare; _state.result = null; _state.error = ''; _state.referenceOnlyExpanded = false;
     if (typeof ComparisonCore !== 'undefined') { ComparisonCore.setInputMode('claimdiff'); ComparisonCore.setActiveTab('prepare'); }
     if (typeof ComparisonUI !== 'undefined') ComparisonUI.render();
     run();
