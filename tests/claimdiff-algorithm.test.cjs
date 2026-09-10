@@ -113,3 +113,20 @@ test('从权未形成独立授权项时识别附加限定并入', () => {
   assert.equal(result.stats.deleted, 0);
   assert.equal(result.stats.merged, 1);
 });
+
+test('父项编号变化但自身限定不变时标记为仅引用序号变化', () => {
+  const CD = loadClaimDiff();
+  const result = CD.computeDiff(
+    [{ num: '1', type: 'independent', text: '一种装置，包括处理器。' },
+      { num: '2', type: 'dependent', text: '根据权利要求1所述的装置，其中所述处理器包括安全模块。' }],
+    [{ num: '2', type: 'independent', text: '一种装置，包括处理器。' },
+      { num: '3', type: 'dependent', text: '根据权利要求2所述的装置，其中所述处理器包括安全模块。' }],
+  );
+  const item = result.publicItems.find((entry) => entry.base.num === '2');
+  assert.equal(item.status, 'reference_only');
+  assert.equal(result.stats.referenceOnly, 1);
+  assert.ok(item.reasons.includes('仅因父项映射更新引用序号'));
+  assert.equal(item.featureDiff.counts.added, 0);
+  assert.equal(item.featureDiff.counts.deleted, 0);
+  assert.equal(item.featureDiff.counts.modified, 0);
+});
