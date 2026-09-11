@@ -10,8 +10,11 @@
   function isCustom(provider) { return provider && provider.value === "custom"; }
   function customConfig() { return window.AI.loadAIConfig().custom || {}; }
   function ensureCustomOption(provider) {
-    if (!provider || provider.querySelector('option[value="custom"]')) return;
-    var option = document.createElement("option"); option.value = "custom"; option.textContent = "自定义供应商"; provider.appendChild(option);
+    if (!provider) return;
+    var option = provider.querySelector('option[value="custom"]');
+    if (!option) { option = document.createElement("option"); option.value = "custom"; provider.appendChild(option); }
+    var config = window.AI && window.AI.loadAIConfig ? window.AI.loadAIConfig() : {}, custom = config.custom || {};
+    option.textContent = custom.name || "自定义供应商";
   }
   function ensureCustomControls(input) {
     var host = input && input.closest(".form-group"), apiGroup = document.getElementById("ai-api-key-input") && document.getElementById("ai-api-key-input").closest(".form-group");
@@ -30,6 +33,13 @@
     if (protocol) protocol.value = config.protocol || "openai-chat";
     if (reasoning) reasoning.value = config.reasoningEffort || "off";
   }
+  function loadCustomProviderFields() {
+    var config = window.AI.loadAIConfig(), custom = config.custom || {}, input = document.getElementById("ai-model-select"), key = document.getElementById("ai-api-key-input"), url = document.getElementById("ai-base-url-input");
+    if (input) input.value = custom.model || "";
+    if (key) key.value = custom.apiKey || "";
+    if (url) url.value = custom.baseUrl || "";
+    syncCustomForm();
+  }
   function persistCustomForm() {
     var input = document.getElementById("ai-model-select"), provider = document.getElementById("ai-provider-select"), key = document.getElementById("ai-api-key-input"), url = document.getElementById("ai-base-url-input");
     if (!isCustom(provider) || !window.AI) return;
@@ -43,11 +53,10 @@
     var box = document.getElementById("custom-provider-options"); if (box) box.hidden = !isCustom(provider);
   }
   function restoreCustomProvider() {
-    var provider = document.getElementById("ai-provider-select"), input = document.getElementById("ai-model-select"), key = document.getElementById("ai-api-key-input"), url = document.getElementById("ai-base-url-input"), config = window.AI.loadAIConfig(), custom = config.custom || {};
+    var provider = document.getElementById("ai-provider-select"), config = window.AI.loadAIConfig();
     ensureCustomOption(provider);
     if (config.currentProvider !== "custom") { toggleCustomControls(provider); return; }
-    provider.value = "custom"; if (input) input.value = custom.model || ""; if (key) key.value = custom.apiKey || ""; if (url) url.value = custom.baseUrl || "";
-    syncCustomForm(); toggleCustomControls(provider); refresh();
+    provider.value = "custom"; loadCustomProviderFields(); toggleCustomControls(provider); refresh();
   }
   function refresh() {
     var input = document.getElementById("ai-model-select"), provider = document.getElementById("ai-provider-select");
@@ -67,7 +76,9 @@
     var input = document.getElementById("ai-model-select"), provider = document.getElementById("ai-provider-select");
     if (!input || !provider || input.dataset.customModelReady) return;
     input.dataset.customModelReady = "1";
-    ensureCustomOption(provider); ensureCustomControls(input); syncCustomForm(); toggleCustomControls(provider);
+    ensureCustomOption(provider); ensureCustomControls(input);
+    if (window.AI.loadAIConfig().currentProvider === "custom") loadCustomProviderFields(); else syncCustomForm();
+    toggleCustomControls(provider);
     var host = input.closest(".form-group"), add = document.createElement("button");
     add.type = "button"; add.className = "custom-model-add"; add.textContent = "添加到常用模型"; add.title = "保存当前输入的模型名称，之后可从建议列表选择";
     host.appendChild(add);
@@ -83,7 +94,9 @@
       if (window.AI.addCustomModel(config, provider.value, input.value)) window.AI.saveAIConfig(config);
     });
     if (settings) settings.addEventListener("click", function () { setTimeout(restoreCustomProvider, 0); });
-    provider.addEventListener("change", function () { if (isCustom(provider)) syncCustomForm(); setTimeout(refresh, 0); });
+    var openCustom = document.getElementById("custom-provider-open-btn");
+    if (openCustom) openCustom.addEventListener("click", function () { provider.value = "custom"; loadCustomProviderFields(); toggleCustomControls(provider); refresh(); });
+    provider.addEventListener("change", function () { if (isCustom(provider)) loadCustomProviderFields(); setTimeout(refresh, 0); });
     input.addEventListener("change", function () { refresh(); });
     var test = document.getElementById("ai-test-btn");
     if (test) test.addEventListener("click", function () { persistCustomForm(); }, true);

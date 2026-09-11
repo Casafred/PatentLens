@@ -271,6 +271,7 @@ var AI = (function () {
     if (protocol === "openai-responses") return { reasoning: { effort: value } };
     if (protocol === "anthropic") return { thinking: { type: "enabled", budget_tokens: { low: 1024, medium: 4096, high: 8192 }[value] || 4096 } };
     if (protocol === "gemini") return { thinkingConfig: { thinkingBudget: { low: 1024, medium: 4096, high: 8192 }[value] || 4096 } };
+    if (protocol === "openai-chat") return { reasoning_effort: value };
     return {};
   }
 
