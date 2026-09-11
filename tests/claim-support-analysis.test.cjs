@@ -39,3 +39,14 @@ test('AI 结果可从 Markdown JSON 围栏中提取', () => {
   const CSA = loadSupportAnalysis();
   assert.equal(JSON.stringify(CSA.extractJson('```json\n{"features":[]}\n```')), '{"features":[]}');
 });
+
+test('全部独权范围按权利要求关系选择，不受页面折叠状态影响', () => {
+  const CSA = loadSupportAnalysis();
+  const claims = [
+    { num: '1', text: '一种装置。' },
+    { num: '2', type: 'dependent', text: '根据权利要求1所述的装置。' },
+    { num: '3', type: 'independent', text: '一种方法。' },
+    { num: '4', dependent_on: '3', text: '根据权利要求3所述的方法。' },
+  ];
+  assert.deepEqual(Array.from(CSA.allIndependentIndexes(claims)), [0, 2]);
+});
