@@ -9453,6 +9453,9 @@ body {
 .claim-support-batch-run { width:100%; margin-top:8px; padding:6px 9px; font-size:12px; }.claim-support-batch-warning { margin:0 0 8px; padding:6px 8px; border-left:3px solid #f59e0b; background:#fffbeb; color:#92400e; font-size:11px; }
 .custom-model-add { margin-top:7px; padding:4px 8px; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--accent); cursor:pointer; font-size:12px; }
 .custom-model-list { margin-top:6px; color:var(--text-muted); font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
+.custom-provider-options { padding:10px 12px 2px; margin:0 0 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-card); }
+.custom-provider-options .form-group { margin-bottom:10px; }
+.custom-provider-hint { margin:0 0 8px; color:var(--text-muted); font-size:11px; line-height:1.55; }
 .claim-support-body { padding:10px 12px; }
 .claim-support-empty,.claim-support-loading,.claim-support-error { display:flex; flex-direction:column; align-items:flex-start; gap:9px; min-height:130px; padding:18px 6px; color:var(--text-secondary); font-size:13px; line-height:1.65; }
 .claim-support-empty b { color:var(--text-primary); font-size:14px; }.claim-support-error { color:#b91c1c; }.claim-support-retry { padding:5px 9px; border:1px solid #fca5a5; border-radius:4px; background:#fff; color:#b91c1c; cursor:pointer; }

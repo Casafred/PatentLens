@@ -20,6 +20,7 @@ var AI = (function () {
       case "openai": return "https://api.openai.com";
       case "zhipu": return "https://open.bigmodel.cn/api/paas";
       case "deepseek": return "https://api.deepseek.com";
+      case "custom": return "";
     }
   }
 
@@ -28,6 +29,7 @@ var AI = (function () {
       case "openai": return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-5.4", "gpt-5", "o3-mini", "o1"];
       case "zhipu": return ["glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.7-flashx", "glm-4.5-air", "glm-4-plus", "glm-4-flash", "glm-4-air"];
       case "deepseek": return ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"];
+      case "custom": return [];
     }
   }
 
@@ -71,7 +73,7 @@ var AI = (function () {
           type: pType,
           apiKey: translate.apiKey || pConfig.apiKey,
           baseUrl: pConfig.baseUrl,
-          model: translate.model || getDefaultTranslateModel(pType),
+          model: translate.model || getDefaultTranslateModel(pType) || pConfig.model,
         };
       }
     }
@@ -110,6 +112,7 @@ var AI = (function () {
         openai: createDefaultConfig("openai"),
         zhipu: createDefaultConfig("zhipu"),
         deepseek: createDefaultConfig("deepseek"),
+        custom: createDefaultConfig("custom"),
         currentProvider: "zhipu",
         ocr: { engine: "paddle_ocr_vl" },
         ops: { consumerKey: "", consumerSecret: "" },
@@ -119,6 +122,9 @@ var AI = (function () {
     if (!config.currentProvider) {
       config.currentProvider = "zhipu";
     }
+    if (!config.custom) config.custom = createDefaultConfig("custom");
+    if (!config.custom.protocol) config.custom.protocol = "openai-chat";
+    if (!config.custom.reasoningEffort) config.custom.reasoningEffort = "off";
     // Invalidate cached custom prompts if prompts version is outdated
     if (config.prompts && config.promptsVersion !== PROMPTS_VERSION) {
       delete config.prompts;
@@ -132,6 +138,9 @@ var AI = (function () {
   function saveAIConfig(config) {
     if (!config.ocr) config.ocr = { engine: "paddle_ocr_vl" };
     if (!config.ops) config.ops = { consumerKey: "", consumerSecret: "" };
+    if (!config.custom) config.custom = createDefaultConfig("custom");
+    if (!config.custom.protocol) config.custom.protocol = "openai-chat";
+    if (!config.custom.reasoningEffort) config.custom.reasoningEffort = "off";
     config.promptsVersion = PROMPTS_VERSION;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   }
@@ -208,7 +217,7 @@ var AI = (function () {
       if (selected && selected.apiKey) return selected;
     }
     // Fallback: find the first provider with an API key
-    var providerTypes = ["deepseek", "zhipu", "openai"];
+    var providerTypes = ["deepseek", "zhipu", "openai", "custom"];
     for (var i = 0; i < providerTypes.length; i++) {
       var c = config[providerTypes[i]];
       if (c && c.apiKey) return c;
@@ -235,7 +244,111 @@ var AI = (function () {
     return base;
   }
 
+  function endpoint(baseUrl, path) {
+    var base = String(baseUrl || "").replace(/\/+$/, "");
+    if (!base) throw new Error("请填写 API 服务地址");
+    if (/\/v\d+(?:beta)?$/i.test(base) && /^\/v\d+(?:beta)?\//i.test(path)) path = path.replace(/^\/v\d+(?:beta)?/i, "");
+    return base + path;
+  }
+
+  function customSettings() {
+    var custom = loadAIConfig().custom || {};
+    return { protocol: custom.protocol || "openai-chat", reasoningEffort: custom.reasoningEffort || "off" };
+  }
+
+  function splitMessages(messages) {
+    var system = [], rest = [];
+    (messages || []).forEach(function (message) {
+      if (message.role === "system" || message.role === "developer") system.push(String(message.content || ""));
+      else rest.push({ role: message.role === "assistant" ? "assistant" : "user", content: String(message.content || "") });
+    });
+    return { system: system.join("\n\n"), messages: rest };
+  }
+
+  function customThinking(protocol, effort) {
+    var value = effort || "off";
+    if (value === "off") return {};
+    if (protocol === "openai-responses") return { reasoning: { effort: value } };
+    if (protocol === "anthropic") return { thinking: { type: "enabled", budget_tokens: { low: 1024, medium: 4096, high: 8192 }[value] || 4096 } };
+    if (protocol === "gemini") return { thinkingConfig: { thinkingBudget: { low: 1024, medium: 4096, high: 8192 }[value] || 4096 } };
+    return {};
+  }
+
+  function responseInput(messages) {
+    return (messages || []).map(function (message) {
+      return { role: message.role === "system" ? "developer" : message.role, content: String(message.content || "") };
+    });
+  }
+
+  function parseOpenAIChunk(parsed) {
+    var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
+    return { content: (delta && delta.content) || "", reasoningContent: (delta && (delta.reasoning_content || delta.reasoning)) || "" };
+  }
+
+  function parseCustomChunk(protocol, parsed) {
+    if (protocol === "openai-responses") {
+      if (parsed.type === "response.output_text.delta") return { content: parsed.delta || "", reasoningContent: "" };
+      if (parsed.type === "response.reasoning_summary_text.delta" || parsed.type === "response.reasoning_text.delta") return { content: "", reasoningContent: parsed.delta || "" };
+      return { content: "", reasoningContent: "" };
+    }
+    if (protocol === "anthropic") {
+      if (parsed.type !== "content_block_delta") return { content: "", reasoningContent: "" };
+      return { content: (parsed.delta && parsed.delta.text) || "", reasoningContent: (parsed.delta && parsed.delta.thinking) || "" };
+    }
+    if (protocol === "gemini") {
+      var parts = parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts || [];
+      return parts.reduce(function (acc, part) { if (part.thought) acc.reasoningContent += part.text || ""; else acc.content += part.text || ""; return acc; }, { content: "", reasoningContent: "" });
+    }
+    return parseOpenAIChunk(parsed);
+  }
+
+  function customRequest(protocol, apiKey, baseUrl, params, stream) {
+    var split = splitMessages(params.messages), effort = customSettings().reasoningEffort, headers = { "Content-Type": "application/json" }, body, url;
+    if (protocol === "anthropic") {
+      url = endpoint(baseUrl, "/v1/messages");
+      headers["x-api-key"] = apiKey; headers["anthropic-version"] = "2023-06-01";
+      body = { model: params.model, system: split.system || undefined, messages: split.messages, max_tokens: params.maxTokens || 32768, stream: stream };
+      if (params.temperature != null && effort === "off") body.temperature = params.temperature;
+      if (effort !== "off") body.max_tokens = Math.max(body.max_tokens, ({ low: 1024, medium: 4096, high: 8192 }[effort] || 4096) + 1024);
+    } else if (protocol === "gemini") {
+      url = endpoint(baseUrl, "/v1beta/models/" + encodeURIComponent(params.model) + (stream ? ":streamGenerateContent?alt=sse" : ":generateContent") + (stream ? "&key=" : "?key=") + encodeURIComponent(apiKey));
+      body = { contents: split.messages.map(function (message) { return { role: message.role === "assistant" ? "model" : "user", parts: [{ text: message.content }] }; }), generationConfig: { maxOutputTokens: params.maxTokens || 32768 } };
+      if (split.system) body.systemInstruction = { parts: [{ text: split.system }] };
+      if (params.temperature != null && effort === "off") body.generationConfig.temperature = params.temperature;
+    } else if (protocol === "openai-responses") {
+      url = endpoint(baseUrl, "/responses"); headers.Authorization = "Bearer " + apiKey;
+      body = { model: params.model, input: responseInput(params.messages), max_output_tokens: params.maxTokens || 32768, stream: stream };
+      if (params.temperature != null && effort === "off") body.temperature = params.temperature;
+    } else {
+      url = endpoint(baseUrl, "/chat/completions"); headers.Authorization = "Bearer " + apiKey;
+      body = { model: params.model, messages: params.messages, max_tokens: params.maxTokens || 32768, stream: stream };
+      if (params.temperature != null) body.temperature = params.temperature;
+    }
+    if (protocol === "gemini" && effort !== "off") body.generationConfig.thinkingConfig = { thinkingBudget: { low: 1024, medium: 4096, high: 8192 }[effort] || 4096 };
+    else Object.assign(body, customThinking(protocol, effort));
+    return { url: url, headers: headers, body: body };
+  }
+
   async function* streamChat(providerType, apiKey, baseUrl, params, signal) {
+    if (providerType === "custom") {
+      var settings = customSettings(), custom = customRequest(settings.protocol, apiKey, baseUrl, params, true);
+      var customResponse = await fetch(custom.url, { method: "POST", headers: custom.headers, body: JSON.stringify(custom.body), signal: signal });
+      if (!customResponse.ok) throw new Error("AI API 请求失败 (" + customResponse.status + "): " + await customResponse.text());
+      var customReader = customResponse.body && customResponse.body.getReader();
+      if (!customReader) throw new Error("无法读取响应流");
+      var customDecoder = new TextDecoder(), customBuffer = "";
+      while (true) {
+        var customResult = await customReader.read(); if (customResult.done) break;
+        customBuffer += customDecoder.decode(customResult.value, { stream: true });
+        var customLines = customBuffer.split("\n"); customBuffer = customLines.pop() || "";
+        for (var ci = 0; ci < customLines.length; ci++) {
+          var customData = customLines[ci].trim(); if (!customData.startsWith("data:")) continue;
+          customData = customData.slice(5).trim(); if (customData === "[DONE]") { yield { content: "", done: true }; return; }
+          try { var customChunk = parseCustomChunk(settings.protocol, JSON.parse(customData)); if (customChunk.content || customChunk.reasoningContent) yield { content: customChunk.content, reasoningContent: customChunk.reasoningContent, done: false }; } catch (_) { /* wait for next event */ }
+        }
+      }
+      yield { content: "", done: true }; return;
+    }
     var url = buildUrl(providerType, baseUrl) + "/chat/completions";
 
     var body = {
@@ -317,9 +430,8 @@ var AI = (function () {
         }
         try {
           var parsed = JSON.parse(data);
-          var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
-          var content = (delta && delta.content) || "";
-          var reasoningContent = (delta && delta.reasoning_content) || "";
+          var standardChunk = parseOpenAIChunk(parsed);
+          var content = standardChunk.content, reasoningContent = standardChunk.reasoningContent;
           if (content || reasoningContent) {
             yield { content: content, reasoningContent: reasoningContent, done: false };
           }
@@ -333,6 +445,13 @@ var AI = (function () {
   async function testConnection(providerType, apiKey, baseUrl, model) {
     var start = performance.now();
     try {
+      if (providerType === "custom") {
+        var settings = customSettings(), custom = customRequest(settings.protocol, apiKey, baseUrl, { model: model, messages: [{ role: "user", content: "Hi" }], maxTokens: 5 }, false);
+        var customResponse = await fetch(custom.url, { method: "POST", headers: custom.headers, body: JSON.stringify(custom.body) });
+        var customLatency = Math.round(performance.now() - start);
+        if (customResponse.ok) return { success: true, message: "连接成功 (" + customLatency + "ms)", latency: customLatency };
+        return { success: false, message: "HTTP " + customResponse.status + ": " + (await customResponse.text()).slice(0, 200), latency: customLatency };
+      }
       var url = buildUrl(providerType, baseUrl) + "/chat/completions";
       var response = await fetch(url, {
         method: "POST",
@@ -362,10 +481,12 @@ var AI = (function () {
   }
 
   function getAvailableProviders() {
+    var custom = loadAIConfig().custom || {};
     return [
       { value: "deepseek", label: "DeepSeek" },
       { value: "zhipu", label: "智谱 GLM" },
       { value: "openai", label: "OpenAI" },
+      { value: "custom", label: custom.name || "自定义供应商" },
     ];
   }
 
