@@ -1,14 +1,35 @@
 /* PatentLens - AI claim-to-description support analysis. */
 var ClaimSupportAnalysis = (function () {
   "use strict";
-  var state = { results: {}, running: {} };
+  var state = { results: {}, running: {}, selected: {}, activeIndex: {}, mode: {}, patentId: {} };
   var MAX_DESCRIPTION_CHARS = 90000;
 
   function esc(value) { var div = document.createElement("div"); div.textContent = String(value || ""); return div.innerHTML; }
   function root(scope) { return scope === "popup" ? document.querySelector("#ppv-content") : document.querySelector("#patent-detail-content"); }
   function patentData(scope) { return scope === "popup" ? window._patentPopupData : window._currentPatentData; }
   function key(scope, claim) { var data = patentData(scope) || {}; return scope + ":" + (data.patent_number || data.publication_number || "unknown") + ":" + (claim.num || claim._idx || "0"); }
+  function scopePatentId(scope) { var data = patentData(scope) || {}; return String(data.patent_number || data.publication_number || data.application_number || "unknown"); }
+  function resetForPatent(scope) {
+    var id = scopePatentId(scope);
+    if (state.patentId[scope] === id) return;
+    state.patentId[scope] = id;
+    state.selected[scope] = [];
+    state.activeIndex[scope] = 0;
+    state.mode[scope] = "manual";
+  }
   function normalizeId(value) { var digits = String(value || "").replace(/\D/g, ""); return digits ? String(Number(digits)).padStart(4, "0") : ""; }
+  function selectedIndexes(scope) { return state.selected[scope] || []; }
+  function setSelected(scope, indexes) { state.selected[scope] = indexes.filter(function (value, index, all) { return Number.isInteger(value) && value >= 0 && all.indexOf(value) === index; }).sort(function (a, b) { return a - b; }); }
+  function isIndependentClaim(claim, index) {
+    if (!claim) return false;
+    if (claim._isIndependent === true || claim.type === "independent") return true;
+    if (claim._isIndependent === false || claim.type === "dependent") return false;
+    if (claim.dependent_on !== undefined && claim.dependent_on !== null && claim.dependent_on !== "" && claim.dependent_on !== false) return false;
+    var head = String(claim.text || "").trim().slice(0, 300);
+    if (/^(根据|如|按照|依据).*(权利要求|权项|claim|claims)/i.test(head) || /請求項\s*\d+/i.test(head) || /に記載/.test(head) || /のいずれか/.test(head) || /前記|所述的/.test(head.slice(0, 80)) || /\bclaim\s+\d+/i.test(head)) return false;
+    return index === 0;
+  }
+  function allIndependentIndexes(claims) { return claims.map(function (claim, index) { return isIndependentClaim(claim, index) ? index : -1; }).filter(function (index) { return index >= 0; }); }
 
   function paragraphs(description) {
     var text = String(description || "").replace(/\r\n/g, "\n"), result = [];
@@ -84,11 +105,53 @@ var ClaimSupportAnalysis = (function () {
     return esc((start ? "..." : "") + source.slice(start, index)) + "<mark>" + esc(selected) + "</mark>" + esc(source.slice(index + selected.length, end) + (end < source.length ? "..." : ""));
   }
 
+  function renderSelection(scope) {
+    var panel = root(scope), data = patentData(scope) || {}, claims = data.claims || [];
+    var box = panel && panel.querySelector(".claim-support-panel"), host = box && box.querySelector(".claim-support-selection");
+    if (!host) return;
+    var mode = state.mode[scope] || "manual", selected = selectedIndexes(scope);
+    var html = '<div class="claim-support-scope"><span>分析范围</span>';
+    [["manual", "手动多选"], ["independent", "全部独权"], ["all", "全部权利要求"]].forEach(function (item) {
+      html += '<button type="button" class="claim-support-scope-btn' + (mode === item[0] ? ' active' : '') + '" data-mode="' + item[0] + '">' + item[1] + '</button>';
+    });
+    html += '</div>';
+    if (mode === "manual") {
+      html += '<div class="claim-support-claim-picker">';
+      claims.forEach(function (claim, index) {
+        html += '<label><input type="checkbox" data-claim-index="' + index + '"' + (selected.indexOf(index) >= 0 ? ' checked' : '') + '> 权利要求 ' + esc(claim.num || index + 1) + '</label>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div class="claim-support-selection-summary">已选择 <b>' + selected.length + '</b> 项' + (mode === "independent" ? '独立权利要求' : '权利要求') + '</div>';
+    }
+    html += '<button type="button" class="btn-primary claim-support-batch-run"' + (selected.length ? '' : ' disabled') + '>分析已选 ' + selected.length + ' 项</button>';
+    host.innerHTML = html;
+    host.querySelectorAll(".claim-support-scope-btn").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var nextMode = button.dataset.mode; state.mode[scope] = nextMode;
+        if (nextMode === "independent") setSelected(scope, allIndependentIndexes(claims));
+        else if (nextMode === "all") setSelected(scope, claims.map(function (_claim, index) { return index; }));
+        else if (!selectedIndexes(scope).length && claims.length) setSelected(scope, [state.activeIndex[scope] || 0]);
+        renderSelection(scope);
+      });
+    });
+    host.querySelectorAll("input[data-claim-index]").forEach(function (checkbox) {
+      checkbox.addEventListener("change", function () {
+        var index = Number(this.dataset.claimIndex), next = selectedIndexes(scope).slice();
+        if (this.checked && next.indexOf(index) === -1) next.push(index);
+        if (!this.checked) next = next.filter(function (value) { return value !== index; });
+        setSelected(scope, next); renderSelection(scope);
+      });
+    });
+    var runButton = host.querySelector(".claim-support-batch-run");
+    if (runButton) runButton.addEventListener("click", function () { runBatch(scope, selectedIndexes(scope)); });
+  }
+
   function render(scope, claim, result) {
     var panel = root(scope), body = panel && panel.querySelector(".claim-support-body"); if (!body) return;
     if (!result) {
       body.innerHTML = '<div class="claim-support-empty"><b>准备 AI 分析</b><span>保留左侧权利要求原文；AI 将在右侧拆解技术特征，并逐项给出说明书段落证据。</span><button class="btn-primary claim-support-run">开始 AI 分析</button></div>';
-      body.querySelector(".claim-support-run").addEventListener("click", function () { run(scope, claim); }); return;
+      body.querySelector(".claim-support-run").addEventListener("click", function () { runBatch(scope, [state.activeIndex[scope]]); }); return;
     }
     var counts = { strong: 0, partial: 0, missing: 0 }; result.features.forEach(function (item) { counts[item.status]++; });
     var html = '<div class="claim-support-summary"><b>AI 证据链</b><span class="strong">明确对应 ' + counts.strong + '</span><span class="partial">部分对应 ' + counts.partial + '</span><span class="missing">待核查 ' + counts.missing + '</span></div><p class="claim-support-ai-summary">' + esc(result.summary) + '</p>';
@@ -102,29 +165,48 @@ var ClaimSupportAnalysis = (function () {
     body.querySelectorAll(".claim-support-evidence-item").forEach(function (button) { button.addEventListener("click", function () { activateDescription(scope); setTimeout(function () { jump(scope, button.dataset.para); }, 80); }); });
   }
 
-  async function run(scope, claim) {
-    var id = key(scope, claim), data = patentData(scope) || {}, panel = root(scope), body = panel && panel.querySelector(".claim-support-body");
-    if (!data.description) { if (body) body.innerHTML = '<div class="claim-support-error">该专利没有可用于分析的说明书原文。</div>'; return; }
-    if (!window.AI || !window.AI.loadAIConfig || !window.AI.streamChat) { if (body) body.innerHTML = '<div class="claim-support-error">AI 功能未加载。</div>'; return; }
+  async function analyzeClaim(scope, claim) {
+    var id = key(scope, claim), data = patentData(scope) || {};
     var config = window.AI.loadAIConfig(), provider = window.AI.getCurrentProvider(config);
-    if (!provider || !provider.apiKey) { if (body) body.innerHTML = '<div class="claim-support-error">请先在设置中配置并选择 AI 模型。</div>'; return; }
-    if (state.running[id]) return; state.running[id] = true;
-    if (body) body.innerHTML = '<div class="claim-support-loading"><span></span>AI 正在拆解技术特征并核对说明书段落…</div>';
+    if (state.running[id]) return state.results[id]; state.running[id] = true;
     try {
       var content = "【权利要求 " + (claim.num || "") + "】\n" + (claim.text || "") + "\n\n【说明书段落】\n" + sourceText(data.description), output = "";
       var stream = window.AI.streamChat(provider.type, provider.apiKey, provider.baseUrl, { model: provider.model, messages: [{ role: "system", content: prompt() }, { role: "user", content: content }], temperature: 0.1, maxTokens: 6000 });
       for await (var chunk of stream) if (chunk.content) output += chunk.content;
-      state.results[id] = validateResult(extractJson(output), data.description, claim.text); render(scope, claim, state.results[id]);
-    } catch (error) {
-      if (body) body.innerHTML = '<div class="claim-support-error">AI 分析失败：' + esc(error && error.message ? error.message : String(error)) + '<button class="claim-support-retry">重试</button></div>';
-      var retry = panel && panel.querySelector(".claim-support-retry"); if (retry) retry.addEventListener("click", function () { run(scope, claim); });
+      state.results[id] = validateResult(extractJson(output), data.description, claim.text);
+      return state.results[id];
     } finally { state.running[id] = false; }
+  }
+
+  async function runBatch(scope, indexes) {
+    var panel = root(scope), data = patentData(scope) || {}, claims = data.claims || [], body = panel && panel.querySelector(".claim-support-body");
+    if (!data.description) { if (body) body.innerHTML = '<div class="claim-support-error">该专利没有可用于分析的说明书原文。</div>'; return; }
+    if (!window.AI || !window.AI.loadAIConfig || !window.AI.streamChat) { if (body) body.innerHTML = '<div class="claim-support-error">AI 功能未加载。</div>'; return; }
+    var provider = window.AI.getCurrentProvider(window.AI.loadAIConfig());
+    if (!provider || !provider.apiKey) { if (body) body.innerHTML = '<div class="claim-support-error">请先在设置中配置并选择 AI 模型。</div>'; return; }
+    var targets = indexes.map(function (index) { return claims[index]; }).filter(Boolean), failures = [];
+    if (!targets.length) return;
+    for (var i = 0; i < targets.length; i++) {
+      if (body) body.innerHTML = '<div class="claim-support-loading"><span></span>AI 正在分析第 ' + (i + 1) + ' / ' + targets.length + ' 项权利要求…</div>';
+      try { await analyzeClaim(scope, targets[i]); } catch (error) { failures.push((targets[i].num || i + 1) + "：" + (error && error.message ? error.message : String(error))); }
+    }
+    state.activeIndex[scope] = targets[0]._idx !== undefined ? targets[0]._idx : claims.indexOf(targets[0]);
+    var active = claims[state.activeIndex[scope]], result = active && state.results[key(scope, active)];
+    if (result) render(scope, active, result);
+    else if (body) body.innerHTML = '<div class="claim-support-error">所选权利要求未生成可用分析。' + esc(failures.join("；")) + '</div>';
+    if (failures.length && body) {
+      var notice = document.createElement("div"); notice.className = "claim-support-batch-warning"; notice.textContent = failures.length + " 项分析失败，可单独重试。"; body.prepend(notice);
+    }
   }
 
   function open(scope, index) {
     var panel = root(scope), data = patentData(scope) || {}, claims = data.claims || [], box = panel && panel.querySelector(".claim-support-panel"), body = panel && panel.querySelector('.pd-tab-panel-body[data-panel-body="claims"]');
     if (!box || !claims[index]) return; box.classList.add("active"); body.classList.add("claim-support-mode");
-    var select = box.querySelector(".claim-support-select"); select.value = String(index); selectClaim(scope, index); render(scope, claims[index], state.results[key(scope, claims[index])]);
+    resetForPatent(scope);
+    state.activeIndex[scope] = index;
+    if (!state.mode[scope]) state.mode[scope] = "manual";
+    if (!selectedIndexes(scope).length) setSelected(scope, [index]);
+    var select = box.querySelector(".claim-support-select"); select.value = String(index); selectClaim(scope, index); renderSelection(scope); render(scope, claims[index], state.results[key(scope, claims[index])]);
   }
 
   function enhance() {
@@ -133,7 +215,7 @@ var ClaimSupportAnalysis = (function () {
       var claimsPanel = panel.querySelector('.pd-tab-panel[data-panel="claims"]'), actions = claimsPanel && claimsPanel.querySelector(".pd-panel-actions"); if (!actions || actions.querySelector(".claim-support-open")) return;
       var body = claimsPanel.querySelector('.pd-tab-panel-body[data-panel-body="claims"]'), claims = (patentData(scope) || {}).claims || [];
       var button = document.createElement("button"); button.className = "pd-compare-btn claim-support-open"; button.textContent = "权利要求支撑"; button.title = "使用 AI 定位权利要求技术特征在说明书中的文本证据"; actions.insertBefore(button, actions.firstChild);
-      var box = document.createElement("section"); box.className = "claim-support-panel"; box.innerHTML = '<div class="claim-support-toolbar"><b>AI 权利要求支撑</b><select class="claim-support-select"></select><button class="claim-support-close" title="关闭分析视图">关闭</button></div><p class="claim-support-note">AI 按技术特征引用说明书原文，结果供人工核查，不构成法律上的支持性或充分公开结论。</p><div class="claim-support-body"></div>'; body.insertBefore(box, body.firstChild);
+      var box = document.createElement("section"); box.className = "claim-support-panel"; box.innerHTML = '<div class="claim-support-toolbar"><b>AI 权利要求支撑</b><select class="claim-support-select"></select><button class="claim-support-close" title="关闭分析视图">关闭</button></div><p class="claim-support-note">AI 按技术特征引用说明书原文，结果供人工核查，不构成法律上的支持性或充分公开结论。</p><div class="claim-support-selection"></div><div class="claim-support-body"></div>'; body.insertBefore(box, body.firstChild);
       var select = box.querySelector(".claim-support-select"); claims.forEach(function (claim, index) { var option = document.createElement("option"); option.value = index; option.textContent = "权利要求 " + (claim.num || index + 1); select.appendChild(option); });
       button.addEventListener("click", function () { open(scope, Number(select.value || 0)); }); select.addEventListener("change", function () { open(scope, Number(this.value)); });
       box.querySelector(".claim-support-close").addEventListener("click", function () { box.classList.remove("active"); body.classList.remove("claim-support-mode"); panel.querySelectorAll(".pd-claim-item").forEach(function (item) { item.classList.remove("claim-support-selected"); }); });
@@ -143,6 +225,6 @@ var ClaimSupportAnalysis = (function () {
 
   var observer = typeof MutationObserver === "function" ? new MutationObserver(enhance) : null;
   function init() { if (observer) observer.observe(document.body, { childList: true, subtree: true }); enhance(); }
-  return { init: init, paragraphs: paragraphs, validateResult: validateResult, extractJson: extractJson, sourceText: sourceText };
+  return { init: init, paragraphs: paragraphs, validateResult: validateResult, extractJson: extractJson, sourceText: sourceText, isIndependentClaim: isIndependentClaim, allIndependentIndexes: allIndependentIndexes };
 })();
 if (typeof document !== "undefined") { if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ClaimSupportAnalysis.init); else ClaimSupportAnalysis.init(); }

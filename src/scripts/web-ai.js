@@ -27,13 +27,19 @@ var AI = (function () {
     switch (type) {
       case "openai": return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-5.4", "gpt-5", "o3-mini", "o1"];
       case "zhipu": return ["glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.7-flashx", "glm-4.5-air", "glm-4-plus", "glm-4-flash", "glm-4-air"];
-      case "deepseek": return ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"];
+      case "deepseek": return ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"];
     }
   }
 
   function getAvailableModels(type) {
     var models = getDefaultModels(type);
-    return models.map(function (m) { return { value: m, label: m }; });
+    var custom = [];
+    try {
+      var config = loadAIConfig();
+      custom = config.customModels && Array.isArray(config.customModels[type]) ? config.customModels[type] : [];
+    } catch (_) { /* use defaults only */ }
+    return models.concat(custom.filter(function (model) { return models.indexOf(model) === -1; }))
+      .map(function (m) { return { value: m, label: m }; });
   }
 
   function createDefaultConfig(type) {
@@ -128,6 +134,17 @@ var AI = (function () {
     if (!config.ops) config.ops = { consumerKey: "", consumerSecret: "" };
     config.promptsVersion = PROMPTS_VERSION;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  }
+
+  function addCustomModel(config, type, model) {
+    var value = String(model || "").trim();
+    if (!value || !getDefaultModels(type)) return false;
+    if (!config.customModels) config.customModels = {};
+    if (!Array.isArray(config.customModels[type])) config.customModels[type] = [];
+    if (getDefaultModels(type).indexOf(value) === -1 && config.customModels[type].indexOf(value) === -1) {
+      config.customModels[type].push(value);
+    }
+    return true;
   }
 
   function getOCRConfig(config) {
@@ -360,6 +377,7 @@ var AI = (function () {
     getTranslateProvider: getTranslateProvider,
     loadAIConfig: loadAIConfig,
     saveAIConfig: saveAIConfig,
+    addCustomModel: addCustomModel,
     setCurrentProvider: setCurrentProvider,
     getCurrentProvider: getCurrentProvider,
     getOCRConfig: getOCRConfig,
