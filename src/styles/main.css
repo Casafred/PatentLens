@@ -9442,6 +9442,19 @@ body {
 .claim-support-toolbar select { max-width:180px; padding:5px 7px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card); color:var(--text-primary); }
 .claim-support-toolbar label { color:var(--text-secondary); }
 .claim-support-close { padding:4px 8px; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--text-secondary); cursor:pointer; }
+.claim-support-layout-toggle { padding:4px 8px; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--text-secondary); cursor:pointer; }
+.claim-support-layout-menu { position:absolute; z-index:20; display:grid; gap:4px; min-width:144px; margin-top:40px; padding:6px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card); box-shadow:0 8px 18px rgba(15,23,42,.16); }
+.claim-support-layout-menu[hidden] { display:none; }
+.claim-support-layout-menu button { padding:5px 7px; border:0; border-radius:3px; background:transparent; color:var(--text-secondary); cursor:pointer; text-align:left; font-size:11px; white-space:nowrap; }
+.claim-support-layout-menu button:hover { background:var(--bg-hover); color:var(--text-primary); }
+.claim-support-layout-menu span { height:1px; margin:2px 0; background:var(--border); }
+.pd-tab-panel:not(.pd-split-view) .claim-support-layout-toggle,.pd-tab-panel:not(.pd-split-view) .claim-support-layout-menu { display:none; }
+.pd-tab-panel.claim-support-layout-hide-claims .pd-claims-list { display:none; }
+.pd-tab-panel.claim-support-layout-hide-claims .pd-tab-panel-body.claim-support-mode .claim-support-panel { grid-column:1 / -1; }
+.pd-tab-panel.claim-support-layout-hide-support .claim-support-panel { display:none; }
+.pd-tab-panel.claim-support-layout-hide-support .pd-tab-panel-body.claim-support-mode .pd-claims-list { grid-column:1 / -1; }
+.pd-tab-panel.claim-support-layout-hide-drawings .pd-split-drawings { display:none; }
+.pd-tab-panel.claim-support-layout-hide-drawings .pd-split-text { padding-right:0; }
 .claim-support-note { margin:0; padding:7px 12px; color:var(--text-muted); font-size:11px; border-bottom:1px solid var(--border); }
 .claim-support-selection { padding:9px 12px; border-bottom:1px solid var(--border); background:var(--bg-card); }
 .claim-support-scope { display:flex; align-items:center; gap:5px; flex-wrap:wrap; color:var(--text-secondary); font-size:11px; }
@@ -9463,6 +9476,10 @@ body {
 @keyframes claimSupportSpin { to { transform:rotate(360deg); } }
 .claim-support-summary { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; color:var(--text-secondary); font-size:12px; }
 .claim-support-summary b { color:var(--text-primary); margin-right:auto; }
+.claim-support-display-toggle { display:inline-flex; gap:0; margin-left:auto; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+.claim-support-display-toggle button { padding:3px 7px; border:0; border-left:1px solid var(--border); background:transparent; color:var(--text-secondary); cursor:pointer; font-size:11px; }
+.claim-support-display-toggle button:first-child { border-left:0; }
+.claim-support-display-toggle button.active { background:#eff6ff; color:#1d4ed8; font-weight:700; }
 .claim-support-ai-summary { margin:0 0 9px; padding:7px 9px; border-left:3px solid #60a5fa; background:#eff6ff; color:#334155; font-size:12px; line-height:1.6; }
 .claim-support-summary span { padding:2px 6px; border-radius:3px; font-size:11px; }
 .claim-support-summary .strong,.claim-support-feature.strong .claim-support-status { color:#166534; background:#dcfce7; }
