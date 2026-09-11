@@ -665,7 +665,9 @@
                   <option value="zhipu">智谱 (GLM)</option>
                   <option value="deepseek">DeepSeek</option>
                   <option value="openai">OpenAI</option>
+                  <option value="custom">自定义供应商</option>
                 </select>
+                <button type="button" id="custom-provider-open-btn" class="custom-provider-open">+ 配置自定义供应商</button>
               </div>
               <div class="form-group">
                 <label>API Key</label>
@@ -679,6 +681,31 @@
                 <label>模型</label>
                 <input type="text" id="ai-model-select" list="ai-model-select-datalist" placeholder="选择或输入模型名称">
                 <datalist id="ai-model-select-datalist"></datalist>
+              </div>
+              <div id="custom-provider-options" class="custom-provider-options" hidden>
+                <div class="form-group">
+                  <label>供应商名称</label>
+                  <input type="text" id="custom-provider-name" placeholder="例如：公司模型网关">
+                </div>
+                <div class="form-group">
+                  <label>接口协议</label>
+                  <select id="custom-provider-protocol">
+                    <option value="openai-chat">OpenAI Chat Completions 兼容</option>
+                    <option value="openai-responses">OpenAI Responses API</option>
+                    <option value="anthropic">Anthropic Messages API</option>
+                    <option value="gemini">Gemini GenerateContent API</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>推理强度</label>
+                  <select id="custom-provider-reasoning">
+                    <option value="off">关闭 / 由模型默认决定</option>
+                    <option value="low">低</option>
+                    <option value="medium">中</option>
+                    <option value="high">高</option>
+                  </select>
+                </div>
+                <p class="custom-provider-hint">服务地址填写协议根地址：Chat 使用 /chat/completions，Responses 使用 /responses，Anthropic 使用 /v1/messages，Gemini 使用 /v1beta/models/{模型}:generateContent。</p>
               </div>
               <div class="form-actions">
                 <button id="ai-test-btn" class="btn-secondary">测试连接</button>
@@ -1139,7 +1166,7 @@
   <script src="scripts/FileSaver.min.js?v=20260623c"></script>
   <script src="scripts/pdf-lib.min.js?v=20260623c"></script>
   <script src="scripts/fontkit.umd.min.js?v=260710"></script>
-  <script src="scripts/web-ai.js?v=260717d"></script>
+  <script src="scripts/web-ai.js?v=260912b"></script>
   <script src="scripts/patent-status.js?v=260729c"></script>
   <script src="scripts/app/shared/constants.js?v=260731a"></script>
   <script src="scripts/app/shared/icons.js?v=260731a"></script>
@@ -1153,6 +1180,7 @@
   <script src="scripts/app/features/favorites-ui.js?v=260805a"></script>
   <script src="scripts/app/features/kanban-select-state.js?v=260806a"></script>
   <script src="scripts/app/features/review-analysis-ocr-retry.js?v=260806a"></script>
+  <script src="scripts/app/features/ai-model-settings.js?v=260912b"></script>
   <script src="scripts/comparison/comparison-utils.js?v=260717d"></script>
   <script src="scripts/comparison/comparison-prompts.js?v=260717d"></script>
   <script src="scripts/comparison/comparison-core.js?v=260717d"></script>

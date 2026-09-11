@@ -82,7 +82,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tauriScript: npx tauri
-          args: --target x86_64-pc-windows-msvc
+          # MSI restricts the version's major component to 255; this project uses a date-based version.
+          # NSIS remains the supported Tauri Windows installer and is also the artifact uploaded below.
+          args: --target x86_64-pc-windows-msvc --bundles nsis
 
       - name: Upload Tauri installer
         uses: actions/upload-artifact@v4
