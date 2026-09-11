@@ -71,6 +71,27 @@ test('识别中文和英文从属关系', () => {
   assert.deepEqual(Array.from(CD.extractDependencies('The apparatus of claims 3 and 4, wherein the processor is configured.')), ['3', '4']);
 });
 
+test('识别中日法德从属引用并展开编号范围', () => {
+  const CD = loadClaimDiff();
+  assert.deepEqual(Array.from(CD.extractDependencies('如权利要求1至3任一项所述的装置。')), ['1', '2', '3']);
+  assert.deepEqual(Array.from(CD.extractDependencies('請求項1から3のいずれかに記載の装置。')), ['1', '2', '3']);
+  assert.deepEqual(Array.from(CD.extractDependencies("Dispositif selon l'une quelconque des revendications 1 à 3.")), ['1', '2', '3']);
+  assert.deepEqual(Array.from(CD.extractDependencies('Vorrichtung nach einem der Ansprüche 1 bis 3.')), ['1', '2', '3']);
+});
+
+test('日法德的父项映射可识别为仅引用序号变化', () => {
+  const CD = loadClaimDiff();
+  const samples = [
+    ['請求項1に記載の装置であって、プロセッサが安全モジュールを含む。', '請求項2に記載の装置であって、プロセッサが安全モジュールを含む。'],
+    ['Dispositif selon la revendication 1, dans lequel le processeur comprend un module de sécurité.', 'Dispositif selon la revendication 2, dans lequel le processeur comprend un module de sécurité.'],
+    ['Vorrichtung nach Anspruch 1, wobei der Prozessor ein Sicherheitsmodul umfasst.', 'Vorrichtung nach Anspruch 2, wobei der Prozessor ein Sicherheitsmodul umfasst.'],
+  ];
+  samples.forEach(([before, after]) => {
+    const result = CD.computeDiff([{ num: '1', text: 'base core' }, { num: '2', text: before }], [{ num: '2', text: 'base core' }, { num: '3', text: after }]);
+    assert.equal(result.publicItems[1].status, 'reference_only');
+  });
+});
+
 test('公开版是固定主轴，所有公开权项按原顺序保留', () => {
   const CD = loadClaimDiff();
   const result = CD.computeDiff(
@@ -98,6 +119,18 @@ test('局部文字修改使用 token 差异而不是整句替换', () => {
   assert.ok(changed);
   assert.ok(changed.deleted.length < modified.diff.left.length);
   assert.ok(changed.inserted.length < modified.diff.right.length);
+});
+
+test('全角半角数字和常用标点不应被误判为文本变化', () => {
+  const CD = loadClaimDiff();
+  const diff = CD.tokenDiff('权利要求１：装置（处理器）；', '权利要求1:装置(处理器);');
+  assert.ok(diff.ops.every((op) => op.type === 'equal'));
+});
+
+test('全角编号也可参与多语言从属关系识别', () => {
+  const CD = loadClaimDiff();
+  assert.deepEqual(Array.from(CD.extractDependencies('請求項１から３のいずれかに記載の装置。')), ['1', '2', '3']);
+  assert.deepEqual(Array.from(CD.extractDependencies('Vorrichtung nach Anspruch １ bis ３.')), ['1', '2', '3']);
 });
 
 test('从权未形成独立授权项时识别附加限定并入', () => {

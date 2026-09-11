@@ -24,6 +24,7 @@ var ComparisonClaimDiff = (function () {
 
   function normalizeText(value) {
     return String(value || '')
+      .normalize('NFKC')
       .replace(/<[^>]*>/g, ' ')
       .replace(/[\u3000]/g, ' ')
       .replace(/[，、]/g, ',')
@@ -41,7 +42,7 @@ var ComparisonClaimDiff = (function () {
   function splitFeatures(text) {
     var normalized = String(text || '').replace(/\r\n/g, '\n').trim();
     if (!normalized) return [];
-    var parts = normalized.split(/(?<=[;；。])\s*|\n+|(?=[，,]\s*(?:其中|所述|并且|且|以及|wherein|and wherein))/i).map(function (part) {
+    var parts = normalized.split(/(?<=[;；。])\s*|\n+|(?=[，,]\s*(?:其中|所述|并且|且|以及|wherein|and wherein|wobei|dadurch dass|dans lequel|dans laquelle|dans lesquels|dans lesquelles|ここで|前記))/i).map(function (part) {
       return part.trim();
     }).filter(Boolean);
     return parts.length ? parts : [normalized];
@@ -111,15 +112,29 @@ var ComparisonClaimDiff = (function () {
     return result;
   }
 
-  // 保留原文顺序的 token：中文按字，英文按词，数字整体，标点独立。
+  // 保留原文顺序的 token：中日韩按字，拉丁文字（含重音）按词，数字整体，标点独立。
   function tokenize(text) {
-    var source = String(text || ''), tokens = [], re = /[A-Za-z]+(?:['-][A-Za-z]+)*|\d+(?:\.\d+)?|[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]|[^\sA-Za-z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]|\s+/g, match;
+    var source = String(text || ''), tokens = [], re = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]|[\p{L}]+(?:['’\-][\p{L}]+)*|[\p{N}]+(?:[.．][\p{N}]+)?|[^\s\p{L}\p{N}]|\s+/gu, match;
     while ((match = re.exec(source))) {
       if (/^\s+$/.test(match[0])) {
         if (tokens.length && tokens[tokens.length - 1].text.slice(-1) !== ' ') tokens.push({ text: ' ', key: ' ' });
       } else tokens.push({ text: match[0], key: normalizeText(match[0]) });
     }
     return tokens;
+  }
+
+  function parseReferenceNumbers(value) {
+    var source = String(value || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+    var result = [], range = /(\d+)\s*(?:至|到|[-－–—]|to|through|bis|à|a|から|乃至)\s*(\d+)/gi;
+    function add(num) { if (result.indexOf(String(num)) === -1) result.push(String(num)); }
+    source = source.replace(range, function (_match, start, end) {
+      var a = Number(start), b = Number(end), step = a <= b ? 1 : -1;
+      if (Math.abs(b - a) <= 40) for (var n = a; n !== b + step; n += step) add(n);
+      return ' ';
+    });
+    var values = source.match(/\d+/g) || [];
+    values.forEach(add);
+    return result;
   }
 
   function tokenDiff(a, b) {
@@ -165,17 +180,19 @@ var ComparisonClaimDiff = (function () {
   }
 
   function extractDependencies(text) {
-    var source = String(text || '');
-    var result = [];
-    var cn = source.match(/(?:根据|根據|如|按照|依据|依據)\s*(?:权利要求|權利要求|权项|權項)\s*([0-9０-９、,，\-－至和及或\s]+)/i);
-    var en = source.match(/\bclaims?\s+([0-9]+(?:\s*(?:,|and|or|to|through|-)\s*[0-9]+)*)/i);
-    var matched = cn ? cn[1] : (en ? en[1] : '');
-    if (!matched) return result;
-    matched.replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
-      .match(/\d+/g)?.forEach(function (value) {
-        if (result.indexOf(value) === -1) result.push(value);
-      });
-    return result;
+    var source = String(text || '').normalize('NFKC');
+    var patterns = [
+      /(?:根据|根據|如|按照|依据|依據)\s*(?:权利要求|權利要求|权项|權項)\s*([0-9０-９、,，\-－至到和及或\s]+)/i,
+      /\bclaims?\s+([0-9]+(?:\s*(?:,|and|or|to|through|-)\s*[0-9]+)*)/i,
+      /請求項\s*([0-9０-９]+(?:\s*(?:、|,|及び|又は|から|乃至|[-－])\s*[0-9０-９]+)*)/i,
+      /\brevendi(?:cation|cations)\s+([0-9]+(?:\s*(?:,|et|ou|à|a|-)\s*[0-9]+)*)/i,
+      /\banspr(?:uch|üche|ueche)\s+([0-9]+(?:\s*(?:,|und|oder|bis|-)\s*[0-9]+)*)/i
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var matched = source.match(patterns[i]);
+      if (matched) return parseReferenceNumbers(matched[1]);
+    }
+    return [];
   }
 
   function classifyType(raw, text) {
@@ -184,14 +201,18 @@ var ComparisonClaimDiff = (function () {
   }
 
   function alignmentText(text) {
-    var value = String(text || '')
+    var value = String(text || '').normalize('NFKC')
       .replace(/^\s*\d+[.、]\s*/, '')
       .replace(/^(?:根据|根據|如|按照|依据|依據)\s*(?:权利要求|權利要求|权项|權項)\s*[0-9０-９、,，\-－至和及或\s]+(?:所述的|所述)?/i, '')
       .replace(/^the\s+.+?\s+of\s+claims?\s+[0-9,\s\-andorto]+,?\s*/i, '')
+      .replace(/^請求項\s*[0-9０-９]+(?:\s*(?:、|,|及び|又は|から|乃至|[-－])\s*[0-9０-９]+)*\s*(?:に記載の|に従属する|の)\s*/i, '')
+      .replace(/^.+?\s+(?:selon\s+(?:l['’]une\s+quelconque\s+des\s+)?revendications?\s+[0-9,\s\-àaetou]+|selon\s+la\s+revendication\s+[0-9]+),?\s*/i, '')
+      .replace(/^.+?\s+(?:nach\s+(?:einem\s+der\s+)?anspr(?:uch|üche|ueche)\s+[0-9,\s\-bisundoder]+|gemäß\s+anspr(?:uch|üche|ueche)\s+[0-9,\s\-bisundoder]+),?\s*/i, '')
       .trim();
     var cnWherein = value.search(/[，,]\s*(?:其中|其特征在于|其特徵在於)/);
     var enWherein = value.search(/,\s*(?:wherein|in which)\b/i);
-    var start = cnWherein >= 0 ? cnWherein + 1 : (enWherein >= 0 ? enWherein + 1 : -1);
+    var otherWherein = value.search(/,\s*(?:wobei|dadurch dass|dans lequel|dans laquelle|dans lesquels|dans lesquelles|ここで)\b/i);
+    var start = cnWherein >= 0 ? cnWherein + 1 : (enWherein >= 0 ? enWherein + 1 : (otherWherein >= 0 ? otherWherein + 1 : -1));
     return start >= 0 ? value.slice(start).trim() : value;
   }
 

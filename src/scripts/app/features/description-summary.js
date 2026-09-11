@@ -524,7 +524,8 @@ var DescriptionSummary = (function () {
 
   return {
     init: init,
-    run: run
+    run: run,
+    ensureParagraphs: enhanceDescriptionParagraphs
   };
 })();
 
