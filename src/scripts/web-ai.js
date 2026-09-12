@@ -300,7 +300,27 @@ var AI = (function () {
       var parts = parsed.candidates && parsed.candidates[0] && parsed.candidates[0].content && parsed.candidates[0].content.parts || [];
       return parts.reduce(function (acc, part) { if (part.thought) acc.reasoningContent += part.text || ""; else acc.content += part.text || ""; return acc; }, { content: "", reasoningContent: "" });
     }
-    return parseOpenAIChunk(parsed);
+    var standard = parseOpenAIChunk(parsed);
+    if (standard.content || standard.reasoningContent) return standard;
+    if (typeof parsed.output_text === "string") return { content: parsed.output_text, reasoningContent: "" };
+    var message = parsed.choices && parsed.choices[0] && parsed.choices[0].message;
+    var messageContent = message && message.content;
+    if (Array.isArray(messageContent)) messageContent = messageContent.map(function (part) { return typeof part === "string" ? part : (part && (part.text || part.content) || ""); }).join("");
+    if (typeof messageContent === "string" && messageContent) return { content: messageContent, reasoningContent: "" };
+    if (typeof parsed.content === "string") return { content: parsed.content, reasoningContent: "" };
+    if (Array.isArray(parsed.content)) return { content: parsed.content.map(function (part) { return typeof part === "string" ? part : (part && (part.text || part.content) || ""); }).join(""), reasoningContent: "" };
+    return { content: "", reasoningContent: "" };
+  }
+
+  function parseCustomLine(protocol, line) {
+    var trimmed = String(line || "").trim();
+    if (!trimmed) return null;
+    if (trimmed.indexOf("data:") === 0) trimmed = trimmed.slice(5).trim();
+    if (!trimmed || trimmed === "[DONE]") return { content: "", reasoningContent: "", done: trimmed === "[DONE]" };
+    try {
+      var parsed = parseCustomChunk(protocol, JSON.parse(trimmed));
+      return { content: parsed.content || "", reasoningContent: parsed.reasoningContent || "", done: false };
+    } catch (_) { return null; }
   }
 
   function customRequest(protocol, apiKey, baseUrl, params, stream) {
@@ -343,10 +363,18 @@ var AI = (function () {
         customBuffer += customDecoder.decode(customResult.value, { stream: true });
         var customLines = customBuffer.split("\n"); customBuffer = customLines.pop() || "";
         for (var ci = 0; ci < customLines.length; ci++) {
-          var customData = customLines[ci].trim(); if (!customData.startsWith("data:")) continue;
-          customData = customData.slice(5).trim(); if (customData === "[DONE]") { yield { content: "", done: true }; return; }
-          try { var customChunk = parseCustomChunk(settings.protocol, JSON.parse(customData)); if (customChunk.content || customChunk.reasoningContent) yield { content: customChunk.content, reasoningContent: customChunk.reasoningContent, done: false }; } catch (_) { /* wait for next event */ }
+          var customChunk = parseCustomLine(settings.protocol, customLines[ci]);
+          if (!customChunk) continue;
+          if (customChunk.done) { yield { content: "", done: true }; return; }
+          if (customChunk.content || customChunk.reasoningContent) yield { content: customChunk.content, reasoningContent: customChunk.reasoningContent, done: false };
         }
+      }
+      // Some OpenAI-compatible gateways ignore stream:true and return one JSON
+      // document without SSE framing. Flush and parse that response as a final chunk.
+      var trailing = customBuffer.trim();
+      if (trailing) {
+        var trailingChunk = parseCustomLine(settings.protocol, trailing);
+        if (trailingChunk && (trailingChunk.content || trailingChunk.reasoningContent)) yield { content: trailingChunk.content, reasoningContent: trailingChunk.reasoningContent, done: false };
       }
       yield { content: "", done: true }; return;
     }
