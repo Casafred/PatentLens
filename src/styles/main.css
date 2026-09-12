@@ -9051,6 +9051,7 @@ body {
 .pd-panel-actions {
   display: flex;
   gap: 6px;
+  position: relative;
 }
 
 /* Empty state */
@@ -9443,7 +9444,7 @@ body {
 .claim-support-toolbar label { color:var(--text-secondary); }
 .claim-support-close { padding:4px 8px; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--text-secondary); cursor:pointer; }
 .claim-support-layout-toggle { padding:4px 8px; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--text-secondary); cursor:pointer; }
-.claim-support-layout-menu { position:absolute; z-index:20; display:grid; gap:4px; min-width:144px; margin-top:40px; padding:6px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card); box-shadow:0 8px 18px rgba(15,23,42,.16); }
+.claim-support-layout-menu { position:absolute; z-index:20; top:calc(100% + 4px); left:0; display:grid; gap:4px; min-width:144px; padding:6px; border:1px solid var(--border); border-radius:5px; background:var(--bg-card); box-shadow:0 8px 18px rgba(15,23,42,.16); }
 .claim-support-layout-menu[hidden] { display:none; }
 .claim-support-layout-menu button { padding:5px 7px; border:0; border-radius:3px; background:transparent; color:var(--text-secondary); cursor:pointer; text-align:left; font-size:11px; white-space:nowrap; }
 .claim-support-layout-menu button:hover { background:var(--bg-hover); color:var(--text-primary); }

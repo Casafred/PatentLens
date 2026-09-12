@@ -182,7 +182,7 @@ var ClaimSupportAnalysis = (function () {
     var panel = layoutPanel(scope), menu = panel && panel.querySelector(".claim-support-layout-menu");
     if (!panel || !menu) return;
     var supportHidden = panel.classList.contains("claim-support-layout-hide-support"), claimsHidden = panel.classList.contains("claim-support-layout-hide-claims"), drawingsHidden = panel.classList.contains("claim-support-layout-hide-drawings");
-    menu.innerHTML = '<button type="button" data-layout-target="claims">' + (claimsHidden ? "展开权利要求" : "折叠权利要求") + '</button><button type="button" data-layout-target="support">' + (supportHidden ? "展开 AI 支撑" : "折叠 AI 支撑") + '</button><button type="button" data-layout-target="drawings">' + (drawingsHidden ? "展开图文对照" : "折叠图文对照") + '</button><button type="button" data-layout-target="all">展开全部栏目</button><span></span><button type="button" data-layout-close="support">关闭 AI 支撑</button><button type="button" data-layout-close="drawings">关闭图文对照</button>';
+    menu.innerHTML = '<button type="button" data-layout-target="claims">' + (claimsHidden ? "展开权利要求" : "折叠权利要求") + '</button><button type="button" data-layout-target="support">' + (supportHidden ? "展开 AI 支撑" : "折叠 AI 支撑") + '</button><button type="button" data-layout-target="drawings">' + (drawingsHidden ? "展开图文对照" : "折叠图文对照") + '</button><button type="button" data-layout-target="all">展开全部栏目</button><span></span><button type="button" data-layout-close="claims">关闭权利要求</button><button type="button" data-layout-close="support">关闭 AI 支撑</button><button type="button" data-layout-close="drawings">关闭图文对照</button>';
     menu.querySelectorAll("[data-layout-target]").forEach(function (button) { button.addEventListener("click", function () {
       var target = button.dataset.layoutTarget;
       if (target === "all") panel.classList.remove("claim-support-layout-hide-claims", "claim-support-layout-hide-support", "claim-support-layout-hide-drawings");
@@ -190,17 +190,18 @@ var ClaimSupportAnalysis = (function () {
       updateLayoutMenu(scope);
     }); });
     menu.querySelectorAll("[data-layout-close]").forEach(function (button) { button.addEventListener("click", function () {
-      if (button.dataset.layoutClose === "support") { var close = panel.querySelector(".claim-support-close"); if (close) close.click(); }
+      if (button.dataset.layoutClose === "claims") { panel.classList.add("claim-support-layout-hide-claims"); updateLayoutMenu(scope); }
+      else if (button.dataset.layoutClose === "support") { var close = panel.querySelector(".claim-support-close"); if (close) close.click(); }
       else if (typeof window.toggleSplitView === "function" && panel.classList.contains("pd-split-view")) window.toggleSplitView("claims", scope);
     }); });
   }
   function initLayoutMenu(scope, box) {
-    var panel = layoutPanel(scope), toolbar = box && box.querySelector(".claim-support-toolbar");
-    if (!panel || !toolbar || !panel.querySelector(".pd-split-drawings") || toolbar.querySelector(".claim-support-layout-toggle")) return;
+    var panel = layoutPanel(scope), actions = panel && panel.querySelector(".pd-panel-actions"), supportButton = actions && actions.querySelector(".claim-support-open");
+    if (!panel || !actions || !supportButton || !panel.querySelector(".pd-split-drawings") || actions.querySelector(".claim-support-layout-toggle")) return;
     var button = document.createElement("button"), menu = document.createElement("div");
     button.type = "button"; button.className = "claim-support-layout-toggle"; button.textContent = "栏目"; button.title = "折叠、展开或关闭当前三栏中的栏目";
     menu.className = "claim-support-layout-menu"; menu.hidden = true;
-    toolbar.appendChild(button); toolbar.appendChild(menu);
+    supportButton.insertAdjacentElement("afterend", button); button.insertAdjacentElement("afterend", menu);
     button.addEventListener("click", function () { menu.hidden = !menu.hidden; if (!menu.hidden) updateLayoutMenu(scope); });
     updateLayoutMenu(scope);
   }
