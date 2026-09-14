@@ -79,3 +79,27 @@ test('自定义 Gemini 协议使用模型端点、key 查询参数和思考预�
   assert.equal(chunks[0].reasoningContent, '推理');
   assert.equal(chunks[0].content, 'Gemini');
 });
+
+test('自定义 Chat 服务商返回普通 JSON 时也能用于 AI 问答', async () => {
+  const AI = loadAI({ custom: { type: 'custom', protocol: 'openai-chat', reasoningEffort: 'off' } }, async () => ({
+    ok: true,
+    body: { getReader: () => {
+      let done = false;
+      return { read: async () => {
+        if (done) return { done: true };
+        done = true;
+        return { done: false, value: new TextEncoder().encode(JSON.stringify({ choices: [{ message: { content: '普通 JSON 回复' } }] })) };
+      } };
+    } },
+  }));
+  const chunks = [];
+  for await (const chunk of AI.streamChat('custom', 'key', 'https://gateway.example/v1', { model: 'custom-model', messages: [{ role: 'user', content: '问题' }] })) chunks.push(chunk);
+  assert.equal(chunks[0].content, '普通 JSON 回复');
+});
+
+test('自定义服务商无 data 前缀的 JSON 行也能解析', async () => {
+  const AI = loadAI({ custom: { type: 'custom', protocol: 'openai-chat', reasoningEffort: 'off' } }, async () => sseResponse(['{"choices":[{"delta":{"content":"裸 JSON"}}]}\n\n']));
+  const chunks = [];
+  for await (const chunk of AI.streamChat('custom', 'key', 'https://gateway.example/v1', { model: 'custom-model', messages: [{ role: 'user', content: '问题' }] })) chunks.push(chunk);
+  assert.equal(chunks[0].content, '裸 JSON');
+});
