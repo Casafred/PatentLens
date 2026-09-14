@@ -163,3 +163,29 @@ test('父项编号变化但自身限定不变时标记为仅引用序号变化',
   assert.equal(item.featureDiff.counts.deleted, 0);
   assert.equal(item.featureDiff.counts.modified, 0);
 });
+
+test('正文中第二处引用编号随父项一并迁移时仍标记为仅引用序号变化', () => {
+  const CD = loadClaimDiff();
+  const result = CD.computeDiff(
+    [{ num: '1', type: 'independent', text: '一种装置，包括处理器。' },
+      { num: '2', type: 'dependent', text: '根据权利要求1所述的装置，其特征在于，所述装置执行权利要求3所述的方法。' }],
+    [{ num: '2', type: 'independent', text: '一种装置，包括处理器。' },
+      { num: '3', type: 'dependent', text: '根据权利要求2所述的装置，其特征在于，所述装置执行权利要求4所述的方法。' }],
+  );
+  const item = result.publicItems.find((entry) => entry.base.num === '2');
+  assert.equal(item.status, 'reference_only');
+  assert.equal(result.stats.referenceOnly, 1);
+});
+
+test('引用编号之外的文字有变化时不标记为仅引用序号变化', () => {
+  const CD = loadClaimDiff();
+  const result = CD.computeDiff(
+    [{ num: '1', type: 'independent', text: '一种装置，包括处理器。' },
+      { num: '2', type: 'dependent', text: '根据权利要求1所述的装置，其特征在于，所述装置执行权利要求3所述的方法。' }],
+    [{ num: '2', type: 'independent', text: '一种装置，包括处理器。' },
+      { num: '3', type: 'dependent', text: '根据权利要求2所述的装置，其特征在于，所述装置执行权利要求4所述的步骤。' }],
+  );
+  const item = result.publicItems.find((entry) => entry.base.num === '2');
+  assert.notEqual(item.status, 'reference_only');
+  assert.equal(result.stats.referenceOnly, 0);
+});

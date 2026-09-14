@@ -216,6 +216,14 @@ var ComparisonClaimDiff = (function () {
     return start >= 0 ? value.slice(start).trim() : value;
   }
 
+  // 权利要求编号引用（多语言）。比较“自身技术限定”时忽略这部分纯编号差异，
+  // 否则正文里第二处及以上的引用编号后移会被误判成技术内容修改。
+  var CLAIM_REFERENCE_PATTERN = /(?:根据|根據|如|按照|依据|依據)\s*(?:权利要求|權利要求|权项|權項)\s*[0-9０-９、,，\-－至到和及或\s]+|(?:权利要求|權利要求|权项|權項)\s*[0-9０-９、,，\-－至到和及或\s]+|\bclaims?\s+[0-9]+(?:\s*(?:,|and|or|to|through|-)\s*[0-9]+)*|請求項\s*[0-9０-９]+(?:\s*(?:、|,|及び|又は|から|乃至|[-－])\s*[0-9０-９]+)*|\brevendi(?:cation|cations)\s+[0-9]+(?:\s*(?:,|et|ou|à|a|-)\s*[0-9]+)*|\banspr(?:uch|üche|ueche)\s+[0-9]+(?:\s*(?:,|und|oder|bis|-)\s*[0-9]+)*/gi;
+
+  function stripClaimReferences(text) {
+    return String(text || '').replace(CLAIM_REFERENCE_PATTERN, ' ');
+  }
+
   function prepareClaims(claims) {
     return (claims || []).map(function (claim, index) {
       var text = String(claim.text || '').trim();
@@ -227,7 +235,7 @@ var ComparisonClaimDiff = (function () {
         index: index,
         key: claimKey({ text: text }),
         alignment: alignmentText(text),
-        ownKey: featureKey(alignmentText(text))
+        ownKey: featureKey(stripClaimReferences(alignmentText(text)))
       };
     }).filter(function (claim) { return claim.text; });
   }
