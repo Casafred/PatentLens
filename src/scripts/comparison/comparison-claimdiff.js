@@ -14,6 +14,7 @@ var ComparisonClaimDiff = (function () {
     isLoading: false,
     error: '',
     filter: 'all',
+    view: 'list',
     referenceOnlyExpanded: false
   };
 
@@ -452,6 +453,17 @@ var ComparisonClaimDiff = (function () {
     return html + '</div>';
   }
 
+  function renderItemBody(item) {
+    var base = item.base, compare = item.compare || item.mergedInto;
+    var html = '<div class="claimdiff-item-body">';
+    html += '<div class="claimdiff-relation"><b>谱系判断</b><span>' + esc(relationText(base) + ' → ' + relationText(compare)) + '</span>';
+    if (item.parentMigration) html += '<span>父项路径：公开权' + esc(item.parentMigration.from.join('、')) + ' → 授权权' + esc(item.parentMigration.to.join('、')) + '</span>';
+    html += '</div>';
+    html += renderFullText(item);
+    if (compare) html += '<details class="claimdiff-features"><summary>查看技术特征拆分</summary><div class="claimdiff-detail-head"><span>公开版本</span><span>授权版本</span></div>' + renderFeatureRows(item.featureDiff) + '</details>';
+    return html + '</div>';
+  }
+
   function renderItem(item) {
     var base = item.base, compare = item.compare || item.mergedInto;
     var open = item.status !== 'reference_only' || _state.referenceOnlyExpanded;
@@ -463,13 +475,8 @@ var ComparisonClaimDiff = (function () {
     html += '<span class="claimdiff-status ' + item.status + '">' + statusLabel(item.status) + '</span>';
     html += '<span class="claimdiff-summary">' + (item.reasons.join(' · ') || '文本和权项关系一致') + '</span>';
     html += '</div></summary>';
-    html += '<div class="claimdiff-item-body">';
-    html += '<div class="claimdiff-relation"><b>谱系判断</b><span>' + esc(relationText(base) + ' → ' + relationText(compare)) + '</span>';
-    if (item.parentMigration) html += '<span>父项路径：公开权' + esc(item.parentMigration.from.join('、')) + ' → 授权权' + esc(item.parentMigration.to.join('、')) + '</span>';
-    html += '</div>';
-    html += renderFullText(item);
-    if (compare) html += '<details class="claimdiff-features"><summary>查看技术特征拆分</summary><div class="claimdiff-detail-head"><span>公开版本</span><span>授权版本</span></div>' + renderFeatureRows(item.featureDiff) + '</details>';
-    html += '</div></details>';
+    html += renderItemBody(item);
+    html += '</details>';
     return html;
   }
 
@@ -477,28 +484,42 @@ var ComparisonClaimDiff = (function () {
     return '<article class="claimdiff-granted-only"><header>' + claimLabel(item.compare) + '<span class="claimdiff-status added">授权新增</span></header><p><mark class="cd-ins">' + esc(item.compare.text) + '</mark></p></article>';
   }
 
-  function renderResultHtml() {
-    var result = _state.result;
-    if (!result) return '';
-    var stats = result.stats;
-    var filter = _state.filter;
-    var visible = result.publicItems.filter(function (item) {
+  function filterPublicItems(result, filter) {
+    return result.publicItems.filter(function (item) {
       if (filter === 'all') return true;
       if (filter === 'independent') return item.base.type === 'independent' || (item.compare && item.compare.type === 'independent');
       if (filter === 'structure') return item.status === 'promoted' || item.status === 'demoted' || item.status === 'deleted' || item.status === 'merged_into' || item.status === 'dependency_migrated' || item.status === 'reference_only';
       return item.status !== 'same';
     });
+  }
+
+  function renderResultHtml() {
+    var result = _state.result;
+    if (!result) return '';
+    var stats = result.stats;
+    var filter = _state.filter;
+    var visible = filterPublicItems(result, filter);
     var html = '<div class="claimdiff-stats">';
     html += '<span><b>' + stats.baseTotal + '</b> 项公开版权利要求</span><span><b>' + stats.compareTotal + '</b> 项授权版权利要求</span>';
     html += '<span class="same"><b>' + stats.same + '</b> 项未变化</span><span class="changed"><b>' + stats.changed + '</b> 项发生变化</span>';
     html += '<span class="added"><b>' + stats.added + '</b> 项新增</span><span class="deleted"><b>' + stats.deleted + '</b> 项删除</span>';
     html += '</div>';
+    html += '<div class="claimdiff-viewbar"><span>视图：</span>';
+    [{ id: 'list', label: '变化清单' }, { id: 'tree', label: '演变树' }].forEach(function (option) {
+      html += '<button class="claimdiff-view' + (_state.view === option.id ? ' active' : '') + '" data-view="' + option.id + '">' + option.label + '</button>';
+    });
+    html += '</div>';
     html += '<div class="claimdiff-filterbar"><span>查看：</span>';
     [{ id: 'all', label: '全部公开权项' }, { id: 'changed', label: '仅变化项' }, { id: 'independent', label: '独立权利要求' }, { id: 'structure', label: '谱系变化' }].forEach(function (option) {
       html += '<button class="claimdiff-filter' + (_state.filter === option.id ? ' active' : '') + '" data-filter="' + option.id + '">' + option.label + '</button>';
     });
-    if (stats.referenceOnly) html += '<button class="claimdiff-reference-toggle" id="claimdiff-toggle-reference" type="button">' + (_state.referenceOnlyExpanded ? '折叠' : '展开') + '仅引用序号变化项（' + stats.referenceOnly + '）</button>';
+    if (_state.view === 'list' && stats.referenceOnly) html += '<button class="claimdiff-reference-toggle" id="claimdiff-toggle-reference" type="button">' + (_state.referenceOnlyExpanded ? '折叠' : '展开') + '仅引用序号变化项（' + stats.referenceOnly + '）</button>';
     html += '</div>';
+    if (_state.view === 'tree') {
+      html += '<div class="claimdiff-section-title"><strong>权利要求演变树</strong><span>左侧公开版权项结构 · 右侧授权版权项结构 · 连线表示演变去向</span></div>';
+      html += '<div id="claimdiff-tree-root"></div>';
+      return html;
+    }
     html += '<div class="claimdiff-section-title"><strong>公开版权利要求演变</strong><span>以公开版原始顺序完整展示</span></div>';
     html += '<div class="claimdiff-map-head"><span>公开版（主轴）</span><span></span><span>授权版去向</span><span>结论</span><span>变化说明</span></div>';
     html += '<div class="claimdiff-list">' + (visible.length ? visible.map(renderItem).join('') : '<div class="claimdiff-empty">当前筛选条件下没有对应的权利要求变化。</div>') + '</div>';
@@ -542,8 +563,12 @@ var ComparisonClaimDiff = (function () {
     container.querySelector('#claimdiff-run').addEventListener('click', run);
     container.querySelector('#claimdiff-swap').addEventListener('click', function () { var value = _state.baseNum; _state.baseNum = _state.compareNum; _state.compareNum = value; rerender(); });
     container.querySelectorAll('.claimdiff-filter').forEach(function (button) { button.addEventListener('click', function () { _state.filter = this.dataset.filter; rerender(); }); });
+    container.querySelectorAll('.claimdiff-view').forEach(function (button) { button.addEventListener('click', function () { _state.view = this.dataset.view; rerender(); }); });
     var referenceToggle = container.querySelector('#claimdiff-toggle-reference');
     if (referenceToggle) referenceToggle.addEventListener('click', function () { _state.referenceOnlyExpanded = !_state.referenceOnlyExpanded; rerender(); });
+    if (_state.view === 'tree' && _state.result && typeof ClaimDiffTree !== 'undefined') {
+      ClaimDiffTree.render(container.querySelector('#claimdiff-tree-root'), { result: _state.result, filter: _state.filter });
+    }
   }
 
   function setStatus(message, error) {
@@ -597,5 +622,5 @@ var ComparisonClaimDiff = (function () {
     run();
   }
 
-  return { computeDiff: computeDiff, alignClaims: alignClaims, buildFeatureDiff: buildFeatureDiff, tokenDiff: tokenDiff, extractDependencies: extractDependencies, renderInputArea: renderInputArea, enterWithPatents: enterWithPatents, getState: function () { return JSON.parse(JSON.stringify(_state)); } };
+  return { computeDiff: computeDiff, alignClaims: alignClaims, buildFeatureDiff: buildFeatureDiff, tokenDiff: tokenDiff, extractDependencies: extractDependencies, renderInputArea: renderInputArea, enterWithPatents: enterWithPatents, filterPublicItems: filterPublicItems, renderItemBody: renderItemBody, renderGrantedOnly: renderGrantedOnly, statusLabel: statusLabel, getState: function () { return JSON.parse(JSON.stringify(_state)); } };
 })();
