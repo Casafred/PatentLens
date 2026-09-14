@@ -231,6 +231,16 @@ var ComparisonClaimDiff = (function () {
     return String(text || '').replace(CLAIM_REFERENCE_PATTERN, ' ');
   }
 
+  // 去掉权项自身的编号前缀（如 "5. " / "17、 "），保留标题与技术特征原文，
+  // 这样“仅编号变化”可由 ownKey 相等单独识别出来。
+  function stripLeadingClaimNumber(text) {
+    return String(text || '').replace(/^\s*\d+\s*[.、)]\s*/, '');
+  }
+
+  function ownContentKey(text) {
+    return featureKey(stripClaimReferences(stripLeadingClaimNumber(text)));
+  }
+
   function prepareClaims(claims) {
     return (claims || []).map(function (claim, index) {
       var text = String(claim.text || '').trim();
@@ -242,7 +252,7 @@ var ComparisonClaimDiff = (function () {
         index: index,
         key: claimKey({ text: text }),
         alignment: alignmentText(text),
-        ownKey: featureKey(stripClaimReferences(alignmentText(text)))
+        ownKey: ownContentKey(text)
       };
     }).filter(function (claim) { return claim.text; });
   }
@@ -333,11 +343,16 @@ var ComparisonClaimDiff = (function () {
   function classifyPair(pair, parentMap) {
     var base = pair.base, compare = pair.compare, featureDiff = buildFeatureDiff(base.text, compare.text), reasons = [];
     var migration = parentMigration(base, compare, parentMap);
-    var referenceOnly = !!(migration && migration.coherent && base.ownKey === compare.ownKey);
+    // 仅编号/引用序号变化：从属权利要求自身技术内容（去掉自身编号前缀与所有引用后）完全一致，
+    // 文字差异只可能来自权项编号或引用序号，因此默认折叠、不计入技术特征修改。
+    var referenceOnly = base.type === 'dependent' && compare.type === 'dependent'
+      && base.ownKey === compare.ownKey
+      && base.key !== compare.key;
     if (referenceOnly) featureDiff.counts = { added: 0, deleted: 0, modified: 0 };
     if (base.num !== compare.num) reasons.push('权项编号变化');
     if (base.type !== compare.type) reasons.push(base.type === 'dependent' ? '从属权利要求提升为独立权利要求' : '独立权利要求调整为从属权利要求');
-    if (migration) reasons.push(referenceOnly ? '仅因父项映射更新引用序号' : (migration.coherent ? '随父项迁移' : '从属关系调整'));
+    if (referenceOnly) reasons.push(migration && migration.coherent ? '仅因父项映射更新引用序号' : '仅引用序号或权项编号变化');
+    else if (migration) reasons.push(migration.coherent ? '随父项迁移' : '从属关系调整');
     if (base.key !== compare.key && !referenceOnly) reasons.push('文字或技术特征变化');
     var status = 'same';
     if (base.type === 'dependent' && compare.type === 'independent') status = 'promoted';
