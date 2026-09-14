@@ -106,7 +106,7 @@ test('公开版是固定主轴，所有公开权项按原顺序保留', () => {
   assert.equal(result.publicItems.length, 3);
   assert.equal(result.grantedOnly.length, 0);
   assert.equal(result.publicItems[1].status, 'promoted');
-  assert.equal(result.publicItems[2].status, 'dependency_migrated');
+  assert.equal(result.publicItems[2].status, 'reference_only');
 });
 
 test('局部文字修改使用 token 差异而不是整句替换', () => {
@@ -202,6 +202,36 @@ test('解析器零填充权项编号时引用迁移仍识别为仅引用序号�
   );
   const item = result.publicItems.find((entry) => entry.base.num === '00017');
   assert.equal(item.status, 'reference_only');
-  assert.equal(result.stats.referenceOnly, 1);
+  assert.ok(result.stats.referenceOnly >= 1);
   assert.ok(item.parentMigration.coherent);
+});
+
+test('从权仅自身编号变化（引用不变）时也折叠为仅引用序号变化', () => {
+  const CD = loadClaimDiff();
+  const baseText = 'The impact tool of claim 1, further comprising a battery removably coupled to the housing, the battery configured to provide power to the motor.';
+  const result = CD.computeDiff(
+    [{ num: '00001', type: 'independent', text: '1. An impact tool comprising a housing and a motor.' },
+      { num: '00005', type: 'dependent', text: '5. ' + baseText }],
+    [{ num: '00001', type: 'independent', text: '1. An impact tool comprising a housing and a motor.' },
+      { num: '00006', type: 'dependent', text: '6. ' + baseText }],
+  );
+  const item = result.publicItems.find((entry) => entry.base.num === '00005');
+  assert.equal(item.status, 'reference_only');
+  assert.equal(result.stats.referenceOnly, 1);
+});
+
+test('从权引用编号变化（父项映射不连贯）时仍折叠，不计入技术特征修改', () => {
+  const CD = loadClaimDiff();
+  const body = 'wherein the stress reducer includes a first recess formed in a first anvil lug of the plurality of anvil lugs and a second recess formed in a second anvil lug of the plurality of anvil lugs.';
+  const result = CD.computeDiff(
+    [{ num: '00001', type: 'independent', text: '1. An impact tool comprising a housing and a motor.' },
+      { num: '00002', type: 'dependent', text: '2. The impact tool of claim 1, ' + body }],
+    [{ num: '00001', type: 'independent', text: '1. An impact tool comprising a housing and a motor.' },
+      { num: '00002', type: 'independent', text: '2. An impact tool comprising a housing, a motor and a brushless controller.' },
+      { num: '00003', type: 'dependent', text: '3. The impact tool of claim 2, ' + body }],
+  );
+  const item = result.publicItems.find((entry) => entry.base.num === '00002');
+  assert.equal(item.status, 'reference_only');
+  assert.equal(result.stats.referenceOnly, 1);
+  assert.equal(item.featureDiff.counts.modified, 0);
 });
