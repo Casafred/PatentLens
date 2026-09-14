@@ -189,3 +189,19 @@ test('引用编号之外的文字有变化时不标记为仅引用序号变化',
   assert.notEqual(item.status, 'reference_only');
   assert.equal(result.stats.referenceOnly, 0);
 });
+
+test('解析器零填充权项编号时引用迁移仍识别为仅引用序号变化', () => {
+  const CD = loadClaimDiff();
+  const result = CD.computeDiff(
+    [{ num: '00001', type: 'independent', text: '1. An impact tool comprising a housing.' },
+      { num: '00009', type: 'dependent', text: '9. The impact tool of claim 1, wherein the rotor comprises a shaft.' },
+      { num: '00017', type: 'dependent', text: '17. The impact tool of claim 9, wherein the first recess and the second recess are cylindrical blind bores.' }],
+    [{ num: '00001', type: 'independent', text: '1. An impact tool comprising a housing.' },
+      { num: '00010', type: 'dependent', text: '10. The impact tool of claim 1, wherein the rotor comprises a shaft.' },
+      { num: '00018', type: 'dependent', text: '18. The impact tool of claim 10, wherein the first recess and the second recess are cylindrical blind bores.' }],
+  );
+  const item = result.publicItems.find((entry) => entry.base.num === '00017');
+  assert.equal(item.status, 'reference_only');
+  assert.equal(result.stats.referenceOnly, 1);
+  assert.ok(item.parentMigration.coherent);
+});

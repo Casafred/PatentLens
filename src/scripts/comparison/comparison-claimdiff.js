@@ -22,6 +22,13 @@ var ComparisonClaimDiff = (function () {
   function esc(value) { return ComparisonUtils.escapeHtml(value || ''); }
   function normalizeNum(value) { return ComparisonUtils.normalizePatentNumber(value); }
 
+  // 权利要求编号在两个来源里格式不同：解析器用 "00017"，正文引用用 "17"。
+  // 统一去掉前导零后再做引用映射，否则父项编号迁移会被误判为"从属关系调整"。
+  function canonicalClaimNum(value) {
+    var text = String(value == null ? '' : value).trim();
+    return /^0*\d+$/.test(text) ? String(parseInt(text, 10)) : text;
+  }
+
   function normalizeText(value) {
     return String(value || '')
       .normalize('NFKC')
@@ -254,9 +261,10 @@ var ComparisonClaimDiff = (function () {
 
   function dependencyScore(base, compare, parentMap) {
     if (base.type !== 'dependent' || compare.type !== 'dependent') return 0;
-    var mapped = base.dependencies.map(function (num) { return parentMap[num]; }).filter(Boolean);
+    var mapped = base.dependencies.map(function (num) { return parentMap[canonicalClaimNum(num)]; }).filter(Boolean);
     if (!mapped.length) return 0;
-    var hits = mapped.filter(function (num) { return compare.dependencies.indexOf(num) !== -1; }).length;
+    var targets = compare.dependencies.map(canonicalClaimNum);
+    var hits = mapped.filter(function (num) { return targets.indexOf(num) !== -1; }).length;
     return hits ? 0.18 * hits / mapped.length : -0.1;
   }
 
@@ -298,7 +306,7 @@ var ComparisonClaimDiff = (function () {
   function alignClaims(baseClaims, compareClaims) {
     var bases = prepareClaims(baseClaims), compares = prepareClaims(compareClaims), pairs = [], usedBase = {}, usedCompare = {}, parentMap = {};
     function accept(next) {
-      next.forEach(function (pair) { pairs.push(pair); usedBase[pair.base.index] = true; usedCompare[pair.compare.index] = true; parentMap[pair.base.num] = pair.compare.num; });
+      next.forEach(function (pair) { pairs.push(pair); usedBase[pair.base.index] = true; usedCompare[pair.compare.index] = true; parentMap[canonicalClaimNum(pair.base.num)] = canonicalClaimNum(pair.compare.num); });
     }
     var independentBases = bases.filter(function (claim) { return claim.type === 'independent'; });
     var independentCompares = compares.filter(function (claim) { return claim.type === 'independent'; });
@@ -316,9 +324,10 @@ var ComparisonClaimDiff = (function () {
 
   function parentMigration(base, compare, parentMap) {
     if (base.type !== 'dependent' || compare.type !== 'dependent') return null;
-    var mapped = base.dependencies.map(function (num) { return parentMap[num] || num; });
-    var changed = base.dependencies.join(',') !== compare.dependencies.join(',');
-    return changed ? { from: base.dependencies, mapped: mapped, to: compare.dependencies, coherent: mapped.join(',') === compare.dependencies.join(',') } : null;
+    var baseDeps = base.dependencies.map(canonicalClaimNum), compareDeps = compare.dependencies.map(canonicalClaimNum);
+    var mapped = baseDeps.map(function (num) { return parentMap[num] || num; });
+    var changed = baseDeps.join(',') !== compareDeps.join(',');
+    return changed ? { from: base.dependencies, mapped: mapped, to: compare.dependencies, coherent: mapped.join(',') === compareDeps.join(',') } : null;
   }
 
   function classifyPair(pair, parentMap) {
@@ -342,12 +351,12 @@ var ComparisonClaimDiff = (function () {
 
   function findMergedTarget(base, compares, parentMap) {
     if (base.type !== 'dependent' || base.ownKey.length < 4) return null;
-    var preferred = base.dependencies.map(function (num) { return parentMap[num]; }).filter(Boolean), best = null;
+    var preferred = base.dependencies.map(function (num) { return parentMap[canonicalClaimNum(num)]; }).filter(Boolean), best = null;
     var core = base.alignment.replace(/其中|其特征在于|其特徵在於|所述|上述|该|該|还|還|包括|包含|wherein|said|the/gi, '');
     compares.forEach(function (compare) {
       var containment = Math.max(gramOverlap(base.alignment, compare.text), gramOverlap(core, compare.text));
       var similarity = Math.max(diceSimilarity(base.alignment, compare.text), diceSimilarity(core, compare.text));
-      var parentBonus = preferred.indexOf(compare.num) !== -1 ? 0.14 : 0;
+      var parentBonus = preferred.indexOf(canonicalClaimNum(compare.num)) !== -1 ? 0.14 : 0;
       var score = containment * 0.72 + similarity * 0.28 + parentBonus;
       if (containment >= 0.58 && (!best || score > best.score)) best = { claim: compare, score: score, containment: containment };
     });
