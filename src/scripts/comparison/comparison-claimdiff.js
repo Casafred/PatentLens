@@ -10,6 +10,9 @@ var ComparisonClaimDiff = (function () {
     compareNum: '',
     baseTitle: '',
     compareTitle: '',
+    compareClaims: null,
+    compareSourceLabel: '',
+    sourceMetadata: null,
     result: null,
     isLoading: false,
     error: '',
@@ -447,9 +450,11 @@ var ComparisonClaimDiff = (function () {
   function renderFullText(item) {
     var base = item.base, target = item.compare || item.mergedInto;
     var diff = target ? item.featureDiff.inline : null;
+    var baseLabel = _state.compareClaims ? '基准权利要求 ' : '公开权利要求 ';
+    var compareLabel = _state.compareClaims ? (_state.compareSourceLabel || 'OCR 修改版本') : '授权版';
     var html = '<div class="claimdiff-full-grid">';
-    html += '<section class="claimdiff-full-text base"><header>公开权利要求 ' + esc(base.num) + '</header><p>' + (target ? renderHighlighted(base.text, diff, 'base') : '<mark class="cd-del">' + esc(base.text) + '</mark>') + '</p></section>';
-    html += '<section class="claimdiff-full-text compare"><header>' + (target ? (item.mergedInto ? '并入授权权利要求 ' : '授权权利要求 ') + esc(target.num) : '授权版') + '</header><p>' + (target ? renderHighlighted(target.text, diff, 'compare') : '<span class="cd-empty">该公开权项未形成对应授权权项</span>') + '</p></section>';
+    html += '<section class="claimdiff-full-text base"><header>' + baseLabel + esc(base.num) + '</header><p>' + (target ? renderHighlighted(base.text, diff, 'base') : '<mark class="cd-del">' + esc(base.text) + '</mark>') + '</p></section>';
+    html += '<section class="claimdiff-full-text compare"><header>' + (target ? (item.mergedInto ? '并入' + compareLabel + '权利要求 ' : compareLabel + '权利要求 ') + esc(target.num) : compareLabel) + '</header><p>' + (target ? renderHighlighted(target.text, diff, 'compare') : '<span class="cd-empty">该基准权项未形成对应对比权项</span>') + '</p></section>';
     return html + '</div>';
   }
 
@@ -460,7 +465,7 @@ var ComparisonClaimDiff = (function () {
     if (item.parentMigration) html += '<span>父项路径：公开权' + esc(item.parentMigration.from.join('、')) + ' → 授权权' + esc(item.parentMigration.to.join('、')) + '</span>';
     html += '</div>';
     html += renderFullText(item);
-    if (compare) html += '<details class="claimdiff-features"><summary>查看技术特征拆分</summary><div class="claimdiff-detail-head"><span>公开版本</span><span>授权版本</span></div>' + renderFeatureRows(item.featureDiff) + '</details>';
+    if (compare) html += '<details class="claimdiff-features"><summary>查看技术特征拆分</summary><div class="claimdiff-detail-head"><span>' + (_state.compareClaims ? '基准版本' : '公开版本') + '</span><span>' + esc(_state.compareClaims ? (_state.compareSourceLabel || 'OCR 修改版本') : '授权版本') + '</span></div>' + renderFeatureRows(item.featureDiff) + '</details>';
     return html + '</div>';
   }
 
@@ -500,7 +505,7 @@ var ComparisonClaimDiff = (function () {
     var filter = _state.filter;
     var visible = filterPublicItems(result, filter);
     var html = '<div class="claimdiff-stats">';
-    html += '<span><b>' + stats.baseTotal + '</b> 项公开版权利要求</span><span><b>' + stats.compareTotal + '</b> 项授权版权利要求</span>';
+    html += '<span><b>' + stats.baseTotal + '</b> 项基准权利要求</span><span><b>' + stats.compareTotal + '</b> 项' + esc(_state.compareSourceLabel || '对比版本') + '权利要求</span>';
     html += '<span class="same"><b>' + stats.same + '</b> 项未变化</span><span class="changed"><b>' + stats.changed + '</b> 项发生变化</span>';
     html += '<span class="added"><b>' + stats.added + '</b> 项新增</span><span class="deleted"><b>' + stats.deleted + '</b> 项删除</span>';
     html += '</div>';
@@ -520,10 +525,10 @@ var ComparisonClaimDiff = (function () {
       html += '<div id="claimdiff-tree-root"></div>';
       return html;
     }
-    html += '<div class="claimdiff-section-title"><strong>公开版权利要求演变</strong><span>以公开版原始顺序完整展示</span></div>';
-    html += '<div class="claimdiff-map-head"><span>公开版（主轴）</span><span></span><span>授权版去向</span><span>结论</span><span>变化说明</span></div>';
+    html += '<div class="claimdiff-section-title"><strong>基准权利要求变动</strong><span>以基准版本原始顺序完整展示</span></div>';
+    html += '<div class="claimdiff-map-head"><span>基准版本（主轴）</span><span></span><span>' + esc(_state.compareSourceLabel || '对比版本') + '去向</span><span>结论</span><span>变化说明</span></div>';
     html += '<div class="claimdiff-list">' + (visible.length ? visible.map(renderItem).join('') : '<div class="claimdiff-empty">当前筛选条件下没有对应的权利要求变化。</div>') + '</div>';
-    if (result.grantedOnly.length) html += '<section class="claimdiff-granted-section"><div class="claimdiff-section-title"><strong>授权版新增权利要求</strong><span>未由某一公开权项直接演变而来</span></div>' + result.grantedOnly.map(renderGrantedOnly).join('') + '</section>';
+    if (result.grantedOnly.length) html += '<section class="claimdiff-granted-section"><div class="claimdiff-section-title"><strong>' + esc(_state.compareSourceLabel || '对比版本') + '新增权利要求</strong><span>未由某一基准权项直接演变而来</span></div>' + result.grantedOnly.map(renderGrantedOnly).join('') + '</section>';
     return html;
   }
 
@@ -549,9 +554,13 @@ var ComparisonClaimDiff = (function () {
     var html = '<div class="claimdiff-panel">';
     html += '<div class="claimdiff-intro"><div><strong>权利要求变动定位</strong><span>本地算法</span></div><p>先自动对齐最相似的权利要求，再定位新增、删除、独立/从属变化及技术特征修改。</p></div>';
     html += '<div class="claimdiff-input-row">';
-    html += '<div class="claimdiff-input-card base"><label>公开版本（基准）</label><input id="claimdiff-base-num" type="text" placeholder="如 CN110000000A" value="' + esc(_state.baseNum) + '"></div>';
-    html += '<button class="claimdiff-swap" id="claimdiff-swap" title="交换公开版本和授权版本"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3M17 17H6l3 3M18 7l-3 3M6 17l3-3"/></svg></button>';
-    html += '<div class="claimdiff-input-card compare"><label>授权版本（对比）</label><input id="claimdiff-compare-num" type="text" placeholder="如 CN110000000B1" value="' + esc(_state.compareNum) + '"></div>';
+    html += '<div class="claimdiff-input-card base"><label>基准版本</label><input id="claimdiff-base-num" type="text" placeholder="如 CN110000000A" value="' + esc(_state.baseNum) + '"></div>';
+    if (_state.compareClaims) {
+      html += '<div class="claimdiff-input-card compare"><label>对比版本</label><span class="claimdiff-ocr-source">' + esc(_state.compareSourceLabel || 'OCR 修改版本') + ' · ' + _state.compareClaims.length + ' 项</span></div>';
+    } else {
+      html += '<button class="claimdiff-swap" id="claimdiff-swap" title="交换公开版本和授权版本"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h11l-3-3M17 17H6l3 3M18 7l-3 3M6 17l3-3"/></svg></button>';
+      html += '<div class="claimdiff-input-card compare"><label>授权版本（对比）</label><input id="claimdiff-compare-num" type="text" placeholder="如 CN110000000B1" value="' + esc(_state.compareNum) + '"></div>';
+    }
     html += '<button class="btn-primary claimdiff-run" id="claimdiff-run"' + (_state.isLoading ? ' disabled' : '') + '>' + (_state.isLoading ? '正在定位…' : '开始定位变动') + '</button>';
     html += '</div>';
     if (_state.baseTitle || _state.compareTitle) html += '<div class="claimdiff-titles"><span>基准：' + esc(_state.baseTitle) + '</span><span>对比：' + esc(_state.compareTitle) + '</span></div>';
@@ -559,9 +568,11 @@ var ComparisonClaimDiff = (function () {
     html += '<div id="claimdiff-result">' + renderResultHtml() + '</div></div>';
     container.innerHTML = html;
     container.querySelector('#claimdiff-base-num').addEventListener('input', function () { _state.baseNum = this.value; });
-    container.querySelector('#claimdiff-compare-num').addEventListener('input', function () { _state.compareNum = this.value; });
+    var compareInput = container.querySelector('#claimdiff-compare-num');
+    if (compareInput) compareInput.addEventListener('input', function () { _state.compareNum = this.value; });
     container.querySelector('#claimdiff-run').addEventListener('click', run);
-    container.querySelector('#claimdiff-swap').addEventListener('click', function () { var value = _state.baseNum; _state.baseNum = _state.compareNum; _state.compareNum = value; rerender(); });
+    var swap = container.querySelector('#claimdiff-swap');
+    if (swap) swap.addEventListener('click', function () { var value = _state.baseNum; _state.baseNum = _state.compareNum; _state.compareNum = value; rerender(); });
     container.querySelectorAll('.claimdiff-filter').forEach(function (button) { button.addEventListener('click', function () { _state.filter = this.dataset.filter; rerender(); }); });
     container.querySelectorAll('.claimdiff-view').forEach(function (button) { button.addEventListener('click', function () { _state.view = this.dataset.view; rerender(); }); });
     var referenceToggle = container.querySelector('#claimdiff-toggle-reference');
@@ -579,14 +590,19 @@ var ComparisonClaimDiff = (function () {
   async function run() {
     _state.baseNum = normalizeNum(_state.baseNum);
     _state.compareNum = normalizeNum(_state.compareNum);
-    if (!_state.baseNum || !_state.compareNum) { _state.error = '请输入公开版本和授权版本的公开号'; rerender(); return; }
-    if (_state.baseNum === _state.compareNum) { _state.error = '两个公开号相同，无需比对'; rerender(); return; }
+    if (!_state.baseNum || (!_state.compareClaims && !_state.compareNum)) { _state.error = _state.compareClaims ? '请输入基准专利号' : '请输入公开版本和授权版本的公开号'; rerender(); return; }
+    if (!_state.compareClaims && _state.baseNum === _state.compareNum) { _state.error = '两个公开号相同，无需比对'; rerender(); return; }
     _state.isLoading = true; _state.error = ''; _state.result = null; _state.referenceOnlyExpanded = false; rerender();
     try {
       setStatus('正在读取公开版权利要求…');
       var base = await fetchPatentData(_state.baseNum);
-      setStatus('正在读取授权版权利要求…');
-      var compare = await fetchPatentData(_state.compareNum);
+      var compare;
+      if (_state.compareClaims) {
+        compare = { claims: _state.compareClaims, title: _state.compareSourceLabel || 'OCR 修改版本权利要求' };
+      } else {
+        setStatus('正在读取授权版权利要求…');
+        compare = await fetchPatentData(_state.compareNum);
+      }
       if (!base.claims || !base.claims.length || !compare.claims || !compare.claims.length) throw new Error('至少其中一篇专利缺少权利要求数据，无法定位变动');
       _state.baseTitle = base.title || '';
       _state.compareTitle = compare.title || '';
@@ -607,13 +623,13 @@ var ComparisonClaimDiff = (function () {
     if (typeof ComparisonCore === 'undefined' || !ComparisonCore.history || !_state.result) return;
     var stats = _state.result.stats || {};
     ComparisonCore.history.saveLocalDiff({
-      inputMode: 'claimdiff',
-      analysisType: '权利要求变动定位',
+      inputMode: _state.compareClaims ? 'ocrclaimdiff' : 'claimdiff',
+      analysisType: _state.compareClaims ? 'OCR 修改版权利要求变动定位' : '权利要求变动定位',
       firstPatent: _state.baseNum,
-      secondPatent: _state.compareNum,
+      secondPatent: _state.compareClaims ? 'OCR' : _state.compareNum,
       anchorLabel: base.title || _state.baseNum,
       compareLabel: compare.title || _state.compareNum,
-      summary: '公开版权利要求 ' + (stats.baseTotal || 0) + ' 项，授权版权利要求 ' + (stats.compareTotal || 0) + ' 项；变化 ' + (stats.changed || 0) + ' 项，新增 ' + (stats.added || 0) + ' 项，删除 ' + (stats.deleted || 0) + ' 项。'
+      summary: '基准权利要求 ' + (stats.baseTotal || 0) + ' 项，' + (_state.compareSourceLabel || '对比版本') + '权利要求 ' + (stats.compareTotal || 0) + ' 项；变化 ' + (stats.changed || 0) + ' 项，新增 ' + (stats.added || 0) + ' 项，删除 ' + (stats.deleted || 0) + ' 项。'
     });
   }
 
@@ -631,11 +647,26 @@ var ComparisonClaimDiff = (function () {
 
   function enterWithPatents(first, second) {
     var pair = inferPublicationFirst(first, second);
-    _state.baseNum = pair.base; _state.compareNum = pair.compare; _state.result = null; _state.error = ''; _state.referenceOnlyExpanded = false;
+    _state.baseNum = pair.base; _state.compareNum = pair.compare; _state.compareClaims = null; _state.compareSourceLabel = ''; _state.sourceMetadata = null; _state.result = null; _state.error = ''; _state.referenceOnlyExpanded = false;
     if (typeof ComparisonCore !== 'undefined') { ComparisonCore.setInputMode('claimdiff'); ComparisonCore.setActiveTab('prepare'); }
     if (typeof ComparisonUI !== 'undefined') ComparisonUI.render();
     run();
   }
 
-  return { computeDiff: computeDiff, alignClaims: alignClaims, buildFeatureDiff: buildFeatureDiff, tokenDiff: tokenDiff, extractDependencies: extractDependencies, renderInputArea: renderInputArea, enterWithPatents: enterWithPatents, filterPublicItems: filterPublicItems, renderItemBody: renderItemBody, renderGrantedOnly: renderGrantedOnly, statusLabel: statusLabel, getState: function () { return JSON.parse(JSON.stringify(_state)); } };
+  function enterWithBaselineAndClaims(baseNum, claims, metadata) {
+    if (!Array.isArray(claims) || !claims.length) throw new Error('OCR 修改版本中未识别到可比对的权利要求');
+    _state.baseNum = normalizeNum(baseNum);
+    _state.compareNum = '';
+    _state.compareClaims = claims.map(function (claim) {
+      return { num: String(claim.num), type: claim.type === 'dependent' ? 'dependent' : 'independent', text: String(claim.text || ''), dependencies: claim.dependencies || [] };
+    });
+    _state.compareSourceLabel = (metadata && metadata.label) || 'OCR 修改版本';
+    _state.sourceMetadata = metadata || null;
+    _state.result = null; _state.error = ''; _state.referenceOnlyExpanded = false;
+    if (typeof ComparisonCore !== 'undefined') { ComparisonCore.setInputMode('claimdiff'); ComparisonCore.setActiveTab('prepare'); }
+    if (typeof ComparisonUI !== 'undefined') ComparisonUI.render();
+    run();
+  }
+
+  return { computeDiff: computeDiff, alignClaims: alignClaims, buildFeatureDiff: buildFeatureDiff, tokenDiff: tokenDiff, extractDependencies: extractDependencies, renderInputArea: renderInputArea, enterWithPatents: enterWithPatents, enterWithBaselineAndClaims: enterWithBaselineAndClaims, filterPublicItems: filterPublicItems, renderItemBody: renderItemBody, renderGrantedOnly: renderGrantedOnly, statusLabel: statusLabel, getState: function () { return JSON.parse(JSON.stringify(_state)); } };
 })();
