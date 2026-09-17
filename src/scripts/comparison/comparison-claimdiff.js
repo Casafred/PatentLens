@@ -594,12 +594,27 @@ var ComparisonClaimDiff = (function () {
       await new Promise(function (resolve) { setTimeout(resolve, 30); });
       _state.result = computeDiff(base.claims, compare.claims);
       _state.isLoading = false;
+      saveHistoryEntry(base, compare);
       rerender();
     } catch (error) {
       _state.isLoading = false;
       _state.error = error && error.message ? error.message : String(error);
       rerender();
     }
+  }
+
+  function saveHistoryEntry(base, compare) {
+    if (typeof ComparisonCore === 'undefined' || !ComparisonCore.history || !_state.result) return;
+    var stats = _state.result.stats || {};
+    ComparisonCore.history.saveLocalDiff({
+      inputMode: 'claimdiff',
+      analysisType: '权利要求变动定位',
+      firstPatent: _state.baseNum,
+      secondPatent: _state.compareNum,
+      anchorLabel: base.title || _state.baseNum,
+      compareLabel: compare.title || _state.compareNum,
+      summary: '公开版权利要求 ' + (stats.baseTotal || 0) + ' 项，授权版权利要求 ' + (stats.compareTotal || 0) + ' 项；变化 ' + (stats.changed || 0) + ' 项，新增 ' + (stats.added || 0) + ' 项，删除 ' + (stats.deleted || 0) + ' 项。'
+    });
   }
 
   function rerender() {

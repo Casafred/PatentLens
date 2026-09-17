@@ -12636,6 +12636,39 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   margin-top: 0;
   padding-top: 0;
 }
+/* 图文对照与 AI 实施例总结共存时，左列再划分为两个独立滚动区，
+   保证总结、原文和右侧附图可同时查看。 */
+.pd-split-text:has(.pd-desc-summary-panel) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pd-split-text:has(.pd-desc-summary-panel) .pd-tab-panel-body[data-panel-body="description"] {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.pd-split-text:has(.pd-desc-summary-panel) .pd-desc-summary-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 44%;
+  min-height: 112px;
+  margin-bottom: 10px;
+}
+.pd-split-text:has(.pd-desc-summary-panel) .pd-desc-summary-body {
+  max-height: none;
+  min-height: 0;
+  flex: 1;
+}
+.pd-split-text:has(.pd-desc-summary-panel) .pd-description-text {
+  flex: 1;
+  min-height: 140px;
+  max-height: none;
+}
+@media (max-width: 760px) {
+  .pd-split-text:has(.pd-desc-summary-panel) .pd-desc-summary-panel { flex-basis: 38%; }
+}
 
 /* ── Agent 应用内跳转按钮 ── */
 .agent-action-btn {
@@ -13576,6 +13609,63 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 .pd-desc-summary-body ul {
   padding-left: 24px;
 }
+.pd-desc-summary-markdown > :first-child { margin-top: 0; }
+.pd-desc-summary-markdown > :last-child { margin-bottom: 0; }
+.pd-desc-summary-markdown h1,
+.pd-desc-summary-markdown h2,
+.pd-desc-summary-markdown h3,
+.pd-desc-summary-markdown h4 {
+  color: var(--text-primary);
+  line-height: 1.35;
+  margin: 18px 0 8px;
+}
+.pd-desc-summary-markdown h1 { font-size: 17px; }
+.pd-desc-summary-markdown h2 { font-size: 15px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+.pd-desc-summary-markdown h3 { font-size: 13px; }
+.pd-desc-summary-markdown p { margin: 7px 0; }
+.pd-desc-summary-markdown li { margin: 4px 0; }
+.pd-desc-summary-markdown blockquote {
+  margin: 10px 0;
+  padding: 7px 11px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+.pd-desc-summary-markdown code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.pd-desc-summary-markdown pre {
+  margin: 10px 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-secondary);
+}
+.pd-desc-summary-markdown pre code { padding: 0; background: transparent; }
+.pd-desc-summary-markdown table {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+.pd-desc-summary-markdown th,
+.pd-desc-summary-markdown td {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  vertical-align: top;
+  text-align: left;
+}
+.pd-desc-summary-markdown th {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.pd-desc-summary-markdown tr:nth-child(even) td { background: rgba(148, 163, 184, 0.06); }
 .pd-desc-summary-panel {
   margin: 0 0 14px;
   border: 1px solid var(--accent);
