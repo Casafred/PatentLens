@@ -41,6 +41,7 @@ const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
 const fontkit = require("@pdf-lib/fontkit");
 const XLSX = require("xlsx");
 const { normalizePatentNumber, extractPatentFromHtml } = require("./patent-parser");
+const { PdfSessionCache } = require("./pdf-session-cache");
 
 const SHARE_SHEET_MAX_BYTES = 10 * 1024 * 1024;
 const SHARE_SHEET_MAX_SHEETS = 20;
@@ -96,6 +97,26 @@ const GLM_OCR_URL = "https://open.bigmodel.cn/api/paas/v4/layout_parsing";
 // OCR result cache: key = sha256(pdfBase64), value = { result, timestamp }
 const ocrCache = new Map();
 const OCR_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+// 审查文档 PDF 只保留在本次应用会话的主进程内存中。容量受控的 LRU
+// 缓存避免阅读器重开时重复请求网络，应用完全退出时会显式清空。
+const pdfSessionCache = new PdfSessionCache({
+  maxBytes: 192 * 1024 * 1024,
+  maxEntryBytes: 64 * 1024 * 1024,
+});
+
+function getSessionPdf(cacheKey) {
+  return pdfSessionCache.get(cacheKey);
+}
+
+function cacheSessionPdf(cacheKey, buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 100 || buffer.subarray(0, 5).toString("ascii") !== "%PDF-") return false;
+  return pdfSessionCache.set(cacheKey, buffer);
+}
+
+function clearSessionPdfCaches() {
+  pdfSessionCache.clear();
+  _epoPdfBufferCache.clear();
+}
 
 const GD_HEADERS = {
   "user-type": "external",
@@ -2062,6 +2083,20 @@ async function proxyGdApi(urlPath, res) {
   const docId = pathMatch && pathMatch[3] ? decodeURIComponent(pathMatch[3]) : null;
   const supportsEpo = office && EPO_OFFICES.has(office.toUpperCase());
 
+  if (isDocContent) {
+    const cachedPdf = getSessionPdf(urlPathNoQuery);
+    if (cachedPdf) {
+      res.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'attachment; filename="document.pdf"',
+        "X-PatentLens-Pdf-Cache": "HIT",
+        ...corsHeaders,
+      });
+      res.end(cachedPdf);
+      return;
+    }
+  }
+
   let gdOk = false;
   let gdFailReason = "";
   let gdResult = null;
@@ -2075,6 +2110,7 @@ async function proxyGdApi(urlPath, res) {
       const cachedPdf = getCachedEpoPdf(office, docNumber, docId) || getCachedEpoPdfByEpoDocId(docId);
       if (cachedPdf) {
         console.log(`[EPO Direct] doc-content 命中 PDF 缓存, size=${cachedPdf.length}, 直接返回`);
+        cacheSessionPdf(urlPathNoQuery, cachedPdf);
         res.writeHead(200, {
           "Content-Type": "application/pdf",
           "Content-Disposition": 'attachment; filename="document.pdf"',
@@ -2098,6 +2134,7 @@ async function proxyGdApi(urlPath, res) {
 
         if (isDocContent) {
           if (isPdf && !isAttachmentNotFound) {
+            cacheSessionPdf(urlPathNoQuery, gdResult.body);
             corsHeaders["Content-Type"] = "application/pdf";
             corsHeaders["Content-Disposition"] = 'attachment; filename="document.pdf"';
             res.writeHead(200, corsHeaders);
@@ -2179,6 +2216,7 @@ async function proxyGdApi(urlPath, res) {
         console.log(`[EPO Fallback] EPO PDF succeeded for ${office}/${docNumber}/${docId}, size=${epoResult.body.length}`);
         // 缓存 PDF buffer，后续 extract-text 和重复的 doc-content 请求直接复用
         setCachedEpoPdf(office, docNumber, docId, epoResult.body);
+        cacheSessionPdf(urlPathNoQuery, epoResult.body);
         res.writeHead(200, {
           "Content-Type": "application/pdf",
           "Content-Disposition": 'attachment; filename="document.pdf"',
@@ -2193,6 +2231,7 @@ async function proxyGdApi(urlPath, res) {
         const cachedPdf = getCachedEpoPdf(office, docNumber, docId) || getCachedEpoPdfByEpoDocId(docId);
         if (cachedPdf) {
           console.log(`[EPO Fallback] manual done, found requested PDF in cache, size=${cachedPdf.length}`);
+          cacheSessionPdf(urlPathNoQuery, cachedPdf);
           res.writeHead(200, {
             "Content-Type": "application/pdf",
             "Content-Disposition": 'attachment; filename="document.pdf"',
@@ -4963,6 +5002,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
+  clearSessionPdfCaches();
   if (server) server.close();
   app.quit();
 });

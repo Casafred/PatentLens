@@ -6059,7 +6059,7 @@ body {
   top: 50%;
   transform: translateY(-50%);
   width: 20px;
-  height: 48px;
+  height: 112px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-right: none;
@@ -6154,7 +6154,7 @@ body {
   top: 50%;
   transform: translateY(-50%);
   width: 24px;
-  height: 48px;
+  height: 112px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-left: none;
