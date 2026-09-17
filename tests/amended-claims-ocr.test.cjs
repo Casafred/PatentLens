@@ -39,3 +39,19 @@ test('正文提及 claim 不会误判为从属权利要求', () => {
   assert.equal(result.claims[0].type, 'independent');
   assert.equal(result.claims[1].type, 'dependent');
 });
+
+test('日文、法文和德文的从属权项及引用范围可识别', () => {
+  const parser = loadParser();
+  const samples = [
+    ['1. 装置は請求項番号をメモリに保存する。\n\n2. 請求項1から3のいずれかに記載の装置。', ['1', '2'], ['1', '2', '3']],
+    ["1. Un procede stocke un numero de revendication.\n\n2. Dispositif selon l'une quelconque des revendications 1 a 3.", ['1', '2'], ['1', '2', '3']],
+    ['1. Ein Verfahren speichert eine Anspruchsnummer.\n\n2. Vorrichtung nach einem der Ansprueche 1 bis 3.', ['1', '2'], ['1', '2', '3']]
+  ];
+  samples.forEach(([text, numbers, refs]) => {
+    const result = parser.parseClaims(text);
+    assert.deepEqual(Array.from(result.claims.map((claim) => claim.num)), numbers);
+    assert.equal(result.claims[0].type, 'independent');
+    assert.equal(result.claims[1].type, 'dependent');
+    assert.deepEqual(Array.from(result.claims[1].dependencies), refs);
+  });
+});
