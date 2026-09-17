@@ -606,12 +606,27 @@ var ComparisonSpecDiff = (function () {
 
       _state.result = computeDiff(anchorData.description, compareData.description);
       _state.isLoading = false;
+      saveHistoryEntry(anchorData, compareData);
       _rerender();
     } catch (err) {
       _state.isLoading = false;
       _state.error = err && err.message ? err.message : String(err);
       _rerender();
     }
+  }
+
+  function saveHistoryEntry(anchorData, compareData) {
+    if (typeof ComparisonCore === 'undefined' || !ComparisonCore.history || !_state.result) return;
+    var stats = _state.result.stats || {};
+    ComparisonCore.history.saveLocalDiff({
+      inputMode: 'specdiff',
+      analysisType: '说明书变动定位',
+      firstPatent: _state.anchorNum,
+      secondPatent: _state.compareNum,
+      anchorLabel: anchorData.title || _state.anchorNum,
+      compareLabel: compareData.title || _state.compareNum,
+      summary: '共 ' + (stats.anchorTotal || 0) + ' / ' + (stats.compareTotal || 0) + ' 个段落；明显变化 ' + (stats.major || 0) + ' 处，细微调整 ' + (stats.minor || 0) + ' 处，新增 ' + (stats.inserted || 0) + ' 段，删除 ' + (stats.deleted || 0) + ' 段。'
+    });
   }
 
   function _rerender() {

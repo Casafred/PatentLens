@@ -35,6 +35,7 @@
     },
     "files": [
       "electron-main.js",
+      "pdf-session-cache.js",
       "patent-parser.js",
       "preload.js",
       "cnipa-preload.js",

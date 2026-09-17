@@ -475,9 +475,7 @@ var DescriptionSummary = (function () {
           if (!renderRaf) {
             renderRaf = requestAnimationFrame(function () {
               renderRaf = null;
-              bodyEl.innerHTML =
-                (window.renderMarkdown ? window.renderMarkdown(acc) : "<pre>" + esc(acc) + "</pre>") ||
-                '<p class="pd-desc-summary-hint">…</p>';
+              renderMarkdownInto(bodyEl, acc, '<p class="pd-desc-summary-hint">…</p>');
             });
           }
         }
@@ -509,9 +507,15 @@ var DescriptionSummary = (function () {
   function renderDone(scope, bodyEl, content, isCached) {
     var html = window.renderMarkdown ? window.renderMarkdown(content) : "<pre>" + esc(content) + "</pre>";
     html = linkifyRefs(html, scope);
-    bodyEl.innerHTML =
-      html +
+    bodyEl.innerHTML = '<div class="markdown-body pd-desc-summary-markdown">' + html + '</div>' +
       (isCached ? '<p class="pd-desc-summary-cachetag">（已缓存结果，可点击「重新总结」刷新）</p>' : "");
+  }
+
+  function renderMarkdownInto(bodyEl, content, emptyHtml) {
+    var html = window.renderMarkdown ? window.renderMarkdown(content) : "<pre>" + esc(content) + "</pre>";
+    bodyEl.innerHTML = html
+      ? '<div class="markdown-body pd-desc-summary-markdown">' + html + '</div>'
+      : emptyHtml;
   }
 
   function init() {

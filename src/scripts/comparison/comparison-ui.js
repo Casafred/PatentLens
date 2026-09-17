@@ -314,7 +314,7 @@ var ComparisonUI = (function () {
         html += '  <div class="cmp-history-dd-item-main" onclick="ComparisonUI.viewHistoryEntry(\'' + entry.id + '\')">';
         html += '    <span class="cmp-history-dd-date">' + dateStr + '</span>';
         html += '    <span class="cmp-history-dd-patents">' + ComparisonUtils.escapeHtml(patentStr || '手动输入') + '</span>';
-        html += '    <span class="cmp-history-dd-meta">' + (entry.itemCount || 0) + '项' + (entry.anchorLabel ? ' | 锚点: ' + ComparisonUtils.escapeHtml(entry.anchorLabel) : '') + '</span>';
+        html += '    <span class="cmp-history-dd-meta">' + (entry.analysisType ? ComparisonUtils.escapeHtml(entry.analysisType) + ' | ' : '') + (entry.itemCount || 0) + '项' + (entry.anchorLabel ? ' | 锚点: ' + ComparisonUtils.escapeHtml(entry.anchorLabel) : '') + '</span>';
         html += '  </div>';
         html += '  <div class="cmp-history-dd-item-actions">';
         html += '    <button class="btn-secondary btn-small" onclick="ComparisonUI.restoreHistory(\'' + entry.id + '\')">恢复</button>';
@@ -490,6 +490,11 @@ var ComparisonUI = (function () {
       html += '<div style="margin-bottom:12px;"><strong>专利号:</strong> ' + ComparisonUtils.escapeHtml(entry.patentNumbers.join(', ')) + '</div>';
     }
 
+    if (entry.analysisType) {
+      html += '<div style="margin-bottom:12px;"><strong>分析类型:</strong> ' + ComparisonUtils.escapeHtml(entry.analysisType) + '</div>';
+      if (entry.localSummary) html += '<div style="margin-bottom:12px;"><strong>结果摘要:</strong> ' + ComparisonUtils.escapeHtml(entry.localSummary) + '</div>';
+    }
+
     if (entry.itemsSummary && entry.itemsSummary.length > 0) {
       html += '<div style="margin-bottom:12px;"><strong>比对项 (' + entry.itemsSummary.length + '):</strong></div>';
       html += '<ul style="margin:0 0 12px 20px;padding:0;font-size:13px;">';
@@ -538,6 +543,14 @@ var ComparisonUI = (function () {
   function _restoreHistory(id) {
     var entry = ComparisonCore.history.get(id);
     if (!entry) return;
+    if (entry.inputMode === 'specdiff' && entry.patentNumbers && entry.patentNumbers.length === 2 && typeof ComparisonSpecDiff !== 'undefined') {
+      ComparisonSpecDiff.enterWithPatents(entry.patentNumbers[0], entry.patentNumbers[1]);
+      return;
+    }
+    if (entry.inputMode === 'claimdiff' && entry.patentNumbers && entry.patentNumbers.length === 2 && typeof ComparisonClaimDiff !== 'undefined') {
+      ComparisonClaimDiff.enterWithPatents(entry.patentNumbers[0], entry.patentNumbers[1]);
+      return;
+    }
     ComparisonCore.clearItems();
     var restoredItems = [];
     var anchorItem = null;

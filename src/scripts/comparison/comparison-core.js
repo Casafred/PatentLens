@@ -725,6 +725,33 @@ var ComparisonCore = (function () {
       return entry;
     },
 
+    // 本地变动定位不保存完整差异正文（说明书差异可能很大），恢复时依据
+    // 两个公开号重新计算；历史中仅保留可识别的模式和统计摘要。
+    saveLocalDiff: function(options) {
+      options = options || {};
+      if (!options.inputMode || !options.firstPatent || !options.secondPatent) return null;
+      var entry = {
+        id: 'localdiff_' + options.inputMode + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        timestamp: Date.now(),
+        patentNumbers: [options.firstPatent, options.secondPatent],
+        anchorLabel: options.anchorLabel || options.firstPatent,
+        itemCount: 2,
+        inputMode: options.inputMode,
+        analysisType: options.analysisType || '本地变动定位',
+        localSummary: options.summary || '',
+        itemsSummary: [
+          { id: 'anchor', label: options.anchorLabel || options.firstPatent, patentNumber: options.firstPatent, source: 'patent', isSelected: true },
+          { id: 'compare', label: options.compareLabel || options.secondPatent, patentNumber: options.secondPatent, source: 'patent', isSelected: true }
+        ]
+      };
+      var list = this._getAll();
+      list.push(entry);
+      list.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+      if (list.length > this.MAX_ENTRIES) list = list.slice(0, this.MAX_ENTRIES);
+      this._save(list);
+      return entry;
+    },
+
     remove: function(id) {
       var list = this._getAll();
       list = list.filter(function(e) { return e.id !== id; });
