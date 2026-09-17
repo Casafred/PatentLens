@@ -518,13 +518,18 @@ function extractPatentFromHtml(html, patentId) {
     function extractClaimTextDivs(html) {
       const claimMap = new Map();
       const claimTextMatches = [...html.matchAll(/<div[^>]*class="claim-text"[^>]*>/gi)];
+      // 新版 GP 把续行嵌套在父 claim-text 内部（首行为父级直接文本，续行为子 div）。
+      // 父级提取已包含全部文本，需跳过位于上一个已处理 claim-text 内部的嵌套匹配，否则续行会被提取两次。
+      let lastCloseEnd = -1;
       for (let i = 0; i < claimTextMatches.length; i++) {
         const cm = claimTextMatches[i];
+        if (cm.index < lastCloseEnd) continue; // 嵌套在已处理的 claim-text 内部，跳过
         const openEnd = html.indexOf('>', cm.index);
         if (openEnd === -1) continue;
         // Find matching </div> for this claim-text div
         const closeIdx = findMatchingCloseDiv(html, cm.index);
         if (closeIdx === -1) continue;
+        lastCloseEnd = closeIdx + 6; // 越过 </div>，此后的 claim-text 才是兄弟节点
         const bodyContent = html.substring(openEnd + 1, closeIdx);
         let claimText = bodyContent
           .replace(/<br\s*\/?>/gi, " ")
