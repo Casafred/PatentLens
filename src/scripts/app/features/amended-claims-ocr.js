@@ -37,7 +37,7 @@
   function claimType(text) {
     var source = String(text || '').replace(/^\s*\[\[PL_STATUS:[^\]]+\]\]\s*/i, '');
     // 仅认可权项开头的规范引用句式，避免技术特征正文中的 claim 字样误判为从权。
-    return /^(?:(?:the|an?|said)\b[\s\S]{0,180}?\b(?:of|according\s+to)\s+(?:any\s+)?claims?\s+\d+|according\s+to\s+(?:any\s+)?claims?\s+\d+|claims?\s+\d+\b|(?:根据|如|按照|依照)\s*权利要求\s*\d+|权利要求\s*\d+\s*所述)/i.test(source) ? 'dependent' : 'independent';
+    return /^(?:(?:the|an?|said)\b[\s\S]{0,180}?\b(?:of|according\s+to)\s+(?:any\s+)?claims?\s+\d+|according\s+to\s+(?:any\s+)?claims?\s+\d+|claims?\s+\d+\b|(?:根据|如|按照|依照)\s*权利要求\s*\d+|权利要求\s*\d+\s*所述|請求項\s*[0-9０-９]+(?:\s*(?:、|,|及び|又は|から|乃至|[-－])\s*[0-9０-９]+)*\s*(?:に記載(?:された)?の|に従属する|の)|[\s\S]{0,140}?\bselon\s+(?:l['’]une\s+quelconque\s+des\s+)?revendications?\s+\d+|[\s\S]{0,140}?\b(?:nach\s+(?:einem\s+der\s+)?|gemäß\s+)anspr(?:uch|üche|ueche)\s+\d+)/i.test(source) ? 'dependent' : 'independent';
   }
 
   function amendmentStatus(text) {
@@ -64,12 +64,31 @@
   function dependencies(text) {
     var source = String(text || '');
     var found = [];
-    var matcher = /(?:claims?|权利要求)\s*(\d+(?:\s*(?:,|and|or|或|和|至|到|[-–—])\s*\d+)*)/gi;
-    var match;
-    while ((match = matcher.exec(source))) {
-      (match[1].match(/\d+/g) || []).forEach(function (num) {
+    var patterns = [
+      /(?:claims?|权利要求)\s*(\d+(?:\s*(?:,|and|or|或|和|至|到|[-–—])\s*\d+)*)/i,
+      /請求項\s*([0-9０-９]+(?:\s*(?:、|,|及び|又は|から|乃至|[-－])\s*[0-9０-９]+)*)/i,
+      /\brevendi(?:cation|cations)\s+(\d+(?:\s*(?:,|et|ou|à|a|[-–—])\s*\d+)*)/i,
+      /\banspr(?:uch|üche|ueche)\s+(\d+(?:\s*(?:,|und|oder|bis|[-–—])\s*\d+)*)/i
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var match = source.match(patterns[i]);
+      if (!match) continue;
+      var referenceText = match[1];
+      var numbers = (referenceText.match(/[0-9０-９]+/g) || []).map(function (num) {
+        return num.replace(/[０-９]/g, function (char) { return String.fromCharCode(char.charCodeAt(0) - 0xFEE0); });
+      });
+      var isRange = /(?:\bto\b|\bthrough\b|至|到|から|乃至|\bà\b|\ba\b|\bbis\b|[-–—－])/i.test(referenceText);
+      if (isRange && numbers.length === 2) {
+        var start = Number(numbers[0]), end = Number(numbers[1]);
+        if (end >= start && end - start <= 200) {
+          for (var rangeNum = start; rangeNum <= end; rangeNum++) found.push(String(rangeNum));
+          break;
+        }
+      }
+      numbers.forEach(function (num) {
         if (found.indexOf(num) < 0) found.push(num);
       });
+      if (found.length) break;
     }
     return found;
   }
