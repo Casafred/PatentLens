@@ -19,6 +19,8 @@ test('清洗修改标记并恢复未编号的修改版权利要求', () => {
   assert.match(result.claims[0].text, /to rotate the anvil about an axis/);
   assert.doesNotMatch(result.cleanedText, /Currently Amended|Previously Presented|\\underline|\\text/);
   assert.equal(result.claims.find((claim) => claim.num === '3').type, 'dependent');
+  assert.equal(result.claims.find((claim) => claim.num === '3').amendmentStatus, 'previously_presented');
+  assert.equal(result.claims.find((claim) => claim.num === '10').amendmentStatus, 'currently_amended');
   assert.equal(result.claims.find((claim) => claim.num === '19').type, 'independent');
   assert.ok(result.diagnostics.some((message) => message.includes('权利要求 19')));
 });
@@ -29,4 +31,11 @@ test('用户编辑后的编号文本可重新解析', () => {
   assert.equal(result.claims.length, 2);
   assert.deepEqual(Array.from(result.claims[1].dependencies), ['1']);
   assert.equal(parser.serializeClaims(result.claims), '1. An impact tool comprising a housing.\n\n2. The impact tool of claim 1, wherein the housing includes a grip.');
+});
+
+test('正文提及 claim 不会误判为从属权利要求', () => {
+  const parser = loadParser();
+  const result = parser.parseClaims('1. A method comprising storing a claim identifier in memory.\n\n2. The method of claim 1, wherein the claim identifier is encrypted.');
+  assert.equal(result.claims[0].type, 'independent');
+  assert.equal(result.claims[1].type, 'dependent');
 });

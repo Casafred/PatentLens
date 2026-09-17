@@ -26,15 +26,39 @@
       .replace(/\\text\s*\{([\s\S]*?)\}/g, '$1')
       .replace(/\$/g, '')
       .replace(/\\(?:underline|text)\b/g, '')
-      .replace(/\(\s*(?:Currently\s+Amended|Previously\s+Presented|Original|Cancelled|Withdrawn|Not\s+Entered)\s*\)/gi, '')
+      .replace(/\(\s*(Currently\s+Amended|Previously\s+Presented|Original|Cancelled|Withdrawn|Not\s+Entered)\s*\)/gi, function (_match, label) {
+        return ' [[PL_STATUS:' + label.toLowerCase().replace(/\s+/g, '_') + ']] ';
+      })
       .replace(/[ \t]+([,.;:])/g, '$1')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
   }
 
   function claimType(text) {
-    var source = String(text || '');
-    return /\b(?:of|according to)\s+(?:any\s+)?claims?\s+\d+|\bclaims?\s+\d+\b|根据权利要求\s*\d+|如权利要求\s*\d+|所述权利要求\s*\d+/i.test(source) ? 'dependent' : 'independent';
+    var source = String(text || '').replace(/^\s*\[\[PL_STATUS:[^\]]+\]\]\s*/i, '');
+    // 仅认可权项开头的规范引用句式，避免技术特征正文中的 claim 字样误判为从权。
+    return /^(?:(?:the|an?|said)\b[\s\S]{0,180}?\b(?:of|according\s+to)\s+(?:any\s+)?claims?\s+\d+|according\s+to\s+(?:any\s+)?claims?\s+\d+|claims?\s+\d+\b|(?:根据|如|按照|依照)\s*权利要求\s*\d+|权利要求\s*\d+\s*所述)/i.test(source) ? 'dependent' : 'independent';
+  }
+
+  function amendmentStatus(text) {
+    var match = String(text || '').match(/\[\[PL_STATUS:([^\]]+)\]\]/i);
+    if (!match) return '';
+    return match[1].toLowerCase();
+  }
+
+  function removeStatusMarker(text) {
+    return String(text || '').replace(/\s*\[\[PL_STATUS:[^\]]+\]\]\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function amendmentStatusLabel(status) {
+    return {
+      currently_amended: 'Currently Amended（当前修改）',
+      previously_presented: 'Previously Presented（此前提交）',
+      original: 'Original（原始文本）',
+      cancelled: 'Cancelled（取消）',
+      withdrawn: 'Withdrawn（撤回）',
+      not_entered: 'Not Entered（未录入）'
+    }[status] || '';
   }
 
   function dependencies(text) {
@@ -103,9 +127,10 @@
             return;
           }
         }
-        var text = normalizeWhitespace(piece).replace(/\n/g, ' ').replace(/^\s*[.)]\s*/, '').trim();
+        var status = amendmentStatus(piece);
+        var text = removeStatusMarker(normalizeWhitespace(piece).replace(/\n/g, ' ').replace(/^\s*[.)]\s*/, '').trim());
         if (!text || claims.some(function (claim) { return claim.num === String(number); })) return;
-        claims.push({ num: String(number), text: text, type: claimType(text), dependencies: dependencies(text), inferred: entry.inferred || pieceIndex > 0 });
+        claims.push({ num: String(number), text: text, type: claimType(piece), dependencies: dependencies(text), amendmentStatus: status, inferred: entry.inferred || pieceIndex > 0 });
       });
     });
 
@@ -114,11 +139,14 @@
       var previous = Number(claims[j - 1].num), current = Number(claims[j].num);
       if (current > previous + 1) diagnostics.push('OCR 中缺少权利要求 ' + (previous + 1) + (current > previous + 2 ? ' 至 ' + (current - 1) : '') + ' 的编号或正文。');
     }
-    return { cleanedText: cleaned, claims: claims, diagnostics: diagnostics };
+    return { cleanedText: removeStatusMarker(cleaned), claims: claims, diagnostics: diagnostics };
   }
 
   function serializeClaims(claims) {
-    return (claims || []).map(function (claim) { return claim.num + '. ' + claim.text; }).join('\n\n');
+    return (claims || []).map(function (claim) {
+      var status = amendmentStatusLabel(claim.amendmentStatus);
+      return claim.num + '. ' + (status ? '(' + status.split('（')[0].trim() + ') ' : '') + claim.text;
+    }).join('\n\n');
   }
 
   function currentDocument() {
@@ -158,7 +186,7 @@
       + '<div class="modal-header"><h2 id="amended-claims-title">OCR 修改版权利要求</h2><button class="btn-icon" type="button" title="关闭" data-amended-close="true">×</button></div>'
       + '<div class="modal-body"><p class="amended-claims-source">来源：' + escapeHtml(docLabel) + '。请核对清洗后的文本；下划线等修订标记已转为修改后的正文。</p>'
       + '<label class="amended-claims-label" for="amended-claims-text">修改版本权利要求</label><textarea id="amended-claims-text" class="amended-claims-textarea">' + escapeHtml(serializeClaims(parsed.claims)) + '</textarea>'
-      + '<div class="amended-claims-diagnostics">' + (parsed.diagnostics.length ? parsed.diagnostics.map(function (item) { return '<p>' + escapeHtml(item) + '</p>'; }).join('') : '<p>已识别 ' + parsed.claims.length + ' 项权利要求，其中独立权利要求 ' + parsed.claims.filter(function (claim) { return claim.type === 'independent'; }).length + ' 项。</p>') + '</div>'
+      + '<div class="amended-claims-diagnostics">' + (parsed.diagnostics.length ? parsed.diagnostics.map(function (item) { return '<p>' + escapeHtml(item) + '</p>'; }).join('') : '<p>已识别 ' + parsed.claims.length + ' 项权利要求，其中独立权利要求 ' + parsed.claims.filter(function (claim) { return claim.type === 'independent'; }).length + ' 项。</p>') + (parsed.claims.some(function (claim) { return claim.amendmentStatus; }) ? '<p>修订状态：' + parsed.claims.filter(function (claim) { return claim.amendmentStatus; }).map(function (claim) { return claim.num + ' - ' + amendmentStatusLabel(claim.amendmentStatus); }).join('；') + '</p>' : '') + '</div>'
       + '<label class="amended-claims-label" for="amended-claims-base">基准专利号码</label><input id="amended-claims-base" class="amended-claims-base" type="text" placeholder="如 US12345678B2 或 CN110000000A">'
       + '</div><div class="modal-footer"><button class="btn-secondary" type="button" data-amended-close="true">取消</button><button class="btn-primary" type="button" id="amended-claims-compare">开始变动定位</button></div></div>';
     document.body.appendChild(modal);
@@ -211,7 +239,7 @@
     syncButton();
   }
 
-  window.AmendedClaimsOcr = { cleanMarkup: cleanMarkup, parseClaims: parseClaims, serializeClaims: serializeClaims };
+  window.AmendedClaimsOcr = { cleanMarkup: cleanMarkup, parseClaims: parseClaims, serializeClaims: serializeClaims, amendmentStatusLabel: amendmentStatusLabel };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install);
   else install();
 })();

@@ -354,6 +354,7 @@ var ComparisonClaimDiff = (function () {
       && base.key !== compare.key;
     if (referenceOnly) featureDiff.counts = { added: 0, deleted: 0, modified: 0 };
     if (base.num !== compare.num) reasons.push('权项编号变化');
+    if (compare.amendmentStatus) reasons.push('OCR 修订标记：' + ({ currently_amended: '当前修改', previously_presented: '此前提交', original: '原始文本', cancelled: '取消', withdrawn: '撤回', not_entered: '未录入' }[compare.amendmentStatus] || compare.amendmentStatus));
     if (base.type !== compare.type) reasons.push(base.type === 'dependent' ? '从属权利要求提升为独立权利要求' : '独立权利要求调整为从属权利要求');
     if (referenceOnly) reasons.push(migration && migration.coherent ? '仅因父项映射更新引用序号' : '仅引用序号或权项编号变化');
     else if (migration) reasons.push(migration.coherent ? '随父项迁移' : '从属关系调整');
@@ -391,7 +392,11 @@ var ComparisonClaimDiff = (function () {
       if (merged) return { base: base, compare: null, primaryGranted: null, status: 'merged_into', lineageType: 'merged_into', reasons: ['附加限定并入授权权利要求 ' + merged.claim.num], score: merged.score, featureDiff: buildFeatureDiff(base.text, merged.claim.text), parentMigration: null, mergedInto: merged.claim };
       return { base: base, compare: null, primaryGranted: null, status: 'deleted', lineageType: 'deleted', reasons: ['整条权利要求删除'], score: 0, featureDiff: buildFeatureDiff(base.text, ''), parentMigration: null, mergedInto: null };
     });
-    var grantedOnly = aligned.added.map(function (claim) { return { base: null, compare: claim, primaryGranted: claim, status: 'added', lineageType: 'added', reasons: ['授权版新增权利要求'], score: 0, featureDiff: buildFeatureDiff('', claim.text) }; });
+    var grantedOnly = aligned.added.map(function (claim) {
+      var reasons = ['授权版新增权利要求'];
+      if (claim.amendmentStatus) reasons.push('OCR 修订标记：' + ({ currently_amended: '当前修改', previously_presented: '此前提交', original: '原始文本', cancelled: '取消', withdrawn: '撤回', not_entered: '未录入' }[claim.amendmentStatus] || claim.amendmentStatus));
+      return { base: null, compare: claim, primaryGranted: claim, status: 'added', lineageType: 'added', reasons: reasons, score: 0, featureDiff: buildFeatureDiff('', claim.text) };
+    });
     var stats = { baseTotal: aligned.bases.length, compareTotal: aligned.compares.length, same: 0, changed: 0, added: grantedOnly.length, deleted: 0, promoted: 0, demoted: 0, merged: 0, migrated: 0, referenceOnly: 0 };
     publicItems.forEach(function (item) {
       if (item.status === 'same') stats.same++; else stats.changed++;
@@ -658,7 +663,7 @@ var ComparisonClaimDiff = (function () {
     _state.baseNum = normalizeNum(baseNum);
     _state.compareNum = '';
     _state.compareClaims = claims.map(function (claim) {
-      return { num: String(claim.num), type: claim.type === 'dependent' ? 'dependent' : 'independent', text: String(claim.text || ''), dependencies: claim.dependencies || [] };
+      return { num: String(claim.num), type: claim.type === 'dependent' ? 'dependent' : 'independent', text: String(claim.text || ''), dependencies: claim.dependencies || [], amendmentStatus: claim.amendmentStatus || '' };
     });
     _state.compareSourceLabel = (metadata && metadata.label) || 'OCR 修改版本';
     _state.sourceMetadata = metadata || null;
