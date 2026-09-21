@@ -39,7 +39,8 @@
 
   var CHAT_TTL = 30 * 24 * 60 * 60 * 1000; // 对话类缓存 30 天
   var MAX_SAVED_MSGS = 100;                // 单个对话最多持久化条数
-  var PREFIX_INTERPRET = "patentlens-interpret-";
+  // v2: 一键解读现已纳入说明书上下文，避免回显旧版仅基于摘要/权利要求的结果。
+  var PREFIX_INTERPRET = "patentlens-interpret-v2-";
   var PREFIX_ANALYSIS_CHAT = "patentlens-analysis-chat-";
   var PREFIX_READER_CHAT = "patentlens-reader-chat-";
 
