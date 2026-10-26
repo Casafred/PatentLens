@@ -132,6 +132,27 @@ function isGdApiUrl(targetUrl) {
   try { return new URL(targetUrl).hostname === GD_API_HOST; } catch (_) { return false; }
 }
 
+// GD 的同族接口在 publication 查询下经常返回 corrAppNum=null。
+// 前端会拿 corrAppNum 去查 doc-list，因此这里从同族 list 中补出本局真实申请号，
+// 优先纯数字申请号，排除 PCT/EP 这类带斜杠的临时申请号。
+function normalizeGdFamilyData(family, office) {
+  if (!family || typeof family !== "object") return family;
+  if (family.corrAppNum) return family;
+  if (!Array.isArray(family.list) || family.list.length === 0) return family;
+  const officeCode = String(office || "").toUpperCase();
+  const own = family.list.filter((item) => String(item.countryCode || "").toUpperCase() === officeCode);
+  if (own.length === 0) return family;
+  const appOf = (item) => String(item.appNum || (item.docNum && item.docNum.docNumber) || "").trim();
+  const pick = own.find((item) => /^\d{6,12}$/.test(appOf(item)))
+    || own.find((item) => {
+      const app = appOf(item);
+      const kind = String(item.kindCode || (item.docNum && item.docNum.kindCode) || "").toUpperCase();
+      return app && !/^PCT/i.test(app) && !/^[A-Z]{2}\//i.test(app) && kind !== "W";
+    });
+  if (pick) family.corrAppNum = appOf(pick);
+  return family;
+}
+
 // ── USPTO Global Dossier 登录（Okta）─────────────────────────────────────
 // GD 前端把 Okta accessToken 存在 localStorage["okta-token-storage"]，
 // API 请求头使用 x-authorization-token: Bearer <accessToken>。
@@ -162,7 +183,10 @@ function _gdParseTokenStorage(raw) {
     const at = data && data.accessToken;
     const token = at && at.accessToken;
     if (!token) return null;
-    return { token: String(token), expiresAtMs: _gdNormalizeExpiry(at.expiresAt, token) };
+    // 若页面未提供 expiresAt 且 token 不是可解析的 JWT，先按 10 分钟有效处理；
+    // 真正过期时 GD 会返回 401，届时会自动刷新并重试。
+    const expiresAtMs = _gdNormalizeExpiry(at.expiresAt, token) || (Date.now() + 10 * 60 * 1000);
+    return { token: String(token), expiresAtMs };
   } catch (_) {
     return null;
   }
@@ -223,6 +247,17 @@ async function getGdAccessToken(options) {
   if (!force && _gdTokenCache.token && _gdTokenCache.expiresAtMs - Date.now() > 60000) {
     return _gdTokenCache.token;
   }
+  // 即使上一次查询曾超时/被抑制，只要登录窗口里已经有有效 token，就直接复用。
+  // 这样用户完成登录后，下一条查询会立即走 GD，不会继续等抑制期。
+  if (!force && _gdAuthWindow && !_gdAuthWindow.isDestroyed()) {
+    const existing = await _gdReadTokenFromWindow(_gdAuthWindow);
+    if (existing && existing.token && existing.expiresAtMs - Date.now() > 60000) {
+      _gdTokenCache = existing;
+      try { if (_gdAuthWindow.isVisible()) _gdAuthWindow.hide(); } catch (_) {}
+      console.log("[GD Auth] reusing token from existing login window");
+      return existing.token;
+    }
+  }
   // 用户刚关闭登录窗口时不要反复弹窗；一段时间后再次查询会重新尝试。
   if (Date.now() < _gdAuthPromptSuppressedUntil) return null;
   if (_gdAuthPending) return _gdAuthPending;
@@ -230,7 +265,7 @@ async function getGdAccessToken(options) {
   const run = async () => {
     const win = _ensureGdAuthWindow();
     const start = Date.now();
-    const deadline = start + 2 * 60 * 1000;
+    const deadline = start + 5 * 60 * 1000;
     let lastReloadAt = 0;
     let shownAt = 0;
     if (force) {
@@ -270,7 +305,10 @@ async function getGdAccessToken(options) {
       await new Promise((r) => setTimeout(r, 1000));
     }
     console.warn("[GD Auth] login timeout");
-    _gdAuthPromptSuppressedUntil = Date.now() + 5 * 60 * 1000;
+    // 窗口仍开着时只短暂抑制，用户继续登录后下一条查询会立刻复用 token
+    _gdAuthPromptSuppressedUntil = Date.now() + 60 * 1000;
+    // 继续后台等待登录完成，token 到达后自动重试查询
+    _startGdAuthWatcher();
     return null;
   };
 
@@ -281,6 +319,61 @@ async function getGdAccessToken(options) {
   } finally {
     if (_gdAuthPending === pending) _gdAuthPending = null;
   }
+}
+
+// 登录超时后，原查询可能已经走 EPO 降级。继续在后台等用户完成登录，
+// token 一到就自动重试当前查询，用户不需要再次点搜索。
+let _gdAuthWatcher = null;
+function _retrySearchAfterGdLogin() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  let attempts = 0;
+  const tryClick = () => {
+    attempts++;
+    mainWindow.webContents.executeJavaScript(`(function(){
+      try {
+        var btn = document.getElementById("search-btn");
+        var input = document.getElementById("patent-input");
+        if (btn && !btn.disabled && input && input.value && input.value.trim()) {
+          btn.click();
+          return true;
+        }
+      } catch(e) {}
+      return false;
+    })()`, true).then((clicked) => {
+      if (clicked) {
+        console.log("[GD Auth] auto-retrying search now that login is complete");
+      } else if (attempts < 20) {
+        setTimeout(tryClick, 1000);
+      }
+    }).catch(() => {
+      if (attempts < 20) setTimeout(tryClick, 1000);
+    });
+  };
+  setTimeout(tryClick, 500);
+}
+
+function _startGdAuthWatcher() {
+  if (_gdAuthWatcher) return;
+  const started = Date.now();
+  _gdAuthWatcher = setInterval(async () => {
+    if (Date.now() - started > 15 * 60 * 1000) {
+      clearInterval(_gdAuthWatcher);
+      _gdAuthWatcher = null;
+      return;
+    }
+    const win = _gdAuthWindow;
+    if (!win || win.isDestroyed()) return;
+    const info = await _gdReadTokenFromWindow(win);
+    if (info && info.token && info.expiresAtMs - Date.now() > 60000) {
+      _gdTokenCache = info;
+      _gdAuthPromptSuppressedUntil = 0;
+      clearInterval(_gdAuthWatcher);
+      _gdAuthWatcher = null;
+      try { if (win.isVisible()) win.hide(); } catch (_) {}
+      console.log("[GD Auth] token arrived after timeout; retrying search");
+      _retrySearchAfterGdLogin();
+    }
+  }, 2000);
 }
 
 const MIME_TYPES = {
@@ -384,7 +477,12 @@ async function httpsGet(targetUrl, headers, timeout) {
     if (isGd) {
       try {
         const token = await getGdAccessToken({ force: attempt > 0 });
-        if (token) merged["x-authorization-token"] = "Bearer " + token;
+        if (token) {
+          merged["x-authorization-token"] = "Bearer " + token;
+          console.log("[GD Auth] attaching token to GD request (attempt " + (attempt + 1) + ")");
+        } else {
+          console.warn("[GD Auth] no token available, GD request will be unauthenticated");
+        }
       } catch (e) {
         console.warn("[GD Auth] token acquisition failed:", e.message);
       }
@@ -412,6 +510,10 @@ async function httpsGet(targetUrl, headers, timeout) {
       req.end();
     });
     lastResult = result;
+    if (isGd && (result.statusCode === 401 || result.statusCode === 403)) {
+      const snippet = result.body ? result.body.toString("utf-8").slice(0, 200) : "";
+      console.warn(`[GD Auth] GD responded ${result.statusCode}: ${snippet}`);
+    }
     if (isGd && result.statusCode === 401 && attempt === 0) {
       console.log("[GD Auth] GD returned 401, refreshing token and retrying...");
       invalidateGdAccessToken();
@@ -2424,6 +2526,10 @@ async function proxyGdApi(urlPath, res) {
   const familyPathMatch = isFamily
     ? urlPathNoQuery.match(/\/svc\/family\/(?:application|publication|patent)\/([^/]+)\/([^/?]+)/)
     : null;
+  const familyTypeMatch = isFamily
+    ? urlPathNoQuery.match(/\/svc\/family\/(application|publication|patent)\//)
+    : null;
+  const familyQueryType = familyTypeMatch ? familyTypeMatch[1] : null;
   const office = pathMatch
     ? decodeURIComponent(pathMatch[1])
     : (familyPathMatch ? decodeURIComponent(familyPathMatch[1]) : null);
@@ -2475,38 +2581,74 @@ async function proxyGdApi(urlPath, res) {
     try {
       const acceptHeader = isDocContent ? "application/pdf,*/*" : "application/json, text/plain, */*";
       const timeout = isDocContent ? 60000 : 30000;
-      gdResult = await httpsGet(targetUrl, { Accept: acceptHeader }, timeout);
 
-      if (gdResult.statusCode === 200) {
-        const bodyText = gdResult.body.toString("utf-8");
-        const isAttachmentNotFound = gdResult.body.length < 100 && bodyText.includes("Attachment Not Found");
-        const isPdf = gdResult.body.length > 100 && gdResult.body[0] === 0x25 && gdResult.body[1] === 0x50;
-
-        if (isDocContent) {
-          if (isPdf && !isAttachmentNotFound) {
-            cacheSessionPdf(urlPathNoQuery, gdResult.body);
-            corsHeaders["Content-Type"] = "application/pdf";
-            corsHeaders["Content-Disposition"] = 'attachment; filename="document.pdf"';
-            res.writeHead(200, corsHeaders);
-            res.end(gdResult.body);
-            gdOk = true;
-          } else {
-            gdFailReason = isAttachmentNotFound ? "Attachment Not Found" : "not a valid PDF";
+      // 同族查询：EP 等局的用户经常输入公开号（如 EP3762180），
+      // 按 application 查询会返回 417/空数据。依次尝试 application/publication/patent，
+      // 谁先返回有效 list 就用谁，并补全 corrAppNum 供后续 doc-list 使用。
+      if (isFamily && familyQueryType) {
+        const queryTypes = [familyQueryType, ...["application", "publication", "patent"].filter((t) => t !== familyQueryType)];
+        for (const qt of queryTypes) {
+          const familyUrl = targetUrl.replace(/\/svc\/family\/(application|publication|patent)\//, `/svc/family/${qt}/`);
+          gdResult = await httpsGet(familyUrl, { Accept: acceptHeader }, timeout);
+          if (gdResult.statusCode !== 200) {
+            const bodyStr = gdResult.body ? gdResult.body.toString("utf-8") : "";
+            gdFailReason = "HTTP " + gdResult.statusCode + (bodyStr ? ": " + bodyStr.slice(0, 120) : "");
+            console.warn(`[GD] family ${qt} query failed for ${office}/${docNumber}: ${gdFailReason}`);
+            if (gdResult.statusCode === 401 || gdResult.statusCode === 403 || gdResult.statusCode >= 500) break;
+            continue;
           }
-        } else {
-          let validJson = false;
-          try { JSON.parse(bodyText); validJson = true; } catch (e) { validJson = false; }
-          if (validJson) {
-            corsHeaders["Content-Type"] = "application/json";
-            res.writeHead(200, corsHeaders);
-            res.end(gdResult.body);
-            gdOk = true;
-          } else {
+          let familyData = null;
+          try { familyData = JSON.parse(gdResult.body.toString("utf-8")); } catch (_) {}
+          if (!familyData) {
             gdFailReason = "invalid JSON response";
+            continue;
           }
+          const list = Array.isArray(familyData.list) ? familyData.list : [];
+          if (list.length === 0) {
+            gdFailReason = "empty family data";
+            continue;
+          }
+          normalizeGdFamilyData(familyData, office);
+          console.log(`[GD] family resolved via ${qt} query for ${office}/${docNumber}, corrAppNum=${familyData.corrAppNum || "null"}`);
+          corsHeaders["Content-Type"] = "application/json";
+          res.writeHead(200, corsHeaders);
+          res.end(JSON.stringify(familyData));
+          return;
         }
       } else {
-        gdFailReason = "HTTP " + gdResult.statusCode;
+        gdResult = await httpsGet(targetUrl, { Accept: acceptHeader }, timeout);
+
+        if (gdResult.statusCode === 200) {
+          const bodyText = gdResult.body.toString("utf-8");
+          const isAttachmentNotFound = gdResult.body.length < 100 && bodyText.includes("Attachment Not Found");
+          const isPdf = gdResult.body.length > 100 && gdResult.body[0] === 0x25 && gdResult.body[1] === 0x50;
+
+          if (isDocContent) {
+            if (isPdf && !isAttachmentNotFound) {
+              cacheSessionPdf(urlPathNoQuery, gdResult.body);
+              corsHeaders["Content-Type"] = "application/pdf";
+              corsHeaders["Content-Disposition"] = 'attachment; filename="document.pdf"';
+              res.writeHead(200, corsHeaders);
+              res.end(gdResult.body);
+              gdOk = true;
+            } else {
+              gdFailReason = isAttachmentNotFound ? "Attachment Not Found" : "not a valid PDF";
+            }
+          } else {
+            let validJson = false;
+            try { JSON.parse(bodyText); validJson = true; } catch (e) { validJson = false; }
+            if (validJson) {
+              corsHeaders["Content-Type"] = "application/json";
+              res.writeHead(200, corsHeaders);
+              res.end(gdResult.body);
+              gdOk = true;
+            } else {
+              gdFailReason = "invalid JSON response";
+            }
+          }
+        } else {
+          gdFailReason = "HTTP " + gdResult.statusCode;
+        }
       }
     } catch (e) {
       gdFailReason = e.message;
