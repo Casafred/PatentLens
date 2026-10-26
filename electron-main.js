@@ -332,6 +332,32 @@ function epoExtractUrlFromHref(hrefAttr) {
   return null;
 }
 
+// 从 EPO 的 documentView / application 查看器 HTML 中提取内层 PDF 查看地址。
+// 新版 Register 的 documentView 页面不直接返回 PDF，而是 iframe 嵌套：
+//   documentView → ipApplication?... → application?showPdfPage=1...
+// 依次跟进这些 iframe 才能拿到 PDF 本体。
+function epoExtractPdfViewerUrl(html, baseUrl) {
+  if (!html || typeof html !== "string") return null;
+  const base = baseUrl || (EPO_REGISTER_BASE + "/");
+  const resolve = (raw) => {
+    try { return new URL(epoHtmlUnescape(raw), base).href; } catch (_) { return null; }
+  };
+  const patterns = [
+    /<iframe[^>]+src\s*=\s*["']([^"']+)["']/i,
+    /<embed[^>]+src\s*=\s*["']([^"']+)["']/i,
+    /<object[^>]+data\s*=\s*["']([^"']+)["']/i,
+    /["']([^"']*(?:showPdfPage|documentStream|pdfstream|\.pdf)[^"']*)["']/i,
+  ];
+  for (const re of patterns) {
+    const m = html.match(re);
+    if (m && m[1]) {
+      const url = resolve(m[1]);
+      if (url) return url;
+    }
+  }
+  return null;
+}
+
 function epoNormalizeDate(dateStr) {
   const cleaned = String(dateStr || "").trim();
   const parts = cleaned.split(".");
@@ -911,61 +937,78 @@ async function epoFetchDocList(office, docNumber, kindCode) {
 
 async function epoFetchPdf(office, docNumber, docId) {
   const isEp = office.toUpperCase() === "EP";
-  let url;
+  let currentUrl;
   if (isEp) {
-    url = `${EPO_REGISTER_BASE}/application?showPdfPage=1&documentId=${encodeURIComponent(docId)}&appnumber=EP${encodeURIComponent(docNumber)}&proc=`;
+    currentUrl = `${EPO_REGISTER_BASE}/application?showPdfPage=1&documentId=${encodeURIComponent(docId)}&appnumber=EP${encodeURIComponent(docNumber)}&proc=`;
   } else {
     const apn = `${office}.${docNumber}.A`;
-    url = `${EPO_REGISTER_BASE}/ipApplication?documentId=${encodeURIComponent(docId)}&number=${encodeURIComponent(apn)}&patentScope=false`;
+    currentUrl = `${EPO_REGISTER_BASE}/ipApplication?documentId=${encodeURIComponent(docId)}&number=${encodeURIComponent(apn)}&patentScope=false`;
   }
-  const args = [
-    "-s", "-w", " HTTP_CODE_%{http_code}",
-    "--max-time", "60",
-    "--cookie-jar", EPO_COOKIE_JAR,
-    "--cookie", EPO_COOKIE_JAR,
-    "-L",
-    "-H", "Accept: application/pdf,*/*",
-    "-H", "Referer: https://register.epo.org/",
-    "-H", "User-Agent: " + EPO_UA,
-    url,
-  ];
-  let result;
-  try { result = await epoCurl(args, true); } catch (e) { return { error: "EPO PDF curl error: " + e.message }; }
-  if (result.httpCode !== 200) return { error: `EPO PDF HTTP ${result.httpCode}` };
-  if (result.body.length < 100) return { error: "EPO PDF content too small" };
-  const headStr = result.body.slice(0, Math.min(2000, result.body.length)).toString("utf-8");
-  if (epoDetectCloudflare(headStr)) return { cloudflare: true, error: "EPO Register requires Cloudflare verification" };
-  const isPdf = result.body.length > 4 && result.body[0] === 0x25 && result.body[1] === 0x50 && result.body[2] === 0x44 && result.body[3] === 0x46;
-  if (!isPdf) return { error: "EPO response is not a PDF" };
-  return { body: result.body };
+  // 查看器端点可能返回 HTML（内嵌 iframe），继续跟进直到拿到 PDF 本体
+  for (let hop = 0; hop < 3; hop++) {
+    const args = [
+      "-s", "-w", " HTTP_CODE_%{http_code}",
+      "--max-time", "60",
+      "--cookie-jar", EPO_COOKIE_JAR,
+      "--cookie", EPO_COOKIE_JAR,
+      "-L",
+      "-H", "Accept: application/pdf,*/*",
+      "-H", "Referer: https://register.epo.org/",
+      "-H", "User-Agent: " + EPO_UA,
+      currentUrl,
+    ];
+    let result;
+    try { result = await epoCurl(args, true); } catch (e) { return { error: "EPO PDF curl error: " + e.message }; }
+    if (result.httpCode !== 200) return { error: `EPO PDF HTTP ${result.httpCode}` };
+    if (result.body.length < 100) return { error: "EPO PDF content too small" };
+    const headStr = result.body.slice(0, Math.min(2000, result.body.length)).toString("utf-8");
+    if (epoDetectCloudflare(headStr)) return { cloudflare: true, error: "EPO Register requires Cloudflare verification" };
+    const isPdf = result.body.length > 4 && result.body[0] === 0x25 && result.body[1] === 0x50 && result.body[2] === 0x44 && result.body[3] === 0x46;
+    if (isPdf) return { body: result.body };
+    const nextUrl = epoExtractPdfViewerUrl(headStr, EPO_REGISTER_BASE + "/");
+    if (!nextUrl || nextUrl === currentUrl) return { error: "EPO response is not a PDF" };
+    console.log(`[EPO PDF] viewer HTML, following iframe (hop ${hop + 1}): ${nextUrl}`);
+    currentUrl = nextUrl;
+  }
+  return { error: "EPO response is not a PDF after following viewer iframes" };
 }
 
 // 用缓存的 session cookies 直接 curl 请求 PDF（不弹窗）
 // doclist 成功后从 BrowserWindow session 提取的 cookies 包含 CF clearance，
-// curl 带上这些 cookies 即可通过 Cloudflare，无需再次弹窗
+// curl 带上这些 cookies 即可通过 Cloudflare，无需再次弹窗。
+// documentView 返回的可能是内嵌查看器 HTML，这里会继续跟进 iframe 直到拿到 PDF。
 async function epoFetchPdfWithSession(office, docNumber, pdfUrl) {
   const cookies = getCachedEpoCookies(office, docNumber);
   if (!cookies) return { error: "no cached session cookies" };
 
-  const args = [
-    "-s", "-w", " HTTP_CODE_%{http_code}",
-    "--max-time", "60",
-    "-L",
-    "-H", "Accept: application/pdf,*/*",
-    "-H", "Referer: https://register.epo.org/",
-    "-H", "Cookie: " + cookies,
-    "-H", "User-Agent: " + EPO_UA,
-    pdfUrl,
-  ];
-  let result;
-  try { result = await epoCurl(args, true); } catch (e) { return { error: "curl error: " + e.message }; }
-  if (result.httpCode !== 200) return { error: `HTTP ${result.httpCode}` };
-  if (result.body.length < 100) return { error: "PDF content too small" };
-  const headStr = result.body.slice(0, Math.min(2000, result.body.length)).toString("utf-8");
-  if (epoDetectCloudflare(headStr)) return { cloudflare: true, error: "Cloudflare verification required (cookies may have expired)" };
-  const isPdf = result.body.length > 4 && result.body[0] === 0x25 && result.body[1] === 0x50 && result.body[2] === 0x44 && result.body[3] === 0x46;
-  if (!isPdf) return { error: "not a PDF, size=" + result.body.length };
-  return { body: result.body };
+  let currentUrl = pdfUrl;
+  for (let hop = 0; hop < 3; hop++) {
+    const args = [
+      "-s", "-w", " HTTP_CODE_%{http_code}",
+      "--max-time", "60",
+      "-L",
+      "-H", "Accept: application/pdf,*/*",
+      "-H", "Referer: https://register.epo.org/",
+      "-H", "Cookie: " + cookies,
+      "-H", "User-Agent: " + EPO_UA,
+      currentUrl,
+    ];
+    let result;
+    try { result = await epoCurl(args, true); } catch (e) { return { error: "curl error: " + e.message }; }
+    if (result.httpCode !== 200) return { error: `HTTP ${result.httpCode}` };
+    if (result.body.length < 100) return { error: "PDF content too small" };
+    const headStr = result.body.slice(0, Math.min(2000, result.body.length)).toString("utf-8");
+    if (epoDetectCloudflare(headStr)) return { cloudflare: true, error: "Cloudflare verification required (cookies may have expired)" };
+    const isPdf = result.body.length > 4 && result.body[0] === 0x25 && result.body[1] === 0x50 && result.body[2] === 0x44 && result.body[3] === 0x46;
+    if (isPdf) return { body: result.body };
+    const nextUrl = epoExtractPdfViewerUrl(headStr, EPO_REGISTER_BASE + "/");
+    if (!nextUrl || nextUrl === currentUrl) {
+      return { error: "not a PDF, size=" + result.body.length };
+    }
+    console.log(`[EPO PDF] viewer HTML, following iframe (hop ${hop + 1}): ${nextUrl}`);
+    currentUrl = nextUrl;
+  }
+  return { error: "not a PDF after following viewer iframes" };
 }
 
 // ── EPO Register via 可见 BrowserWindow（参考 espacenet 弹窗成功策略）─────
@@ -1884,12 +1927,39 @@ async function epoFetchViaBrowser(targetUrl, options) {
         // doclist 页面已就绪
         doclistReady = true;
 
-        // 统一处理：无论 wantPdf 与否，先提取数据返回给调用方，然后保持窗口打开供用户选取 PDF
+        // 统一处理：提取数据返回给调用方。PDF 模式先尝试后台自动抓取，
+        // 只有自动抓取失败才退回手动选取。
         if (!dataReturned) {
           // 提取数据
           let result;
           if (wantPdf) {
-            // PDF 模式：不需要提取 HTML，直接返回空结果触发选取模式
+            // PDF 模式：文档列表就绪后，直接在页面内 fetch 目标 PDF。
+            // documentView 返回的是内嵌查看器 HTML，fetchPdfFromPage 会继续
+            // 跟进 iframe 直到拿到 PDF 本体，无需用户点击。
+            updateHint("PatentLens: 正在后台自动获取指定文档 PDF...");
+            const autoPdf = await fetchPdfFromPage();
+            if (autoPdf.body) {
+              console.log("[EPO Browser] auto-fetched requested PDF, size=" + autoPdf.body.length);
+              // 缓存 session cookies 和 PDF，后续重复请求直接命中
+              if (office && docNumber) {
+                try {
+                  const _cookies = await session.defaultSession.cookies.get({ domain: "epo.org" });
+                  const _cookieStr = _cookies.map(c => c.name + "=" + c.value).join("; ");
+                  if (_cookieStr) setCachedEpoCookies(office, docNumber, _cookieStr);
+                } catch (_) {}
+              }
+              const _docIdMatch = String(pdfUrl || "").match(/documentId=([^&]+)/);
+              const _docId = _docIdMatch ? decodeURIComponent(_docIdMatch[1]) : null;
+              if (office && docNumber && _docId) {
+                setCachedEpoPdf(office, docNumber, _docId, autoPdf.body);
+              }
+              if (office && docNumber) {
+                setCachedDossierUrl(office, docNumber, win.webContents.getURL());
+              }
+              finish({ body: autoPdf.body });
+              return;
+            }
+            console.warn("[EPO Browser] auto PDF fetch failed, falling back to manual mode:", autoPdf.error);
             result = { body: null, manualDone: true };
           } else {
             // HTML 模式：提取 outerHTML + DOM 文档列表
@@ -1918,11 +1988,19 @@ async function epoFetchViaBrowser(targetUrl, options) {
             setCachedDossierUrl(office, docNumber, win.webContents.getURL());
           }
 
-          // 返回数据给调用方，但窗口保持打开
+          if (!wantPdf) {
+            // 文档列表已返回主应用，窗口不再需要保持打开：
+            // 用户在主应用点击文档时，后台会用缓存的 cookies 自动抓取 PDF。
+            console.log("[EPO Browser] doclist returned, closing window (auto PDF mode)");
+            finish(result);
+            return;
+          }
+
+          // 自动抓取失败时才保留窗口供手动兜底
           manualMode = true;
           pdfRetryCount = 99;
-          console.log("[EPO Browser] data returned, keeping window open for PDF selection");
-          updateHint("PatentLens: ✓ 审查档案已加载到主应用。请点击下方文档链接查看 PDF，系统会自动提取并发送。选完后点击右上角按钮返回主应用");
+          console.log("[EPO Browser] data returned, keeping window open for manual PDF selection");
+          updateHint("PatentLens: 自动获取 PDF 失败。请点击下方文档链接手动获取，或点击右上角按钮返回主应用");
           updateButton("✓ 发送到主应用并返回", "#22c55e");
           // 设置按钮点击后关闭窗口
           win.webContents.executeJavaScript(`
@@ -2271,7 +2349,14 @@ async function proxyGdApi(urlPath, res) {
       // EPO 直走模式：优先用缓存的 session cookies 直接 curl 请求 PDF（不弹窗），
       // 失败时 fallback 到 BrowserWindow 弹窗（建立/刷新 session）
       // 非 EPO 直走模式：保留原 curl 路径
-      const _urlInfo2 = epoBuildDocListUrl(office, docNumber, "A");
+      // EP 的 docNumber 在 doc-list 阶段已解析为真实申请号，可直接打开 Register 档案页；
+      // 其他局仍需 Espacenet 详情页的 Global Dossier 链接来解析申请号。
+      const _urlInfo2 = office.toUpperCase() === "EP"
+        ? {
+            url: `${EPO_REGISTER_BASE}/application?number=EP${encodeURIComponent(docNumber)}&lng=en&tab=doclist`,
+            viaEspacenet: false,
+          }
+        : epoBuildDocListUrl(office, docNumber, "A");
       // 优先使用前端传来的 epoPdfUrl（从 dossier 页面解析的 documentView 链接），
       // 兜底用 epoBuildPdfUrl 构造
       const _effectivePdfUrl = epoPdfUrlParam || epoBuildPdfUrl(office, docNumber, docId);
