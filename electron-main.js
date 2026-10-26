@@ -305,8 +305,9 @@ function epoExtractUrlFromHref(hrefAttr) {
   const href = epoHtmlUnescape(hrefAttr).trim();
 
   if (href.startsWith("javascript:")) {
-    // 匹配 openNewWindow('...', 或 openNewWindow("...",  提取第一个参数中的 URL
-    const jsMatch = href.match(/openNewWindow\s*\(\s*(['"])(.+?)\1/);
+    // 匹配 openNewWindow('...', / NewSideWindow('...', 提取第一个参数中的 URL。
+    // EPO Register 新版文档列表使用 NewSideWindow，必须一并支持。
+    const jsMatch = href.match(/(?:openNewWindow|NewSideWindow)\s*\(\s*(['"])(.+?)\1/i);
     if (jsMatch) {
       let url = jsMatch[2].trim();
       // 解码 HTML 实体
@@ -448,14 +449,16 @@ function epoClassifyDoc(desc, phase) {
 
 function epoParseEpDocList(html, appNumber) {
   const docs = [];
-  const realApn = "EP" + appNumber;
+  // appNumber 可能来自用户输入的公开号（如 EP3762180），而 Register 实际使用的是申请号
+  // （如 EP19703079）。页面上每行文档链接都带真实 number=，优先从链接里解析。
+  const defaultApn = "EP" + appNumber;
   // EP doclist 格式：
   // <tr>
-  //   <td><input type="checkbox" value="docId"></td>
+  //   <td class="smallBorder"><input type="checkbox" name="identivier" value="docId"></td>
   //   <td>日期</td>
-  //   <td><a href="javascript:openNewWindow('...', '...');">文档名</a></td>
+  //   <td class="nowrap"><a id="docId" href="javascript:NewSideWindow('application?...&number=EP...');">文档名</a></td>
   //   <td>phase</td>
-  //   <td>页数</td>
+  //   <td class="right noOfPages">页数</td>
   // </tr>
   const re = /<tr[^>]*>\s*<td[^>]*>\s*<input[^>]*type="checkbox"[^>]*value="([^"]+)"[^>]*>\s*<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td[^>]*>\s*(<a[^>]*>)?(.*?)(?:<\/a>)?\s*<\/td>\s*<td[^>]*>(.*?)<\/td>\s*<td[^>]*>([^<]*)<\/td>/gi;
   // 额外匹配 <a href="..."> 的正则
@@ -471,19 +474,22 @@ function epoParseEpDocList(html, appNumber) {
     const desc = epoHtmlUnescape(descRaw.replace(/<[^>]+>/g, ""));
     if (!docId || !desc || !date) continue;
 
-    // 从 <a> 标签中提取 href
-    let pdfUrl = `${EPO_REGISTER_BASE}/documentView?number=${encodeURIComponent(realApn)}&documentId=${encodeURIComponent(docId)}`;
+    // 从 <a> 标签中提取真实 number（申请号），用于构造正确的 PDF 链接
+    let realApn = defaultApn;
     if (aTag) {
       const hrefMatch = aTag.match(hrefRe);
       if (hrefMatch) {
         const extracted = epoExtractUrlFromHref(hrefMatch[1]);
         if (extracted) {
-          // 构造完整 URL
-          const base = extracted.startsWith("http") ? "" : EPO_REGISTER_BASE + "/";
-          pdfUrl = base + extracted;
+          const qIdx = extracted.indexOf("?");
+          const queryString = qIdx !== -1 ? epoHtmlUnescape(extracted.substring(qIdx + 1)) : "";
+          const numberMatch = queryString.match(/number=([^&'"\s<)]+)/);
+          if (numberMatch) realApn = decodeURIComponent(numberMatch[1]);
         }
       }
     }
+    // 统一走 documentView（含 iframe 的 PDF 查看器），自动 PDF 提取依赖该端点
+    const pdfUrl = `${EPO_REGISTER_BASE}/documentView?number=${encodeURIComponent(realApn)}&documentId=${encodeURIComponent(docId)}`;
     docs.push({ docId, date: epoNormalizeDate(date), name: desc, desc, pages, phase, isGdDoc: false, apn: realApn, pdfUrl });
   }
   return docs;
@@ -506,8 +512,9 @@ function epoParseGdDocList(html, apn) {
   let trMatch;
   while ((trMatch = trRe.exec(html)) !== null) {
     const trContent = trMatch[1];
-    // 必须包含 documentView 或 ipApplication 相关链接
-    if (!/documentView|ipApplication|openNewWindow/i.test(trContent)) continue;
+    // 必须包含 documentView / ipApplication / application? 相关链接。
+    // 新版 Register 的链接是 javascript:NewSideWindow('application?documentId=...')。
+    if (!/documentView|ipApplication|application\?|openNewWindow|NewSideWindow/i.test(trContent)) continue;
 
     const aMatch = trContent.match(aHrefRe);
     if (!aMatch) continue;
@@ -548,15 +555,10 @@ function epoParseGdDocList(html, apn) {
 
     if (!docId) continue;
 
-    // 构造完整 PDF 链接（documentView 端点）
-    let pdfUrl;
-    if (extracted && extracted.startsWith("http")) {
-      pdfUrl = extracted;
-    } else if (extracted) {
-      pdfUrl = `${EPO_REGISTER_BASE}/${extracted.replace(/^\//, "")}`;
-    } else {
-      pdfUrl = `${EPO_REGISTER_BASE}/documentView?number=${encodeURIComponent(realApn)}&documentId=${encodeURIComponent(docId)}`;
-    }
+    // 统一构造 documentView（含 iframe 的 PDF 查看器）链接。
+    // 新版页面链接是 javascript:NewSideWindow('application?...')，直接使用 application
+    // 端点会落在带工具栏的页面，自动 PDF 提取无法识别，因此始终走 documentView。
+    const pdfUrl = `${EPO_REGISTER_BASE}/documentView?number=${encodeURIComponent(realApn)}&documentId=${encodeURIComponent(docId)}`;
     docs.push({ docId, date: epoNormalizeDate(date), name: desc, desc, pages, phase: "", isGdDoc: true, apn: realApn, pdfUrl });
   }
   return docs;
@@ -585,13 +587,18 @@ function epoCurl(args, binary) {
         const marker = "\n__HTTP_CODE__";
         const outStr = String(stdout);
         const idx = outStr.lastIndexOf(marker);
+        const finalUrlMarker = "\n__FINAL_URL__";
+        const finalUrlIdx = outStr.lastIndexOf(finalUrlMarker);
+        const finalUrl = finalUrlIdx !== -1
+          ? outStr.substring(finalUrlIdx + finalUrlMarker.length).trim()
+          : null;
         let httpCode = 200;
         let body = outStr;
         if (idx !== -1) {
           httpCode = parseInt(body.substring(idx + marker.length), 10) || 200;
           body = body.substring(0, idx);
         }
-        resolve({ httpCode, body });
+        resolve({ httpCode, body, finalUrl });
       }
     });
   });
@@ -708,7 +715,10 @@ async function epoNodeFetch(targetUrl) {
         const nextUrl = location.startsWith("http") ? location : new URL(location, u.href).href;
         _writeCookieJar(res.headers["set-cookie"] || []);
         res.resume();
-        epoNodeFetch(nextUrl).then(resolve).catch(reject);
+        epoNodeFetch(nextUrl).then((r) => {
+          if (r && !r.finalUrl) r.finalUrl = nextUrl;
+          resolve(r);
+        }).catch(reject);
         return;
       }
       _writeCookieJar(res.headers["set-cookie"] || []);
@@ -731,8 +741,36 @@ async function epoNodeFetch(targetUrl) {
   });
 }
 
+// EP 公开号（如 EP3762180）不是 Register 的申请号（如 EP19703079）。
+// Register 的 espacenet/regviewer 入口会 302 到正确的 application?number=EP...，
+// 利用它把公开号解析成申请号，避免降级查询拿到 "No files were found"。
+async function epoResolveEpApplicationNumber(number) {
+  const resolveUrl = `${EPO_REGISTER_BASE}/espacenet/regviewer?DB=REG&CY=en&LG=en&PN=EP${encodeURIComponent(number)}&locale=en_EP&lng=en`;
+  const args = [
+    "-s", "-L", "--max-time", "30",
+    "--cookie-jar", EPO_COOKIE_JAR,
+    "--cookie", EPO_COOKIE_JAR,
+    "-w", "\n__HTTP_CODE__%{http_code}\n__FINAL_URL__%{url_effective}",
+    "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "-H", "User-Agent: " + EPO_UA,
+    "-H", "Referer: https://register.epo.org/",
+    resolveUrl,
+  ];
+  let result;
+  try {
+    result = await epoCurl(args, false);
+  } catch (e) {
+    try { result = await epoNodeFetch(resolveUrl); } catch (e2) { return null; }
+  }
+  if (!result || result.httpCode !== 200) return null;
+  const finalUrl = String(result.finalUrl || "");
+  const m = finalUrl.match(/number=(EP\d+)/i) || String(result.body || "").match(/number=(EP\d+)/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
 async function epoFetchDocList(office, docNumber, kindCode) {
   const isEp = office.toUpperCase() === "EP";
+  let effectiveDocNumber = docNumber;
   let url;
   if (isEp) {
     url = `${EPO_REGISTER_BASE}/application?number=EP${encodeURIComponent(docNumber)}&lng=en&tab=doclist`;
@@ -801,7 +839,26 @@ async function epoFetchDocList(office, docNumber, kindCode) {
     }
   }
 
-  if (result.httpCode === 404) return { error: `EPO Register: ${office}${docNumber} not found`, browserUrl: url };
+  // EP 用户输入可能是公开号（EP3762180），Register 只认申请号（EP19703079）。
+  // 若按“申请号”查询得到 404 或 "No files were found"，先通过 regviewer 重定向解析真实申请号再重试。
+  if (isEp && (result.httpCode === 404
+      || (result.httpCode === 200 && (result.body.includes("No files were found")
+        || result.body.includes("No files containing"))))) {
+    const resolved = await epoResolveEpApplicationNumber(docNumber);
+    if (resolved && resolved !== `EP${docNumber}`) {
+      effectiveDocNumber = resolved.replace(/^EP/i, "");
+      const retryUrl = `${EPO_REGISTER_BASE}/application?number=${encodeURIComponent(resolved)}&lng=en&tab=doclist`;
+      console.log(`[EPO] 公开号 EP${docNumber} 解析为申请号 ${resolved}，重新查询 doclist`);
+      try {
+        result = usedFallback ? await epoNodeFetch(retryUrl) : await epoCurl(buildArgs(retryUrl), false);
+        url = retryUrl;
+      } catch (e) {
+        console.warn("[EPO] 申请号重试失败:", e.message);
+      }
+    }
+  }
+
+  if (result.httpCode === 404) return { error: `EPO Register: ${office}${effectiveDocNumber} not found`, browserUrl: url };
   if (result.httpCode !== 200) {
     const bodyStr = String(result.body || "").trim();
     if (result.httpCode === 403 && /rate\s*limit/i.test(bodyStr)) {
@@ -837,9 +894,9 @@ async function epoFetchDocList(office, docNumber, kindCode) {
     || result.body.includes("No dossier")
     || result.body.includes("not available");
   if (isEmpty) {
-    return { docs: [], title: "", docNumber, source: isEp ? "EPO Register" : "EPO Global Dossier", totalDocs: 0 };
+    return { docs: [], title: "", docNumber: effectiveDocNumber, source: isEp ? "EPO Register" : "EPO Global Dossier", totalDocs: 0 };
   }
-  const entries = isEp ? epoParseEpDocList(result.body, docNumber) : epoParseGdDocList(result.body, `${office}.${docNumber}.${kindCode}`);
+  const entries = isEp ? epoParseEpDocList(result.body, effectiveDocNumber) : epoParseGdDocList(result.body, `${office}.${effectiveDocNumber}.${kindCode}`);
   const docs = entries.map(e => {
     const cls = epoClassifyDoc(e.desc, e.phase);
     return {
@@ -849,7 +906,7 @@ async function epoFetchDocList(office, docNumber, kindCode) {
       epoPdfUrl: e.pdfUrl || null,
     };
   });
-  return { docs, title: "", docNumber, source: isEp ? "EPO Register" : "EPO Global Dossier", totalDocs: docs.length };
+  return { docs, title: "", docNumber: effectiveDocNumber, source: isEp ? "EPO Register" : "EPO Global Dossier", totalDocs: docs.length };
 }
 
 async function epoFetchPdf(office, docNumber, docId) {
@@ -1093,28 +1150,31 @@ async function epoFetchViaBrowser(targetUrl, options) {
               var html = document.documentElement.outerHTML;
               if (!html || html.length < 500) return { error: "html too short: " + (html ? html.length : 0) };
 
-              // 从 DOM 提取文档列表（比正则更可靠，能处理 javascript:openNewWindow 等各种链接格式）
+              // 从 DOM 提取文档列表（比正则更可靠，能处理 javascript:openNewWindow / NewSideWindow 等链接格式）
               var docs = [];
-              var links = document.querySelectorAll('a[href*="documentView"], a[href*="ipApplication"], a[onclick*="documentView"], a[onclick*="openNewWindow"]');
+              var links = document.querySelectorAll('a[href*="documentView"], a[href*="ipApplication"], a[href*="NewSideWindow"], a[href*="openNewWindow"], a[href*="application?documentId"], a[onclick*="documentView"], a[onclick*="openNewWindow"], a[onclick*="NewSideWindow"]');
               links.forEach(function(link) {
                 var href = link.getAttribute('href') || '';
                 var onclick = link.getAttribute('onclick') || '';
                 var text = link.textContent.trim();
                 if (!text) return;
-                // 从 href 或 onclick 中提取 documentView/ipApplication 的 query string
-                var match = href.match(/documentView\\?([^"'\\s)]+)/) || onclick.match(/documentView\\?([^"'\\s)]+)/);
-                if (!match) match = href.match(/ipApplication\\?([^"'\\s)]+)/) || onclick.match(/ipApplication\\?([^"'\\s)]+)/);
+                // 从 href 或 onclick 中提取 documentView/ipApplication/application 的 query string
+                var match = href.match(/(?:documentView|ipApplication|application)\\?([^"'\\s)]+)/)
+                  || onclick.match(/(?:documentView|ipApplication|application)\\?([^"'\\s)]+)/);
                 if (!match) return;
                 var qs = match[1].replace(/&amp;/g, '&');
                 var numberMatch = qs.match(/number=([^&'"\\s<)]+)/);
                 var docIdMatch = qs.match(/documentId=([^&'"\\s<)]+)/);
                 if (!docIdMatch) return;
-                // 从父行提取日期和页数
+                // 从父行提取日期和页数（EP Register 第一列是勾选框，日期在第二列；
+                // Global Dossier 没有勾选框，日期在第一列）
                 var row = link.closest('tr');
                 var date = '', pages = 1;
                 if (row) {
                   var cells = row.querySelectorAll('td');
-                  if (cells.length > 0) date = cells[0].textContent.trim();
+                  var hasCheckbox = cells.length > 0 && !!cells[0].querySelector('input[type="checkbox"]');
+                  if (hasCheckbox && cells.length > 1) date = cells[1].textContent.trim();
+                  else if (cells.length > 0) date = cells[0].textContent.trim();
                   if (cells.length > 2) {
                     var pagesText = cells[cells.length - 1].textContent.trim();
                     var pagesMatch = pagesText.match(/\\d+/);
@@ -1514,6 +1574,7 @@ async function epoFetchViaBrowser(targetUrl, options) {
     let retrieveDetectedAt = 0;
     let retrieveReloadedAt = 0;
     let espacenetNavigatedToEpo = false;
+    let espacenetClickAt = 0;
     const tryExtract = async () => {
       if (settled || win.isDestroyed() || tryExtractRunning) return;
       // 数据已返回且窗口保持打开：跳过提取，只等用户点击链接或按钮
@@ -1687,19 +1748,21 @@ async function epoFetchViaBrowser(targetUrl, options) {
           const currentUrl = win.webContents.getURL();
           if (currentUrl.includes("espacenet.com")) {
             updateHint("PatentLens: 正在 Espacenet 查找 Global Dossier 入口，请稍候...");
+            // 新版 Espacenet 的 Global Dossier 链接已从 ipfwretrieve 改为
+            // application?tab=doclist&number=...，且藏在详情面板里。
+            // 同时兼容旧版 ipfwretrieve 链接，并忽略指向 regviewer 的普通 Register 链接。
             const gdLink = await win.webContents.executeJavaScript(`
               (function() {
                 try {
-                  var links = document.querySelectorAll('a[href*="register.epo.org/ipfwretrieve"]');
+                  var links = document.querySelectorAll('a[href*="register.epo.org"]');
                   for (var i = 0; i < links.length; i++) {
-                    if (links[i].textContent.includes("Global Dossier")) {
-                      return links[i].href;
-                    }
-                  }
-                  var gdLinks = document.querySelectorAll('a[class*="publication-link__link"]');
-                  for (var i = 0; i < gdLinks.length; i++) {
-                    if (gdLinks[i].textContent.includes("Global Dossier") && gdLinks[i].href.includes("register.epo.org")) {
-                      return gdLinks[i].href;
+                    var href = links[i].href || links[i].getAttribute("href") || "";
+                    var text = (links[i].textContent || "").trim();
+                    if (!href || href.indexOf("regviewer") !== -1) continue;
+                    if (text.indexOf("Global Dossier") !== -1
+                        || href.indexOf("ipfwretrieve") !== -1
+                        || href.indexOf("tab=doclist") !== -1) {
+                      return href;
                     }
                   }
                   return null;
@@ -1718,24 +1781,49 @@ async function epoFetchViaBrowser(targetUrl, options) {
               updateHint("✅ 已找到 Global Dossier 入口，正在跳转到 EPO Register...");
               win.webContents.loadURL(gdLink);
               return;
-            } else {
+            }
+            // 搜索页没有 Global Dossier 链接：新版 Espacenet 的结果卡片没有 <a>，
+            // 必须点击 article[data-qa="result_resultList"] 才会加载详情面板。
+            // 旧版选择器保留作为兼容兜底；点击做 8 秒节流，避免 SPA 渲染期间重复点击。
+            if (!espacenetClickAt || Date.now() - espacenetClickAt > 8000) {
               const clicked = await win.webContents.executeJavaScript(`
                 (function() {
                   try {
-                    var resultItems = document.querySelectorAll('article[class*="search-result"], li[class*="search-result"], a[class*="result__link"]');
-                    if (resultItems && resultItems.length === 1) {
-                      resultItems[0].click();
-                      return "clicked_single_result";
+                    var url = window.location.href;
+                    // 已经进入详情页（SPA 路由），不再点击结果卡片，等待详情面板渲染
+                    if (url.indexOf("/patent/search/family/") !== -1) return null;
+                    var cards = document.querySelectorAll('article[data-qa="result_resultList"]');
+                    if (!cards.length) {
+                      cards = document.querySelectorAll('article[class*="search-result"], li[class*="search-result"], a[class*="result__link"]');
                     }
-                    return null;
+                    if (!cards.length) return null;
+                    var q = "";
+                    var qi = url.indexOf("q=");
+                    if (qi !== -1) {
+                      try { q = decodeURIComponent(url.substring(qi + 2).split("&")[0]).toUpperCase().replace(/[^A-Z0-9]/g, ""); } catch(e) {}
+                    }
+                    var target = null;
+                    if (cards.length === 1) {
+                      target = cards[0];
+                    } else if (q) {
+                      for (var i = 0; i < cards.length; i++) {
+                        var txt = (cards[i].textContent || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        if (txt.indexOf(q) !== -1) { target = cards[i]; break; }
+                      }
+                    }
+                    if (!target) target = cards[0];
+                    target.click();
+                    return "clicked_result:" + (target.textContent || "").trim().slice(0, 60);
                   } catch(e) { return null; }
                 })();
               `, true).catch(() => null);
               if (clicked) {
-                console.log("[EPO Browser] clicked single espacenet search result, waiting for detail page...");
+                espacenetClickAt = Date.now();
+                console.log("[EPO Browser] clicked espacenet result card:", clicked);
+                updateHint("PatentLens: 已打开 Espacenet 专利详情，正在查找 Global Dossier 入口...");
               }
-              return;
             }
+            return;
           }
         }
 
@@ -1745,16 +1833,20 @@ async function epoFetchViaBrowser(targetUrl, options) {
             try {
               var html = document.documentElement ? document.documentElement.outerHTML : "";
               var hasDocListElement = !!document.querySelector(
-                "table.docListTable, #documents, div.docListTable, " +
+                "table.docListTable, table.docList, table.application.docList, #row, " +
+                "#documents, div.docListTable, " +
                 "#resultData, #applicationForm, table.publicationData, " +
                 "#proc_table, div.proceedings, table.biblio, " +
                 "#DataList, table.dataTable, div.documentList, " +
                 "#content table, #main table"
               );
-              // GD 页面可能没有上述元素，但会有 documentView/openNewWindow 链接
+              // GD 页面可能没有上述元素，但会有 documentView/openNewWindow 链接；
+              // 新版 Register 使用 javascript:NewSideWindow('application?documentId=...')
               var hasDocLinks = !!document.querySelector(
                 'a[href*="documentView"], a[href*="ipApplication"], ' +
-                'a[href*="openNewWindow"], a[onclick*="openNewWindow"]'
+                'a[href*="NewSideWindow"], a[href*="openNewWindow"], ' +
+                'a[href*="application?documentId"], ' +
+                'a[onclick*="openNewWindow"], a[onclick*="NewSideWindow"]'
               );
               return {
                 isRetrieving: /being retrieved|Dossier documents are being/i.test(html),
@@ -2290,9 +2382,23 @@ async function proxyGdApi(urlPath, res) {
           // 缓存真实 APN（从解析结果中取第一个文档的 apn，用于后续 PDF URL 构造）
           if (epoResult.docs && epoResult.docs.length > 0 && epoResult.docs[0].apn) {
             const realApn = epoResult.docs[0].apn;
-            if (realApn && !realApn.includes(".A") || realApn !== `${office}.${docNumber}.A`) {
-              setCachedRealApn(office, docNumber, realApn);
-              console.log(`[EPO Browser] cached real APN for ${office}/${docNumber}: ${realApn}`);
+            setCachedRealApn(office, docNumber, realApn);
+            console.log(`[EPO Browser] cached real APN for ${office}/${docNumber}: ${realApn}`);
+            // EP 用户输入可能是公开号（EP3762180），Page 上解析出的是申请号（EP19703079）。
+            // 回写 docNumber，让前端后续 doc-content / extract-text 使用真实申请号。
+            if (office.toUpperCase() === "EP") {
+              const realEpNum = String(realApn).match(/^EP(\d+)$/i);
+              if (realEpNum) {
+                const realDocNum = realEpNum[1];
+                // 把浏览器阶段缓存的 cookies / dossier URL 同步到真实申请号键下，
+                // 否则前端用真实申请号请求 PDF 时会缓存未命中，重新弹窗。
+                const cookies = getCachedEpoCookies(office, docNumber);
+                if (cookies) setCachedEpoCookies(office, realDocNum, cookies);
+                setCachedRealApn(office, realDocNum, realApn);
+                setCachedDossierUrl(office, realDocNum, `${EPO_REGISTER_BASE}/application?number=EP${realDocNum}&lng=en&tab=doclist`);
+                epoResult.docNumber = realDocNum;
+                console.log(`[EPO Browser] resolved EP application number: EP${epoResult.docNumber}`);
+              }
             }
           }
         } else {
@@ -2338,18 +2444,20 @@ async function proxyGdApi(urlPath, res) {
       // 如果 EPO 可用，构造最小 familyData 让前端继续走 doc-list 流程。
       const epoResult = await epoFetchDocList(office, docNumber, "A");
       if (epoResult.docs) {
+        // epoFetchDocList 会把 EP 公开号解析成真实申请号，同族兜底也必须使用解析后的号码
+        const resolvedDocNumber = epoResult.docNumber || docNumber;
         const familyData = {
-          corrAppNum: docNumber,
+          corrAppNum: resolvedDocNumber,
           list: [{
             countryCode: office,
-            appNum: docNumber,
-            docNum: { docNumber: docNumber },
+            appNum: resolvedDocNumber,
+            docNum: { docNumber: resolvedDocNumber },
             title: "",
           }],
           source: "EPO Register fallback (no family data)",
           totalMembers: 1,
         };
-        console.log(`[EPO Fallback] family GD failed, using EPO Register docNumber for ${office}/${docNumber}`);
+        console.log(`[EPO Fallback] family GD failed, using EPO Register docNumber for ${office}/${resolvedDocNumber}`);
         res.writeHead(200, { "Content-Type": "application/json", "X-Epo-Fallback": "1", ...corsHeaders });
         res.end(JSON.stringify(familyData));
         return;
