@@ -125,6 +125,164 @@ const GD_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
 };
 
+const GD_API_HOST = (() => {
+  try { return new URL(GD_API_BASE).hostname; } catch (_) { return ""; }
+})();
+function isGdApiUrl(targetUrl) {
+  try { return new URL(targetUrl).hostname === GD_API_HOST; } catch (_) { return false; }
+}
+
+// ── USPTO Global Dossier 登录（Okta）─────────────────────────────────────
+// GD 前端把 Okta accessToken 存在 localStorage["okta-token-storage"]，
+// API 请求头使用 x-authorization-token: Bearer <accessToken>。
+// 使用持久化 partition 保存 localStorage 与 Okta session cookie，重启后仍可静默续期。
+const GD_AUTH_PARTITION = "persist:gd-auth";
+const GD_SITE_URL = "https://globaldossier.uspto.gov/";
+let _gdAuthWindow = null;
+let _gdAuthPending = null;
+let _gdTokenCache = { token: null, expiresAtMs: 0 };
+let _gdAuthPromptSuppressedUntil = 0;
+
+function _gdNormalizeExpiry(value, token) {
+  let ms = Number(value) || 0;
+  if (ms > 0 && ms < 1e12) ms *= 1000; // Okta SDK 的 expiresAt 通常是秒
+  if (!ms && token) {
+    try {
+      const payload = JSON.parse(Buffer.from(String(token).split(".")[1] || "", "base64url").toString("utf-8"));
+      if (payload && payload.exp) ms = Number(payload.exp) * 1000;
+    } catch (_) {}
+  }
+  return ms;
+}
+
+function _gdParseTokenStorage(raw) {
+  if (!raw) return null;
+  try {
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const at = data && data.accessToken;
+    const token = at && at.accessToken;
+    if (!token) return null;
+    return { token: String(token), expiresAtMs: _gdNormalizeExpiry(at.expiresAt, token) };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function _gdReadTokenFromWindow(win) {
+  if (!win || win.isDestroyed()) return null;
+  try {
+    const raw = await win.webContents.executeJavaScript(
+      `(function(){try{return localStorage.getItem("okta-token-storage");}catch(e){return null;}})()`,
+      true
+    );
+    return _gdParseTokenStorage(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function _ensureGdAuthWindow() {
+  if (_gdAuthWindow && !_gdAuthWindow.isDestroyed()) return _gdAuthWindow;
+  try {
+    const gdSession = session.fromPartition(GD_AUTH_PARTITION, { cache: true });
+    gdSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
+  } catch (_) {}
+  const win = new BrowserWindow({
+    show: false,
+    width: 1100,
+    height: 820,
+    title: "USPTO Global Dossier 登录（关闭窗口可跳过，改用 EPO 降级）",
+    webPreferences: {
+      partition: GD_AUTH_PARTITION,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+  win.on("closed", () => {
+    if (_gdAuthWindow === win) _gdAuthWindow = null;
+  });
+  // 一旦落到 Okta 登录页就展示给用户；登录成功后页面会回到 GD 并写入 token。
+  win.webContents.on("did-finish-load", () => {
+    try {
+      if (win.isDestroyed()) return;
+      if (/auth\.uspto\.gov/i.test(win.webContents.getURL()) && !win.isVisible()) win.show();
+    } catch (_) {}
+  });
+  win.loadURL(GD_SITE_URL).catch((e) => console.warn("[GD Auth] loadURL failed:", e.message));
+  _gdAuthWindow = win;
+  return win;
+}
+
+function invalidateGdAccessToken() {
+  _gdTokenCache = { token: null, expiresAtMs: 0 };
+}
+
+async function getGdAccessToken(options) {
+  const force = !!(options && options.force);
+  if (!force && _gdTokenCache.token && _gdTokenCache.expiresAtMs - Date.now() > 60000) {
+    return _gdTokenCache.token;
+  }
+  // 用户刚关闭登录窗口时不要反复弹窗；一段时间后再次查询会重新尝试。
+  if (Date.now() < _gdAuthPromptSuppressedUntil) return null;
+  if (_gdAuthPending) return _gdAuthPending;
+
+  const run = async () => {
+    const win = _ensureGdAuthWindow();
+    const start = Date.now();
+    const deadline = start + 2 * 60 * 1000;
+    let lastReloadAt = 0;
+    let shownAt = 0;
+    if (force) {
+      try { win.webContents.reload(); } catch (_) {}
+      lastReloadAt = Date.now();
+    }
+    console.log("[GD Auth] waiting for USPTO login / token...");
+    while (Date.now() < deadline) {
+      if (!_gdAuthWindow || _gdAuthWindow !== win || win.isDestroyed()) {
+        _gdAuthPromptSuppressedUntil = Date.now() + 5 * 60 * 1000;
+        console.log("[GD Auth] login window closed before token was obtained");
+        return null;
+      }
+      const info = await _gdReadTokenFromWindow(win);
+      const now = Date.now();
+      if (info && info.token && info.expiresAtMs - now > 60000) {
+        _gdTokenCache = info;
+        try { if (win.isVisible()) win.hide(); } catch (_) {}
+        console.log("[GD Auth] token ready, expires in " + Math.round((info.expiresAtMs - now) / 1000) + "s");
+        return info.token;
+      }
+      let url = "";
+      try { url = win.webContents.getURL(); } catch (_) {}
+      if (/auth\.uspto\.gov/i.test(url)) {
+        if (!win.isVisible()) { try { win.show(); } catch (_) {} }
+        shownAt = now;
+      } else if (!shownAt && now - start > 8000) {
+        // 不是登录页却一直没有 token（加载慢或被拦截），也展示窗口便于用户处理
+        try { if (!win.isVisible()) win.show(); } catch (_) {}
+        shownAt = now;
+      }
+      // token 已过期：重新加载，让 Okta 用持久 session 静默续期
+      if (info && info.token && info.expiresAtMs - now <= 60000 && now - lastReloadAt > 15000) {
+        lastReloadAt = now;
+        try { win.webContents.reload(); } catch (_) {}
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    console.warn("[GD Auth] login timeout");
+    _gdAuthPromptSuppressedUntil = Date.now() + 5 * 60 * 1000;
+    return null;
+  };
+
+  const pending = run();
+  _gdAuthPending = pending;
+  try {
+    return await pending;
+  } finally {
+    if (_gdAuthPending === pending) _gdAuthPending = null;
+  }
+}
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -217,29 +375,51 @@ function serveStatic(filePath, res) {
   });
 }
 
-function httpsGet(targetUrl, headers, timeout) {
-  return new Promise((resolve, reject) => {
-    const urlObj = new URL(targetUrl);
-    const options = {
-      hostname: urlObj.hostname,
-      port: 443,
-      path: urlObj.pathname + urlObj.search,
-      method: "GET",
-      headers: { ...GD_HEADERS, ...headers },
-      timeout: timeout || 30000,
-    };
-    const req = https.request(options, (resp) => {
-      const chunks = [];
-      resp.on("data", (chunk) => chunks.push(chunk));
-      resp.on("end", () => {
-        const body = Buffer.concat(chunks);
-        resolve({ statusCode: resp.statusCode, headers: resp.headers, body });
+async function httpsGet(targetUrl, headers, timeout) {
+  const isGd = isGdApiUrl(targetUrl);
+  const attempts = isGd ? 2 : 1;
+  let lastResult = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const merged = { ...GD_HEADERS, ...(headers || {}) };
+    if (isGd) {
+      try {
+        const token = await getGdAccessToken({ force: attempt > 0 });
+        if (token) merged["x-authorization-token"] = "Bearer " + token;
+      } catch (e) {
+        console.warn("[GD Auth] token acquisition failed:", e.message);
+      }
+    }
+    const result = await new Promise((resolve, reject) => {
+      const urlObj = new URL(targetUrl);
+      const options = {
+        hostname: urlObj.hostname,
+        port: 443,
+        path: urlObj.pathname + urlObj.search,
+        method: "GET",
+        headers: merged,
+        timeout: timeout || 30000,
+      };
+      const req = https.request(options, (resp) => {
+        const chunks = [];
+        resp.on("data", (chunk) => chunks.push(chunk));
+        resp.on("end", () => {
+          const body = Buffer.concat(chunks);
+          resolve({ statusCode: resp.statusCode, headers: resp.headers, body });
+        });
       });
+      req.on("error", reject);
+      req.on("timeout", () => { req.destroy(); reject(new Error("Request timeout")); });
+      req.end();
     });
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("Request timeout")); });
-    req.end();
-  });
+    lastResult = result;
+    if (isGd && result.statusCode === 401 && attempt === 0) {
+      console.log("[GD Auth] GD returned 401, refreshing token and retrying...");
+      invalidateGdAccessToken();
+      continue;
+    }
+    return result;
+  }
+  return lastResult;
 }
 
 function httpsPost(targetUrl, headers, payload, timeout) {
