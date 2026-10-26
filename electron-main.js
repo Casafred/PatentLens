@@ -162,7 +162,10 @@ function _gdParseTokenStorage(raw) {
     const at = data && data.accessToken;
     const token = at && at.accessToken;
     if (!token) return null;
-    return { token: String(token), expiresAtMs: _gdNormalizeExpiry(at.expiresAt, token) };
+    // 若页面未提供 expiresAt 且 token 不是可解析的 JWT，先按 10 分钟有效处理；
+    // 真正过期时 GD 会返回 401，届时会自动刷新并重试。
+    const expiresAtMs = _gdNormalizeExpiry(at.expiresAt, token) || (Date.now() + 10 * 60 * 1000);
+    return { token: String(token), expiresAtMs };
   } catch (_) {
     return null;
   }
@@ -223,6 +226,17 @@ async function getGdAccessToken(options) {
   if (!force && _gdTokenCache.token && _gdTokenCache.expiresAtMs - Date.now() > 60000) {
     return _gdTokenCache.token;
   }
+  // 即使上一次查询曾超时/被抑制，只要登录窗口里已经有有效 token，就直接复用。
+  // 这样用户完成登录后，下一条查询会立即走 GD，不会继续等抑制期。
+  if (!force && _gdAuthWindow && !_gdAuthWindow.isDestroyed()) {
+    const existing = await _gdReadTokenFromWindow(_gdAuthWindow);
+    if (existing && existing.token && existing.expiresAtMs - Date.now() > 60000) {
+      _gdTokenCache = existing;
+      try { if (_gdAuthWindow.isVisible()) _gdAuthWindow.hide(); } catch (_) {}
+      console.log("[GD Auth] reusing token from existing login window");
+      return existing.token;
+    }
+  }
   // 用户刚关闭登录窗口时不要反复弹窗；一段时间后再次查询会重新尝试。
   if (Date.now() < _gdAuthPromptSuppressedUntil) return null;
   if (_gdAuthPending) return _gdAuthPending;
@@ -230,7 +244,7 @@ async function getGdAccessToken(options) {
   const run = async () => {
     const win = _ensureGdAuthWindow();
     const start = Date.now();
-    const deadline = start + 2 * 60 * 1000;
+    const deadline = start + 5 * 60 * 1000;
     let lastReloadAt = 0;
     let shownAt = 0;
     if (force) {
@@ -270,7 +284,10 @@ async function getGdAccessToken(options) {
       await new Promise((r) => setTimeout(r, 1000));
     }
     console.warn("[GD Auth] login timeout");
-    _gdAuthPromptSuppressedUntil = Date.now() + 5 * 60 * 1000;
+    // 窗口仍开着时只短暂抑制，用户继续登录后下一条查询会立刻复用 token
+    _gdAuthPromptSuppressedUntil = Date.now() + 60 * 1000;
+    // 继续后台等待登录完成，token 到达后自动重试查询
+    _startGdAuthWatcher();
     return null;
   };
 
@@ -281,6 +298,61 @@ async function getGdAccessToken(options) {
   } finally {
     if (_gdAuthPending === pending) _gdAuthPending = null;
   }
+}
+
+// 登录超时后，原查询可能已经走 EPO 降级。继续在后台等用户完成登录，
+// token 一到就自动重试当前查询，用户不需要再次点搜索。
+let _gdAuthWatcher = null;
+function _retrySearchAfterGdLogin() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  let attempts = 0;
+  const tryClick = () => {
+    attempts++;
+    mainWindow.webContents.executeJavaScript(`(function(){
+      try {
+        var btn = document.getElementById("search-btn");
+        var input = document.getElementById("patent-input");
+        if (btn && !btn.disabled && input && input.value && input.value.trim()) {
+          btn.click();
+          return true;
+        }
+      } catch(e) {}
+      return false;
+    })()`, true).then((clicked) => {
+      if (clicked) {
+        console.log("[GD Auth] auto-retrying search now that login is complete");
+      } else if (attempts < 20) {
+        setTimeout(tryClick, 1000);
+      }
+    }).catch(() => {
+      if (attempts < 20) setTimeout(tryClick, 1000);
+    });
+  };
+  setTimeout(tryClick, 500);
+}
+
+function _startGdAuthWatcher() {
+  if (_gdAuthWatcher) return;
+  const started = Date.now();
+  _gdAuthWatcher = setInterval(async () => {
+    if (Date.now() - started > 15 * 60 * 1000) {
+      clearInterval(_gdAuthWatcher);
+      _gdAuthWatcher = null;
+      return;
+    }
+    const win = _gdAuthWindow;
+    if (!win || win.isDestroyed()) return;
+    const info = await _gdReadTokenFromWindow(win);
+    if (info && info.token && info.expiresAtMs - Date.now() > 60000) {
+      _gdTokenCache = info;
+      _gdAuthPromptSuppressedUntil = 0;
+      clearInterval(_gdAuthWatcher);
+      _gdAuthWatcher = null;
+      try { if (win.isVisible()) win.hide(); } catch (_) {}
+      console.log("[GD Auth] token arrived after timeout; retrying search");
+      _retrySearchAfterGdLogin();
+    }
+  }, 2000);
 }
 
 const MIME_TYPES = {
@@ -384,7 +456,12 @@ async function httpsGet(targetUrl, headers, timeout) {
     if (isGd) {
       try {
         const token = await getGdAccessToken({ force: attempt > 0 });
-        if (token) merged["x-authorization-token"] = "Bearer " + token;
+        if (token) {
+          merged["x-authorization-token"] = "Bearer " + token;
+          console.log("[GD Auth] attaching token to GD request (attempt " + (attempt + 1) + ")");
+        } else {
+          console.warn("[GD Auth] no token available, GD request will be unauthenticated");
+        }
       } catch (e) {
         console.warn("[GD Auth] token acquisition failed:", e.message);
       }
@@ -412,6 +489,10 @@ async function httpsGet(targetUrl, headers, timeout) {
       req.end();
     });
     lastResult = result;
+    if (isGd && (result.statusCode === 401 || result.statusCode === 403)) {
+      const snippet = result.body ? result.body.toString("utf-8").slice(0, 200) : "";
+      console.warn(`[GD Auth] GD responded ${result.statusCode}: ${snippet}`);
+    }
     if (isGd && result.statusCode === 401 && attempt === 0) {
       console.log("[GD Auth] GD returned 401, refreshing token and retrying...");
       invalidateGdAccessToken();
