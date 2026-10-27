@@ -2952,13 +2952,22 @@ async function scrapeGooglePatent(patentNumber, res, useProxy, proxyUrl) {
   const { normalized, variants } = normalizePatentNumber(patentNumber);
   const allToTry = [normalized, ...variants];
   const corsHeaders = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
+  const startedAt = Date.now();
+  // 前端 GP 请求总超时是 15 秒。这里给 curl 留出时间，确保在超时前返回
+  // 明确的 Espacenet 降级响应，避免前端先 abort、走没有自动提取的旧降级路径。
+  const GP_TOTAL_BUDGET_MS = 10000;
 
   for (const tryNumber of allToTry) {
+    const remainingMs = GP_TOTAL_BUDGET_MS - (Date.now() - startedAt);
+    if (remainingMs <= 1200) {
+      console.log(`[GP] 总预算 ${GP_TOTAL_BUDGET_MS}ms 即将耗尽，停止后续尝试`);
+      break;
+    }
     const url = `${GOOGLE_PATENTS_BASE}/patent/${encodeURIComponent(tryNumber)}`;
     const curlArgs = [
       "-s", "-k", "-L",
       "-w", "\n__HTTP_CODE__%{http_code}",
-      "--max-time", "30",
+      "--max-time", String(Math.max(2, Math.min(10, Math.floor(remainingMs / 1000)))),
       "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "-H", "Accept-Language: en-US,en;q=0.9",
       "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
@@ -2984,7 +2993,7 @@ async function scrapeGooglePatent(patentNumber, res, useProxy, proxyUrl) {
         httpCode = parseInt(rawOutput.substring(idx + marker.length), 10);
         html = rawOutput.substring(0, idx);
       }
-      console.log(`[GP] ${tryNumber} → HTTP ${httpCode}, body长度: ${html.length}`);
+      console.log(`[GP] ${tryNumber} → HTTP ${httpCode}, body长度: ${html.length}, 耗时: ${Date.now() - startedAt}ms`);
 
       if (httpCode === 200 && html && html.length > 1000) {
         const data = extractPatentFromHtml(html, tryNumber);
@@ -2995,14 +3004,15 @@ async function scrapeGooglePatent(patentNumber, res, useProxy, proxyUrl) {
         }
       }
     } catch (e) {
-      console.log(`[GP] curl 错误: ${e.message}`);
+      console.log(`[GP] curl 错误: ${e.message}, 耗时: ${Date.now() - startedAt}ms`);
       continue;
     }
   }
 
-  // Google Patents 未找到 —— 降级到 Espacenet（在应用内 webview 中打开）
-  const espacenetUrl = "https://worldwide.espacenet.com/patent/search?q=" + encodeURIComponent(patentNumber);
-  console.log("[GP→Espacenet] Google Patents 未找到，降级到 Espacenet: " + espacenetUrl);
+  // Google Patents 未找到 —— 降级到 Espacenet，并带上 autoextract=1，
+  // 让 popout 自动进入详情页、自动提取全文后回传主应用，无需用户手动点按钮。
+  const espacenetUrl = "https://worldwide.espacenet.com/patent/search?q=" + encodeURIComponent(patentNumber) + "&autoextract=1";
+  console.log("[GP→Espacenet] Google Patents 未找到，降级到 Espacenet 自动提取: " + espacenetUrl);
   res.writeHead(200, corsHeaders);
   res.end(JSON.stringify({
     success: true,
