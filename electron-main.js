@@ -42,6 +42,7 @@ const fontkit = require("@pdf-lib/fontkit");
 const XLSX = require("xlsx");
 const { normalizePatentNumber, extractPatentFromHtml } = require("./patent-parser");
 const { PdfSessionCache } = require("./pdf-session-cache");
+const epoPolicy = require("./epo-fallback-policy");
 
 const SHARE_SHEET_MAX_BYTES = 10 * 1024 * 1024;
 const SHARE_SHEET_MAX_SHEETS = 20;
@@ -557,12 +558,7 @@ function httpsPost(targetUrl, headers, payload, timeout) {
 // ── EPO Register 降级模块 ──────────────────────────────────────────────────
 
 function epoDetectCloudflare(html) {
-  if (!html || typeof html !== "string") return false;
-  const lower = html.toLowerCase();
-  return (lower.includes("performing security verification")
-    || lower.includes("just a moment")
-    || lower.includes("ray id:"))
-    && lower.includes("cloudflare");
+  return epoPolicy.isEpoCloudflareBody(html);
 }
 
 function epoHtmlUnescape(s) {
@@ -1169,10 +1165,11 @@ async function epoFetchDocList(office, docNumber, kindCode) {
   if (result.httpCode === 404) return { error: `EPO Register: ${office}${effectiveDocNumber} not found`, browserUrl: url };
   if (result.httpCode !== 200) {
     const bodyStr = String(result.body || "").trim();
-    if (result.httpCode === 403 && /rate\s*limit/i.test(bodyStr)) {
+    // 限流不是人机验证：不应打开 EPO 验证窗口（窗口里等不到可验证页面，只会白等）
+    if (result.httpCode === 429 || (result.httpCode === 403 && /rate\s*limit|too many requests/i.test(bodyStr))) {
       return {
-        cloudflare: true,
-        error: `EPO Register 被 Cloudflare Bot Management 拦截（HTTP 403: ${bodyStr}）`,
+        rateLimited: true,
+        error: `EPO Register 被限流（HTTP ${result.httpCode}${bodyStr ? ": " + bodyStr.slice(0, 150) : ""}）`,
         browserUrl: url,
       };
     }
@@ -1304,8 +1301,10 @@ async function epoFetchPdfWithSession(office, docNumber, pdfUrl) {
 // 仅在 EPO 直走模式（epoDirect=true）下使用，作为 curl 路径的替代。
 
 // Dossier URL 缓存：office+docNumber → register.epo.org dossier URL
-// 第一次通过 espacenet 找到 GD 链接后缓存，后续同一专利直接用缓存的 dossier URL，
-// 避免每次查 PDF 都重新走 espacenet → 找 GD 链接 → 跳转的流程
+// 只有在文档列表真正解析成功后才会写入，后续同一专利直接用缓存的 dossier URL，
+// 避免每次查 PDF 都重新走 espacenet → 找 GD 链接 → 跳转的流程。
+// 注意：绝不能提前缓存“刚发现但尚未验证”的 GD 链接，否则一次失败会让该专利
+// 后续所有查询都固定跳到坏页面（表现为一直卡在 EPO Global Dossier 页面）。
 const _dossierUrlCache = new Map();
 function _dossierCacheKey(office, docNumber) {
   return office.toUpperCase() + "/" + docNumber;
@@ -1313,8 +1312,16 @@ function _dossierCacheKey(office, docNumber) {
 function getCachedDossierUrl(office, docNumber) {
   return _dossierUrlCache.get(_dossierCacheKey(office, docNumber)) || null;
 }
+function clearCachedDossierUrl(office, docNumber) {
+  _dossierUrlCache.delete(_dossierCacheKey(office, docNumber));
+}
 function setCachedDossierUrl(office, docNumber, url) {
+  if (!epoPolicy.isUsableEpoDossierCacheUrl(url)) {
+    console.warn(`[EPO Browser] skip caching unusable dossier URL for ${office}/${docNumber}: ${url}`);
+    return false;
+  }
   _dossierUrlCache.set(_dossierCacheKey(office, docNumber), url);
+  return true;
 }
 
 // 真实 APN 缓存：office+docNumber → 真实申请号（如 CN.201980017909.A）
@@ -1357,7 +1364,7 @@ function getCachedEpoPdfByEpoDocId(documentId) {
   }
   return null;
 }
-async function epoFetchViaBrowser(targetUrl, options) {
+async function epoFetchViaBrowserWindow(targetUrl, options) {
   options = options || {};
   const wantPdf = !!options.wantPdf;
   const pdfUrl = options.pdfUrl || null; // PDF 模式下，先加载 doclist 页面，再 fetch 这个 PDF URL
@@ -1366,15 +1373,23 @@ async function epoFetchViaBrowser(targetUrl, options) {
   const docNumber = options.docNumber || null; // 用于 dossier URL 缓存
   const timeout = options.timeout || 120000;
 
-  // 检查 dossier URL 缓存：如果有缓存，直接加载 register.epo.org，跳过 espacenet
+  // 检查 dossier URL 缓存：只有确认可用（register.epo.org 的真实档案入口）才直接加载，
+  // 跳过 espacenet。否则清掉坏缓存，避免后续查询反复卡在错误页面。
   let effectiveUrl = targetUrl;
   let effectiveViaEspacenet = viaEspacenet;
+  let usedCachedDossierUrl = false;
   if (office && docNumber) {
     const cachedDossierUrl = getCachedDossierUrl(office, docNumber);
     if (cachedDossierUrl) {
-      console.log(`[EPO Browser] using cached dossier URL for ${office}/${docNumber}: ${cachedDossierUrl}`);
-      effectiveUrl = cachedDossierUrl;
-      effectiveViaEspacenet = false; // 直接加载 dossier 页面，不再走 espacenet
+      if (epoPolicy.isUsableEpoDossierCacheUrl(cachedDossierUrl)) {
+        console.log(`[EPO Browser] using cached dossier URL for ${office}/${docNumber}: ${cachedDossierUrl}`);
+        effectiveUrl = cachedDossierUrl;
+        effectiveViaEspacenet = false; // 直接加载 dossier 页面，不再走 espacenet
+        usedCachedDossierUrl = true;
+      } else {
+        console.warn(`[EPO Browser] dropping unusable cached dossier URL for ${office}/${docNumber}: ${cachedDossierUrl}`);
+        clearCachedDossierUrl(office, docNumber);
+      }
     }
   }
 
@@ -1390,7 +1405,9 @@ async function epoFetchViaBrowser(targetUrl, options) {
         ? "EPO Register - 正在获取审查文档 PDF..."
         : effectiveViaEspacenet
           ? "Espacenet → EPO Register - 正在获取审查文档列表..."
-          : "EPO Register - 正在获取审查文档列表...",
+          : usedCachedDossierUrl
+            ? "EPO Register - 正在获取审查文档列表（已缓存入口）..."
+            : "EPO Register - 正在获取审查文档列表...",
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -1400,6 +1417,7 @@ async function epoFetchViaBrowser(targetUrl, options) {
 
     let settled = false;
     let dataReturned = false; // 数据已返回给调用方，但窗口仍保持打开
+    let checkInterval = null;
     let cfWaitCount = 0;
     let userClickedDone = false;
     let doclistReady = false; // doclist 页面是否已就绪（PDF 模式用）
@@ -1411,11 +1429,16 @@ async function epoFetchViaBrowser(targetUrl, options) {
     let autoPdfPhase = 'idle';
     let autoPdfTargetUrl = null;
     let autoPdfNavTimeout = null;
-    const CF_WAITING_KEYWORDS = [
-      "just a moment", "attention required", "checking your browser",
-      "performing security", "verifying you are human", "请稍候", "请稍等",
-      "正在检查", "正在验证", "需要关注", "执行安全", "稍候片刻",
-    ];
+    // 页面阶段看护：避免 EPO Register / Global Dossier 页面无限等待
+    let retrieveReloadCount = 0;
+    let registerWaitSince = 0;
+    let emptyExtractCount = 0;
+    let fallbackToEspacenetUsed = false;
+    let espacenetSince = 0;
+    let espacenetNavigationAt = 0;
+    const espacenetSearchUrl = (office && docNumber)
+      ? `https://worldwide.espacenet.com/patent/search?q=${encodeURIComponent(office.toUpperCase() + docNumber)}`
+      : null;
 
     // 动态更新工具栏提示文字
     const updateHint = (text) => {
@@ -1462,10 +1485,7 @@ async function epoFetchViaBrowser(targetUrl, options) {
       resolve(result);
     };
 
-    const isCfWaiting = (title) => {
-      const lower = String(title || "").toLowerCase();
-      return CF_WAITING_KEYWORDS.some(kw => lower.includes(kw.toLowerCase()));
-    };
+    const isCfWaiting = (title) => epoPolicy.isEpoCloudflareTitle(title);
 
     const extractHtml = async () => {
       try {
@@ -1897,9 +1917,33 @@ async function epoFetchViaBrowser(targetUrl, options) {
 
     let tryExtractRunning = false;
     let retrieveDetectedAt = 0;
-    let retrieveReloadedAt = 0;
     let espacenetNavigatedToEpo = false;
     let espacenetClickAt = 0;
+
+    // 缓存的 dossier URL 失效时，自动退回 Espacenet 重新解析一次。
+    // 这样既能保留缓存带来的速度，又不会因为一条坏缓存永久卡在错误页面。
+    const fallbackToEspacenet = (reason) => {
+      if (!usedCachedDossierUrl || fallbackToEspacenetUsed || !espacenetSearchUrl || settled || win.isDestroyed()) {
+        return false;
+      }
+      fallbackToEspacenetUsed = true;
+      usedCachedDossierUrl = false;
+      if (office && docNumber) clearCachedDossierUrl(office, docNumber);
+      effectiveViaEspacenet = true;
+      espacenetNavigatedToEpo = false;
+      espacenetClickAt = 0;
+      retrieveDetectedAt = 0;
+      retrieveReloadCount = 0;
+      registerWaitSince = 0;
+      emptyExtractCount = 0;
+      espacenetSince = Date.now();
+      doclistReady = false;
+      console.warn(`[EPO Browser] cached dossier entry unusable (${reason}), retrying via Espacenet: ${espacenetSearchUrl}`);
+      updateHint("PatentLens: 缓存的 Global Dossier 入口失效，正在改用 Espacenet 重新解析...");
+      try { win.loadURL(espacenetSearchUrl); } catch (_) {}
+      return true;
+    };
+
     const tryExtract = async () => {
       if (settled || win.isDestroyed() || tryExtractRunning) return;
       // 数据已返回且窗口保持打开：跳过提取，只等用户点击链接或按钮
@@ -2069,9 +2113,19 @@ async function epoFetchViaBrowser(targetUrl, options) {
         }
 
         // 阶段 0：espacenet 跳转阶段（viaEspacenet=true 且尚未跳到 register.epo.org）
-        if (effectiveViaEspacenet && !espacenetNavigatedToEpo) {
+        if (effectiveViaEspacenet) {
           const currentUrl = win.webContents.getURL();
           if (currentUrl.includes("espacenet.com")) {
+            // 已经尝试跳转但仍然停在 Espacenet：15 秒后视为跳转失败，允许重新找链接
+            if (espacenetNavigatedToEpo) {
+              if (Date.now() - espacenetNavigationAt < 15000) return;
+              console.warn("[EPO Browser] still on Espacenet 15s after navigation, retrying entry lookup");
+              espacenetNavigatedToEpo = false;
+              espacenetNavigationAt = 0;
+              espacenetSince = Date.now();
+            }
+            if (!espacenetSince) espacenetSince = Date.now();
+            const espacenetElapsed = Date.now() - espacenetSince;
             updateHint("PatentLens: 正在 Espacenet 查找 Global Dossier 入口，请稍候...");
             // 新版 Espacenet 的 Global Dossier 链接已从 ipfwretrieve 改为
             // application?tab=doclist&number=...，且藏在详情面板里。
@@ -2098,13 +2152,25 @@ async function epoFetchViaBrowser(targetUrl, options) {
             if (gdLink) {
               console.log("[EPO Browser] found Global Dossier link on espacenet, navigating to:", gdLink);
               espacenetNavigatedToEpo = true;
-              // 缓存 dossier URL，后续查 PDF 直接用，不再走 espacenet
-              if (office && docNumber) {
-                setCachedDossierUrl(office, docNumber, gdLink);
-                console.log(`[EPO Browser] cached dossier URL for ${office}/${docNumber}`);
-              }
+              espacenetNavigationAt = Date.now();
+              // 注意：这里绝不能提前缓存。链接可能指向错误申请号或中间页，
+              // 只有跳转后真正解析出文档才算验证通过（见下方成功分支）。
               updateHint("✅ 已找到 Global Dossier 入口，正在跳转到 EPO Register...");
               win.webContents.loadURL(gdLink);
+              return;
+            }
+            // 详情页迟迟不出现 Global Dossier 链接（15 秒），或搜索页 60 秒都没结果：
+            // 明确报错并关闭窗口，避免窗口一直停在 Espacenet 上。
+            if (currentUrl.indexOf("/patent/search/family/") !== -1 && espacenetElapsed > 15000) {
+              finish({
+                error: "Espacenet 详情页未找到 Global Dossier 入口（该专利可能没有审查文档）",
+                browserUrl: currentUrl,
+                notFound: true,
+              });
+              return;
+            }
+            if (espacenetElapsed > 60000) {
+              finish({ error: "Espacenet 60 秒内未找到 Global Dossier 入口", browserUrl: currentUrl });
               return;
             }
             // 搜索页没有 Global Dossier 链接：新版 Espacenet 的结果卡片没有 <a>，
@@ -2157,13 +2223,13 @@ async function epoFetchViaBrowser(targetUrl, options) {
           (function() {
             try {
               var html = document.documentElement ? document.documentElement.outerHTML : "";
+              // 只认真正的文档列表容器，避免 #content table / #main table 这类通用选择器
+              // 把普通档案页误判成“文档列表已就绪”，进而提前返回空结果。
               var hasDocListElement = !!document.querySelector(
-                "table.docListTable, table.docList, table.application.docList, #row, " +
-                "#documents, div.docListTable, " +
-                "#resultData, #applicationForm, table.publicationData, " +
-                "#proc_table, div.proceedings, table.biblio, " +
-                "#DataList, table.dataTable, div.documentList, " +
-                "#content table, #main table"
+                "table.docListTable, table.docList, table.application.docList, " +
+                "#documents, div.docListTable, div.documentList, #documentsTable, " +
+                "#resultData, table.dataTable, #DataList, " +
+                "table[class*='docList'], div[class*='docList']"
               );
               // GD 页面可能没有上述元素，但会有 documentView/openNewWindow 链接；
               // 新版 Register 使用 javascript:NewSideWindow('application?documentId=...')
@@ -2173,10 +2239,16 @@ async function epoFetchViaBrowser(targetUrl, options) {
                 'a[href*="application?documentId"], ' +
                 'a[onclick*="openNewWindow"], a[onclick*="NewSideWindow"]'
               );
+              // “中间页”/空档案/限流页必须在主进程统一判定，这里只提供布尔标记。
+              // 使用可见文本而不是整段 HTML，避免脚本里的提示词造成误判。
+              var visibleText = document.body ? document.body.innerText : "";
               return {
-                isRetrieving: /being retrieved|Dossier documents are being/i.test(html),
+                isRetrieving: /dossier documents are being retrieved|documents are being retrieved|being retrieved|正在检索/i.test(visibleText),
+                isEmpty: /no files were found|no files containing|no dossier|application not found|no documents (?:found|are available)|application number is not valid/i.test(visibleText),
+                isRateLimited: /rate\\s*limit|too many requests|access denied/i.test(visibleText),
                 hasDocList: hasDocListElement || hasDocLinks,
                 hasDocLinks: hasDocLinks,
+                hasDocListElement: hasDocListElement,
                 title: document.title,
                 htmlLen: html.length,
                 url: window.location.href
@@ -2185,29 +2257,97 @@ async function epoFetchViaBrowser(targetUrl, options) {
           })();
         `, true).catch(() => ({ isRetrieving: false, hasDocList: false }));
 
-        // 中间页：等 8s 后重新加载
-        if (pageInfo.isRetrieving) {
-          updateHint("PatentLens: EPO 正在检索档案，请稍候 8 秒后自动刷新...");
+        const pageState = epoPolicy.classifyEpoPage({
+          title: pageInfo.title || "",
+          flags: {
+            isRetrieving: pageInfo.isRetrieving,
+            isEmpty: pageInfo.isEmpty,
+            isRateLimited: pageInfo.isRateLimited,
+            hasDocLinks: pageInfo.hasDocLinks,
+            hasDocListTable: pageInfo.hasDocListElement,
+            hasDocList: pageInfo.hasDocList,
+          },
+        });
+
+        // 空档案 / 限流页：不是“还在加载”，必须立刻结束，避免窗口停在这种页面上
+        if (pageState === "empty" || pageState === "rateLimited") {
+          console.warn(`[EPO Browser] terminal EPO page detected: ${pageState}, url=${pageInfo.url || effectiveUrl}`);
+          // 空档案可能是缓存的入口号码不对，退回 Espacenet 重新解析；限流则不必再跳转
+          if (pageState === "empty" && fallbackToEspacenet(pageState)) return;
+          if (!wantPdf) {
+            // 文档列表查询：明确返回空列表，让前端显示“无审查文档”，而不是一直转圈
+            finish({
+              empty: true,
+              body: "",
+              docList: [],
+              docNumber,
+              source: office && office.toUpperCase() === "EP" ? "EPO Register" : "EPO Global Dossier",
+              totalDocs: 0,
+            });
+            return;
+          }
+          finish({
+            error: pageState === "empty"
+              ? "EPO Register 未找到该专利的审查文档"
+              : "EPO Register 被限流，请稍后重试",
+            rateLimited: pageState === "rateLimited",
+            notFound: pageState === "empty",
+            browserUrl: pageInfo.url || effectiveUrl,
+          });
+          return;
+        }
+
+        // 中间页：最多刷新 5 次（约 40 秒），仍检索不到就明确报错，不再无限等待
+        if (pageState === "retrieving") {
           if (!retrieveDetectedAt) {
             retrieveDetectedAt = Date.now();
-            console.log("[EPO Browser] detected 'being retrieved' intermediate page, waiting 8s before reload...");
+            console.log("[EPO Browser] detected 'being retrieved' intermediate page, waiting before reload...");
           }
-          if (Date.now() - retrieveDetectedAt > 8000 && !retrieveReloadedAt) {
-            retrieveReloadedAt = Date.now();
-            console.log("[EPO Browser] reloading after 'being retrieved' wait");
+          const elapsed = Date.now() - retrieveDetectedAt;
+          const RETRIEVE_RELOAD_INTERVAL = 8000;
+          const RETRIEVE_TIMEOUT = 40000;
+          updateHint(`PatentLens: EPO 正在检索档案，请稍候（${Math.min(5, retrieveReloadCount)}/5）...`);
+          if (elapsed >= RETRIEVE_TIMEOUT) {
+            finish({ error: "EPO Register 检索审查档案超时（40 秒）", browserUrl: pageInfo.url || effectiveUrl });
+            return;
+          }
+          if (elapsed >= retrieveReloadCount * RETRIEVE_RELOAD_INTERVAL) {
+            retrieveReloadCount++;
+            console.log(`[EPO Browser] reloading after 'being retrieved' wait (${retrieveReloadCount}/5)`);
+            registerWaitSince = 0;
             try { win.webContents.reload(); } catch (_) {}
           }
           return;
         }
 
-        // 页面没有 doclist 特征元素：可能还在加载，继续等
-        if (!pageInfo.hasDocList && !userClickedDone) {
-          updateHint("PatentLens: 正在加载 EPO Register 审查档案页面，请稍候...");
-          return;
+        // 页面没有 doclist 特征元素：可能还在加载，也可能入口 URL 错误。
+        // 冷启动最多等 45 秒；缓存的入口 15 秒无进展就自动退回 Espacenet。
+        if (pageState === "waiting" || !pageInfo.hasDocList) {
+          if (userClickedDone) {
+            // 用户已主动点击“完成”：允许强制提取一次
+          } else {
+            if (!registerWaitSince) {
+              registerWaitSince = Date.now();
+              console.log(`[EPO Browser] waiting for register page content, url=${pageInfo.url || effectiveUrl}`);
+            }
+            const waited = Date.now() - registerWaitSince;
+            if (usedCachedDossierUrl && waited > 15000) {
+              if (fallbackToEspacenet("cached register page did not become ready")) return;
+            }
+            if (waited > 45000) {
+              finish({ error: "EPO Register 页面 45 秒内未加载出审查文档列表", browserUrl: pageInfo.url || effectiveUrl });
+              return;
+            }
+            updateHint(`PatentLens: 正在加载 EPO Register 审查档案页面，请稍候（${Math.ceil((45000 - waited) / 1000)}s）...`);
+            return;
+          }
         }
 
         // doclist 页面已就绪
         doclistReady = true;
+        registerWaitSince = 0;
+        retrieveDetectedAt = 0;
+        retrieveReloadCount = 0;
 
         // 统一处理：提取数据返回给调用方。PDF 模式先尝试后台自动抓取，
         // 只有自动抓取失败才退回手动选取。
@@ -2250,6 +2390,28 @@ async function epoFetchViaBrowser(targetUrl, options) {
             if (result.error && /fetch|network|Failed to fetch/i.test(result.error)) {
               return;
             }
+            // 页面结构可能还在更新：如果两种解析方式都拿不到文档，先重试几次，
+            // 不要立刻返回空结果（会把“页面尚未渲染完”误报成“无审查文档”）。
+            const _pageHtml = String(result.body || "");
+            const _domDocs = Array.isArray(result.docList) ? result.docList : [];
+            const _parsed = _domDocs.length > 0
+              ? epoParseDocListFromDom(_domDocs, office, docNumber, "A")
+              : epoParseDocListHtml(_pageHtml, office, docNumber || "A", "A");
+            if (!_parsed.docs || _parsed.docs.length === 0) {
+              if (epoPolicy.isEpoEmptyDossierPage(_pageHtml)) {
+                console.log("[EPO Browser] doclist page confirmed empty by page text");
+                finish({ empty: true, body: "", docList: [], docNumber, source: "EPO Register", totalDocs: 0 });
+                return;
+              }
+              if (fallbackToEspacenet("doclist parsed zero documents")) return;
+              emptyExtractCount++;
+              if (emptyExtractCount >= 3) {
+                finish({ error: "EPO Register 页面已打开，但未解析到任何审查文档", browserUrl: win.webContents.getURL() });
+                return;
+              }
+              updateHint("PatentLens: 文档列表尚未渲染完成，正在重试提取...");
+              return;
+            }
             // 提取 session cookies 并缓存
             if (result.body && office && docNumber) {
               try {
@@ -2263,10 +2425,14 @@ async function epoFetchViaBrowser(targetUrl, options) {
                 console.warn("[EPO Browser] failed to extract cookies:", e.message);
               }
             }
+            // 只有确认解析出文档后才缓存 dossier 入口，避免坏入口污染后续查询
+            if (office && docNumber) {
+              setCachedDossierUrl(office, docNumber, win.webContents.getURL());
+            }
           }
 
-          // 缓存 dossier URL
-          if (office && docNumber) {
+          // 缓存 dossier URL（PDF 模式成功抓到 PDF 时；setCachedDossierUrl 内部会校验 URL）
+          if (wantPdf && office && docNumber) {
             setCachedDossierUrl(office, docNumber, win.webContents.getURL());
           }
 
@@ -2354,6 +2520,9 @@ async function epoFetchViaBrowser(targetUrl, options) {
 
     win.webContents.on("did-finish-load", () => {
       console.log("[EPO Browser] did-finish-load, url:", win.webContents.getURL());
+      // 每次新页面加载完成都重置“无进展”计时，避免上一页的等待时间影响本页
+      registerWaitSince = 0;
+      emptyExtractCount = 0;
       // 注入工具栏（所有 CSS 属性加 !important 防止被宿主页面覆盖）
       try {
         win.webContents.executeJavaScript(`
@@ -2385,15 +2554,20 @@ async function epoFetchViaBrowser(targetUrl, options) {
       tryExtract();
     });
     win.webContents.on("did-fail-load", (_e, errorCode, errorDescription, validatedURL, isMainFrame) => {
-      if (isMainFrame && errorCode !== -3) {
-        console.warn(`[EPO Browser] did-fail-load: code=${errorCode}, desc=${errorDescription}, url=${validatedURL}`);
-      }
+      if (!isMainFrame || errorCode === -3 || settled) return;
+      console.warn(`[EPO Browser] did-fail-load: code=${errorCode}, desc=${errorDescription}, url=${validatedURL}`);
+      // 缓存入口加载失败：先尝试退回 Espacenet；否则立刻关闭窗口并返回明确错误
+      if (fallbackToEspacenet(`load failed ${errorCode}`)) return;
+      finish({
+        error: `EPO Register 页面加载失败（${errorCode} ${errorDescription || ""}）`,
+        browserUrl: validatedURL || effectiveUrl,
+      });
     });
     win.webContents.on("did-navigate", (_e, url) => {
       console.log("[EPO Browser] did-navigate:", url);
     });
 
-    const checkInterval = setInterval(() => {
+    checkInterval = setInterval(() => {
       if (settled || win.isDestroyed()) {
         clearInterval(checkInterval);
         return;
@@ -2406,7 +2580,7 @@ async function epoFetchViaBrowser(targetUrl, options) {
     const effectiveTimeout = Math.max(timeout, 300000);
     setTimeout(() => {
       if (!settled && !dataReturned) {
-        finish({ cloudflare: true, error: `Browser fetch timeout (${effectiveTimeout}ms)` });
+        finish({ error: `EPO 页面处理超时（${effectiveTimeout}ms）`, browserUrl: win.webContents.getURL() });
       }
     }, effectiveTimeout);
 
@@ -2426,6 +2600,39 @@ async function epoFetchViaBrowser(targetUrl, options) {
       console.warn("[EPO Browser] loadURL failed:", e.message);
     });
   });
+}
+
+// 同一个专利、同一类请求（文档列表 / 某一篇 PDF）只保留一个在途弹窗。
+// 之前并发请求会各开一个可见窗口，部分窗口卡在 Cloudflare 或 Global Dossier 页面，
+// 表现为“有时能打开、有时打不开”。
+const _epoBrowserFlights = new Map();
+function epoFetchViaBrowser(targetUrl, options) {
+  const opts = options || {};
+  const office = opts.office ? String(opts.office).toUpperCase() : "";
+  const docNumber = opts.docNumber ? String(opts.docNumber) : "";
+  let key = null;
+  if (office && docNumber) {
+    if (opts.wantPdf) {
+      const docIdMatch = String(opts.pdfUrl || "").match(/documentId=([^&]+)/);
+      key = `${office}/${docNumber}/pdf/${docIdMatch ? decodeURIComponent(docIdMatch[1]) : "doc"}`;
+    } else {
+      key = `${office}/${docNumber}/doclist`;
+    }
+  }
+  if (!key) return epoFetchViaBrowserWindow(targetUrl, opts);
+
+  const existing = _epoBrowserFlights.get(key);
+  if (existing) {
+    console.log(`[EPO Browser] joining in-flight request: ${key}`);
+    return existing;
+  }
+  const promise = epoFetchViaBrowserWindow(targetUrl, opts);
+  _epoBrowserFlights.set(key, promise);
+  const cleanup = () => {
+    if (_epoBrowserFlights.get(key) === promise) _epoBrowserFlights.delete(key);
+  };
+  promise.then(cleanup, cleanup);
+  return promise;
 }
 
 // 构造 EPO Register doclist 初始 URL（供 epoFetchViaBrowser 路径使用）
@@ -2450,6 +2657,21 @@ function epoBuildPdfUrl(office, docNumber, docId) {
     ? `EP${docNumber}`
     : `${office}.${docNumber}.A`);
   return `${EPO_REGISTER_BASE}/documentView?number=${encodeURIComponent(apn)}&documentId=${encodeURIComponent(docId)}`;
+}
+
+// 构造给用户/验证窗口使用的 EPO Register 入口 URL。
+// EP 走 application?tab=doclist；其他局必须走 ipfwretrieve?apn=OFFICE.NUMBER.KIND，
+// 否则会出现“application?number=US123...”这种 Register 不认的地址，窗口打开后只能空等。
+function epoBuildRegisterBrowserUrl(office, docNumber) {
+  const off = String(office || "").toUpperCase();
+  if (!off || !docNumber) return null;
+  const cachedApn = getCachedRealApn(office, docNumber);
+  if (off === "EP") {
+    const apn = cachedApn || `EP${docNumber}`;
+    return `${EPO_REGISTER_BASE}/application?number=${encodeURIComponent(apn)}&lng=en&tab=doclist`;
+  }
+  const apn = cachedApn || `${off}.${docNumber}.A`;
+  return `${EPO_REGISTER_BASE}/ipfwretrieve?apn=${encodeURIComponent(apn)}&lng=en`;
 }
 
 // 从 DOM 提取的结构化文档列表构建 EPO doclist 结果（比正则解析 HTML 更可靠）
@@ -2753,15 +2975,17 @@ async function proxyGdApi(urlPath, res) {
         res.end(JSON.stringify({
           error: "EPO Register需要人机验证，请在浏览器中打开register.epo.org完成验证后重试",
           cloudflare: true,
-          browserUrl: `https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist`,
+          browserUrl: epoBuildRegisterBrowserUrl(office, docNumber),
         }));
         return;
       }
       res.writeHead(502, { "Content-Type": "application/json", ...corsHeaders });
       res.end(JSON.stringify({
         error: `GD: ${gdFailReason}; EPO: ${epoResult.error || "failed"}`,
-        cloudflare: !epoDirect && true, // EPO 直走模式下不标记 cloudflare，避免触发旧验证窗口
-        browserUrl: `https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist`,
+        // 只有真正被 Cloudflare 拦截时才提示验证；普通失败不再弹验证窗口
+        cloudflare: !!epoResult.cloudflare,
+        rateLimited: !!epoResult.rateLimited,
+        browserUrl: epoResult.browserUrl || epoBuildRegisterBrowserUrl(office, docNumber),
       }));
     } else if (isDocList) {
       // EPO 直走模式：用可见 BrowserWindow 获取 HTML 后解析（绕过 CF JS challenge）
@@ -2808,6 +3032,15 @@ async function proxyGdApi(urlPath, res) {
               }
             }
           }
+        } else if (browserResult.empty) {
+          // 页面明确显示“无档案/无文档”：返回空列表，避免误报为 Cloudflare 或网络失败
+          epoResult = {
+            docs: [],
+            title: "",
+            docNumber: browserResult.docNumber || docNumber,
+            source: office.toUpperCase() === "EP" ? "EPO Register" : "EPO Global Dossier",
+            totalDocs: 0,
+          };
         } else {
           epoResult = browserResult; // 错误或 cloudflare 标记
           if (!epoResult.browserUrl) epoResult.browserUrl = urlInfo.url;
@@ -2826,7 +3059,7 @@ async function proxyGdApi(urlPath, res) {
         res.end(JSON.stringify({
           error: "EPO Register需要人机验证，请在浏览器中打开register.epo.org完成验证后重试",
           cloudflare: true,
-          browserUrl: epoResult.browserUrl || (`https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist`),
+          browserUrl: epoResult.browserUrl || (epoBuildRegisterBrowserUrl(office, docNumber)),
         }));
         return;
       }
@@ -2842,8 +3075,10 @@ async function proxyGdApi(urlPath, res) {
       res.writeHead(502, { "Content-Type": "application/json", ...corsHeaders });
       res.end(JSON.stringify({
         error: `GD: ${gdFailReason}; EPO: ${epoResult.error || "failed"}`,
-        cloudflare: !epoDirect && true, // EPO 直走模式下不标记 cloudflare，避免触发旧验证窗口
-        browserUrl: epoResult.browserUrl || (`https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist`),
+        // 只有真正被 Cloudflare/限流拦截时才带标志；普通 404/超时/解析失败不再触发验证窗口
+        cloudflare: !!epoResult.cloudflare,
+        rateLimited: !!epoResult.rateLimited,
+        browserUrl: epoResult.browserUrl || (epoBuildRegisterBrowserUrl(office, docNumber)),
       }));
     } else if (isFamily) {
       // patent-family 路径：GD 失败时探测 EPO 状态。
@@ -2874,7 +3109,7 @@ async function proxyGdApi(urlPath, res) {
         res.end(JSON.stringify({
           error: "GD 同族不可用，且 EPO Register 需要人机验证。请在浏览器中打开 register.epo.org 完成验证后重试。",
           cloudflare: true,
-          browserUrl: epoResult.browserUrl || (`https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist`),
+          browserUrl: epoResult.browserUrl || (epoBuildRegisterBrowserUrl(office, docNumber)),
         }));
         return;
       }
@@ -2890,8 +3125,9 @@ async function proxyGdApi(urlPath, res) {
       res.writeHead(502, { "Content-Type": "application/json", ...corsHeaders });
       res.end(JSON.stringify({
         error: `GD family: ${gdFailReason}; EPO: ${epoResult.error || "failed"}`,
-        cloudflare: true,
-        browserUrl: epoResult.browserUrl || (`https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist`),
+        cloudflare: !!epoResult.cloudflare,
+        rateLimited: !!epoResult.rateLimited,
+        browserUrl: epoResult.browserUrl || (epoBuildRegisterBrowserUrl(office, docNumber)),
       }));
     } else {
       corsHeaders["Content-Type"] = "application/json";
@@ -2904,8 +3140,9 @@ async function proxyGdApi(urlPath, res) {
     res.writeHead(502, corsHeaders);
     res.end(JSON.stringify({
       error: `GD: ${gdFailReason}; EPO exception: ${e.message}`,
-      cloudflare: !epoDirect && true, // EPO 直走模式下不标记 cloudflare，避免触发旧验证窗口
-      browserUrl: office && docNumber ? `https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist` : null,
+      // 异常不等于 Cloudflare：不再强制触发 EPO 验证窗口
+      cloudflare: false,
+      browserUrl: office && docNumber ? epoBuildRegisterBrowserUrl(office, docNumber) : null,
     }));
   }
 }
@@ -4337,10 +4574,10 @@ function createWindow(port) {
 // 用户也可以手动点窗口里的"我已完成验证"按钮触发判定。
 function openEpoVerifyWindow(targetUrl) {
   return new Promise((resolve) => {
-    // 用独立 partition 避免污染主 session；之后从该 partition 读 cookie
-    const verifyPartition = "persist:epo-verify";
-    const verifySession = session.fromPartition(verifyPartition, { cache: true });
-    verifySession.setUserAgent(CHROME_UA, "zh-CN");
+    // 复用默认 session，与主窗口 / epoFetchViaBrowser 共享 Cloudflare 清除 cookie。
+    // 不要设置 UA，也不要使用独立 partition：强制 Chrome UA 会被 Cloudflare 识别为
+    // UA 欺骗并反复进入人机验证循环（见文件顶部说明），独立 partition 又拿不到已通过的会话。
+    const verifySession = session.defaultSession;
     verifySession.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
 
     const win = new BrowserWindow({
@@ -4477,25 +4714,17 @@ function openEpoVerifyWindow(targetUrl) {
       finish(true, { ...(info || {}), parsedData: extracted });
     };
 
-    win.loadURL(targetUrl, { userAgent: CHROME_UA }).catch((e) => {
+    win.loadURL(targetUrl).catch((e) => {
       console.warn("[EPO Verify] loadURL failed:", e.message);
     });
 
-    // 严格的 Cloudflare 等待页标题识别（中英文多语言变体）。
-    // 注意：__cf_bm cookie 在 Cloudflare "请稍候" 等待期间就会下发，
-    // 所以不能仅凭 hasCfBm 判断验证通过——必须等页面真正加载出 EPO 应用内容。
-    const CF_WAITING_KEYWORDS = [
-      "just a moment", "attention required", "checking your browser",
-      "performing security", "verifying you are human", "请稍候", "请稍等",
-      "正在检查", "正在验证", "需要关注", "执行安全", "稍候片刻",
-    ];
-    const isCloudflareWaiting = (title) => {
-      const lower = String(title || "").toLowerCase();
-      return CF_WAITING_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()));
-    };
+    // 页面判定与 epoFetchViaBrowser 共用同一套策略：
+    // Cloudflare 等待页继续等；检索中/空档案/限流页不能当成“验证通过”，
+    // 也不能让窗口停在这些页面上等到 90 秒超时。
+    let verifyWaitSince = 0;
+    let verifyRetrieveDetectedAt = 0;
+    let verifyReloadCount = 0;
 
-    // 真正的"验证通过"判定：页面 title 不是 Cloudflare 等待页，
-    // AND 页面 DOM 中包含 EPO Register 应用特征元素（biblio 表格、proceedings 等）。
     const checkEpoAppLoaded = async () => {
       try {
         return await win.webContents.executeJavaScript(`
@@ -4503,16 +4732,27 @@ function openEpoVerifyWindow(targetUrl) {
             try {
               var title = document.title || "";
               var html = document.documentElement ? document.documentElement.outerHTML : "";
-              // EPO Register 应用页特征选择器
-              var hasEpoAppEl = !!document.querySelector(
-                "table.publicationData, table.biblio, #resultData, #applicationForm, " +
-                "div.bibliographic-data, #biblio, div.docListTable, table.docListTable, " +
-                "#proc_table, #documents, div.proceedings"
+              // 只认“文档列表”特征：普通书目页 / 落地页不算验证通过，
+              // 否则会把零文档的页面误当成成功结果回传给主应用。
+              var hasDocListTable = !!document.querySelector(
+                "table.docListTable, table.docList, table.application.docList, " +
+                "#documents, div.docListTable, div.documentList, #documentsTable, " +
+                "#resultData, table.dataTable, #DataList, " +
+                "table[class*='docList'], div[class*='docList']"
               );
-              var hasEpoAppText = /Bibliographic data|Proceedings|About this application|Documents|European Patent Register/i.test(html);
+              var hasDocLinks = !!document.querySelector(
+                'a[href*="documentView"], a[href*="ipApplication"], ' +
+                'a[href*="NewSideWindow"], a[href*="openNewWindow"], ' +
+                'a[href*="application?documentId"], ' +
+                'a[onclick*="openNewWindow"], a[onclick*="NewSideWindow"]'
+              );
+              var visibleText = document.body ? document.body.innerText : "";
               return {
                 title: title,
-                hasEpoAppContent: !!(hasEpoAppEl || hasEpoAppText),
+                hasEpoAppContent: !!(hasDocListTable || hasDocLinks),
+                isRetrieving: /dossier documents are being retrieved|documents are being retrieved|being retrieved|正在检索/i.test(visibleText),
+                isEmpty: /no files were found|no files containing|no dossier|application not found|no documents (?:found|are available)|application number is not valid/i.test(visibleText),
+                isRateLimited: /rate\\s*limit|too many requests|access denied/i.test(visibleText),
                 url: window.location.href,
                 htmlLen: html.length,
               };
@@ -4522,41 +4762,87 @@ function openEpoVerifyWindow(targetUrl) {
       } catch (_) { return { title: "", hasEpoAppContent: false, url: "" }; }
     };
 
-    // 自动检测：每 2 秒检查一次页面是否已加载出 EPO 应用内容
+    const evaluateEpoVerifyPage = async () => {
+      const info = await checkEpoAppLoaded();
+      if (!info) return { state: "waiting", info: null };
+      const state = epoPolicy.classifyEpoPage({
+        title: info.title,
+        flags: {
+          isCloudflare: epoPolicy.isEpoCloudflareTitle(info.title),
+          isRetrieving: info.isRetrieving,
+          isEmpty: info.isEmpty,
+          isRateLimited: info.isRateLimited,
+          hasDocList: info.hasEpoAppContent,
+        },
+      });
+      return { state, info };
+    };
+
+    const handleEpoVerifyPage = async () => {
+      if (settled || win.isDestroyed()) return;
+      const { state, info } = await evaluateEpoVerifyPage();
+      if (settled) return;
+      if (state === "cloudflare") {
+        verifyWaitSince = 0;
+        return;
+      }
+      if (state === "ready") {
+        const cookies = await verifySession.cookies.get({ domain: "epo.org" });
+        console.log(`[EPO Verify] verification passed (title="${info.title}", cookies=${cookies.length}, url=${info.url})`);
+        finishWithExtract({ title: info.title });
+        return;
+      }
+      if (state === "retrieving") {
+        verifyWaitSince = 0;
+        if (!verifyRetrieveDetectedAt) verifyRetrieveDetectedAt = Date.now();
+        const elapsed = Date.now() - verifyRetrieveDetectedAt;
+        if (elapsed >= 40000) {
+          finish(false, { reason: "retrieving_timeout", url: info && info.url });
+          return;
+        }
+        if (elapsed >= verifyReloadCount * 8000 && verifyReloadCount < 5) {
+          verifyReloadCount++;
+          console.log(`[EPO Verify] reloading while dossier is being retrieved (${verifyReloadCount}/5)`);
+          try { win.webContents.reload(); } catch (_) {}
+        }
+        return;
+      }
+      if (state === "empty" || state === "rateLimited") {
+        console.log(`[EPO Verify] terminal page without EPO content: ${state}, url=${info && info.url}`);
+        finish(false, { reason: `${state}_page`, url: info && info.url });
+        return;
+      }
+      // waiting：页面已加载但没有任何 EPO 内容，45 秒仍无进展就失败
+      if (!verifyWaitSince) verifyWaitSince = Date.now();
+      if (Date.now() - verifyWaitSince > 45000) {
+        finish(false, { reason: "page_not_ready_45s", url: info && info.url });
+      }
+    };
+
+    // 自动检测：每 2 秒检查一次页面阶段
     autoVerifyTimer = setInterval(async () => {
       if (settled || win.isDestroyed()) return;
       try {
         const url = win.webContents.getURL();
         if (!url.includes("register.epo.org")) return;
-        const pageState = await checkEpoAppLoaded();
-        if (!pageState) return;
-        if (isCloudflareWaiting(pageState.title)) {
-          // 还在 Cloudflare 等待页，继续等
-          return;
-        }
-        if (pageState.hasEpoAppContent) {
-          const cookies = await verifySession.cookies.get({ domain: "epo.org" });
-          console.log(`[EPO Verify] verification passed (title="${pageState.title}", cookies=${cookies.length}, url=${pageState.url})`);
-          finishWithExtract({ title: pageState.title });
-        }
+        await handleEpoVerifyPage();
       } catch (e) { /* ignore */ }
     }, 2000);
 
     // 页面每次完成加载时也检查一次（避免错过 did-finish-load 时机）
     win.webContents.on("did-finish-load", async () => {
       if (settled || win.isDestroyed()) return;
-      try {
-        const pageState = await checkEpoAppLoaded();
-        if (!pageState || isCloudflareWaiting(pageState.title)) return;
-        if (pageState.hasEpoAppContent) {
-          const cookies = await verifySession.cookies.get({ domain: "epo.org" });
-          console.log(`[EPO Verify] verification passed on did-finish-load (title="${pageState.title}", cookies=${cookies.length})`);
-          finishWithExtract({ title: pageState.title });
-        }
-      } catch (_) {}
+      verifyWaitSince = 0;
+      try { await handleEpoVerifyPage(); } catch (_) {}
     });
 
-    // 90 秒超时，超时后告知用户验证未完成（不会误判为 ok:true）
+    win.webContents.on("did-fail-load", (_e, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame || errorCode === -3 || settled) return;
+      console.warn(`[EPO Verify] did-fail-load: code=${errorCode}, desc=${errorDescription}, url=${validatedURL}`);
+      finish(false, { reason: `load_failed_${errorCode}`, error: errorDescription, url: validatedURL });
+    });
+
+    // 90 秒总超时，避免 Cloudflare 等待无限拖下去（不会误判为 ok:true）
     setTimeout(() => {
       if (!settled) {
         console.log("[EPO Verify] 90s timeout reached, no EPO app content detected");

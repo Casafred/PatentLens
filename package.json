@@ -35,6 +35,7 @@
     },
     "files": [
       "electron-main.js",
+      "epo-fallback-policy.js",
       "pdf-session-cache.js",
       "patent-parser.js",
       "preload.js",
