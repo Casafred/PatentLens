@@ -187,7 +187,10 @@
 
         // 获取下拉菜单触发按钮（显示当前section名称的按钮）
         function getDropdownBtn() {
-          var btn = document.querySelector('[class*="tabs__list--dropdown-panel"] > button');
+          // 新版 Espacenet 分区导航是 data-qa="tabsSelect_resultDescription" 的下拉按钮
+          var btn = document.querySelector('[data-qa="tabsSelect_resultDescription"]');
+          if (btn) return btn;
+          btn = document.querySelector('[class*="tabs__list--dropdown-panel"] > button');
           if (btn) return btn;
           var known = ['Bibliographic data','Claims','Description','Drawings','Citations','Original document','Legal events','Patent family'];
           var allBtns = document.querySelectorAll('button');
@@ -1017,6 +1020,39 @@
             }
           } catch(e) { console.warn('[extract] family error:', e); }
 
+          // ── 法律事件 (Legal events) ── 尽量补齐 GP 详情页对应板块
+          try {
+            var legalOk = await switchSection('Legal events');
+            if (legalOk) {
+              await sleep(1500);
+              var legalPanel = getActivePanel();
+              var legalEvents = [];
+              if (legalPanel) {
+                var legalRows = legalPanel.querySelectorAll('tbody tr, table tr');
+                for (var lr = 0; lr < legalRows.length; lr++) {
+                  var lcells = legalRows[lr].querySelectorAll('td');
+                  if (lcells.length < 2) continue;
+                  var ltexts = [];
+                  for (var lc = 0; lc < lcells.length; lc++) {
+                    ltexts.push((lcells[lc].textContent || '').trim());
+                  }
+                  if (!ltexts.join('').trim()) continue;
+                  var ldateMatch = ltexts[0].match(/\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/);
+                  var ldate = ldateMatch ? ldateMatch[0] : ltexts[0];
+                  var lcode = ltexts.length >= 3 ? ltexts[1] : '';
+                  var ldesc = ltexts.length >= 3 ? ltexts.slice(2).join(' ') : ltexts.slice(1).join(' ');
+                  if (ldesc || lcode) legalEvents.push({ date: ldate, code: lcode, description: ldesc });
+                }
+              }
+              if (legalEvents.length > 0) {
+                result.legal_events = legalEvents;
+                result.events_timeline = legalEvents.map(function(le) {
+                  return { date: le.date, title: le.description || le.code };
+                });
+              }
+            }
+          } catch(e) { console.warn('[extract] legal events error:', e); }
+
           // 回到 Bibliographic data
           try { await switchSection('Bibliographic data'); } catch(e) {}
 
@@ -1086,6 +1122,15 @@
       var jplatpatSearchNum = params.get("jpn") || "";
       var cnipaSearchNum = params.get("cnpn") || "";
       var _extractingEspacenet = false;
+      // GP 降级到 Espacenet 时后端会追加 autoextract=1（它在嵌套的 url 参数里）。
+      // 同时默认对所有 Espacenet 页面启用自动提取，覆盖 GP 超时等没有带参数的降级路径；
+      // 如确实只想浏览，可显式传 autoextract=0。
+      var autoExtractEspacenet = /[?&]autoextract=1(?:&|$)/i.test(targetUrl || currentUrl || "")
+        || (/worldwide\.espacenet\.com/i.test(targetUrl || "") && !/[?&]autoextract=0(?:&|$)/i.test(targetUrl || ""));
+      var _autoExtractStarted = false;
+      var _autoExtractDone = false;
+      var _autoExtractStartAt = 0;
+      var _autoExtractClickCount = 0;
 
       var isJplatpat = currentUrl.indexOf("j-platpat.inpit.go.jp") !== -1;
       if (isJplatpat) {
@@ -2168,6 +2213,69 @@
           return;
         }
       }
+      // ── GP 降级后的 Espacenet 自动提取 ──
+      // 搜索页自动点开第一条结果，详情页自动调用现有提取脚本并回传主应用。
+      function tryAutoExtractEspacenet() {
+        if (!autoExtractEspacenet || _autoExtractStarted || !isElectron || !wv) return;
+        var url = "";
+        try { url = wv.getURL(); } catch (e) { return; }
+        if (!/espacenet\.com/i.test(url)) return;
+        if (!_autoExtractStartAt) _autoExtractStartAt = Date.now();
+        if (Date.now() - _autoExtractStartAt > 120000) {
+          smartLabel.textContent = "Espacenet: 自动提取超时";
+          smartInfo.textContent = "请点击「提取专利全文到主应用」重试，或关闭窗口手动浏览";
+          return;
+        }
+        // 已进入详情页：执行现有提取脚本
+        if (url.indexOf("/patent/search/family/") !== -1 || url.indexOf("/publication/") !== -1) {
+          _autoExtractStarted = true;
+          smartLabel.textContent = "Espacenet: 正在自动提取";
+          smartInfo.textContent = "自动抓取标题、摘要、权利要求、说明书等，请稍候（约10-20秒）";
+          setTimeout(function() {
+            if (!_autoExtractDone) {
+              _autoExtractDone = true;
+              handleSmartAction({ _espacenet: true });
+            }
+          }, 1500);
+          return;
+        }
+        // 搜索结果页：自动点击匹配的结果卡片（新版 Espacenet 卡片没有 <a>）
+        if (_autoExtractClickCount >= 3) {
+          setTimeout(tryAutoExtractEspacenet, 2000);
+          return;
+        }
+        _autoExtractClickCount++;
+        var q = "";
+        try {
+          var m = url.match(/[?&]q=([^&]+)/i);
+          if (m) q = decodeURIComponent(m[1]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+        } catch (e) {}
+        smartLabel.textContent = "Espacenet: 正在定位专利详情";
+        smartInfo.textContent = "自动点击搜索结果，加载详情页后会自动提取全文";
+        wv.executeJavaScript(`(function(){
+          try {
+            var cards = document.querySelectorAll('article[data-qa="result_resultList"]');
+            if (!cards.length) cards = document.querySelectorAll('article[class*="search-result"], li[class*="search-result"], a[class*="result__link"]');
+            if (!cards.length) return false;
+            var q = ${JSON.stringify(q)};
+            var target = null;
+            if (cards.length === 1) target = cards[0];
+            else if (q) {
+              for (var i = 0; i < cards.length; i++) {
+                var t = (cards[i].textContent || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+                if (t.indexOf(q) !== -1) { target = cards[i]; break; }
+              }
+            }
+            if (!target) target = cards[0];
+            target.click();
+            return true;
+          } catch (e) { return false; }
+        })()`).then(function(clicked) {
+          setTimeout(tryAutoExtractEspacenet, clicked ? 1800 : 1500);
+        }).catch(function() {
+          setTimeout(tryAutoExtractEspacenet, 1500);
+        });
+      }
       var periodicProbeTimer = null;
       function stopPeriodicProbe() {
         if (periodicProbeTimer) { clearInterval(periodicProbeTimer); periodicProbeTimer = null; }
@@ -2433,6 +2541,8 @@
           runDomProbe({ autoFillNum: fillNum, delay: 800 });
           setTimeout(function() { runDomProbe({ delay: 0 }); }, 2500);
           setTimeout(function() { runDomProbe({ delay: 0 }); }, 5000);
+          setTimeout(tryAutoExtractEspacenet, 1200);
+          setTimeout(tryAutoExtractEspacenet, 3500);
           if (curIsJp) {
             startPeriodicProbe(10000);
           } else {
@@ -2445,6 +2555,7 @@
           if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null; }
           var ld = container.querySelector(".po-loading");
           if (ld) ld.remove();
+          setTimeout(tryAutoExtractEspacenet, 1200);
         });
 
         wv.addEventListener("did-navigate", function (e) {
@@ -2470,6 +2581,7 @@
               translateBtn.textContent = "翻译中 ▾";
               translateBtn.title = "Google整页翻译中";
             }
+            setTimeout(tryAutoExtractEspacenet, 1000);
           }
         });
 
@@ -2493,6 +2605,7 @@
               setTimeout(function() { runDomProbe({ delay: 800 }); }, 400);
               setTimeout(function() { runDomProbe({ delay: 0 }); }, 2500);
             }
+            if (!hashOnlyChange) setTimeout(tryAutoExtractEspacenet, 1000);
           }
         });
 
