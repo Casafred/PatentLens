@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveShareHtml: (html, filename) => ipcRenderer.invoke("save-share-html", html, filename),
   ocrSharePdf: (bytes) => ipcRenderer.invoke("ocr-share-pdf", bytes),
   onForceClose: (callback) => ipcRenderer.on("force-close-app", () => callback()),
+  onDataSourceIssue: (callback) => ipcRenderer.on("data-source-issue", (_event, payload) => callback(payload)),
   forceRefocus: () => ipcRenderer.send("force-refocus"),
   resetFocusKick: () => ipcRenderer.send("reset-focus-kick"),
   sendToMain: (data) => ipcRenderer.send("popout-to-main", data),
