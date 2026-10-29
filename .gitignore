@@ -31,3 +31,6 @@ desktop.ini
 
 # Tauri 生成
 src-tauri/gen/
+
+# Trae HTML 分享生成的 zip 产物（无需入库）
+.trae-html-share-packages/
