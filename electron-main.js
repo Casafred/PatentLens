@@ -1424,6 +1424,42 @@ async function epoFetchPdfWithSession(office, docNumber, pdfUrl, docId) {
   return { error: lastError };
 }
 
+// 用浏览器窗口“当前最新”的 session cookies 在主进程侧直接取 PDF。
+// 关键：当浏览器已经跳转到 documentView / documentStream 等查看器/PDF 地址时，
+// 页面上下文可能运行在 Chromium 内置 PDF 查看器中，页面内 fetch 会被跨源策略拦截；
+// 这里改为从 session 读取最新 cookies，用 Node/curl 侧请求同一个地址（含重定向后的地址），
+// 从而静默拿到 PDF 字节，无需依赖页面内 fetch。
+async function epoFetchPdfWithLiveSession(office, docNumber, currentUrl, docId) {
+  let cookieStr = "";
+  try {
+    const cookies = await session.defaultSession.cookies.get({ domain: "epo.org" });
+    cookieStr = cookies.map(c => c.name + "=" + c.value).join("; ");
+  } catch (_) {
+    return { error: "failed to read session cookies" };
+  }
+  if (!cookieStr) return { error: "no session cookies" };
+  // 浏览器可能刚刷新过 __cf_bm，同步回缓存供后续点击直接使用
+  if (office && docNumber) setCachedEpoCookies(office, docNumber, cookieStr);
+
+  // 浏览器实际落地的地址最可信，直接请求它（内部会自动跟进 iframe 到 PDF 本体）
+  const candidates = [currentUrl].filter(Boolean);
+  if (candidates.length === 0 && docId) {
+    candidates.push(...epoBuildPdfUrlCandidates(office, docNumber, docId, null));
+  }
+
+  let lastError = "no PDF URL";
+  for (const candidateUrl of candidates) {
+    const result = await epoFetchPdfUrlWithCookies(cookieStr, candidateUrl);
+    if (result.body) {
+      if (docId) setCachedEpoDocViewerUrl(office, docNumber, docId, candidateUrl);
+      return result;
+    }
+    if (result.cloudflare) return result;
+    lastError = result.error || lastError;
+  }
+  return { error: lastError };
+}
+
 async function epoFetchPdfUrlWithCookies(cookies, pdfUrl) {
   let currentUrl = pdfUrl;
   for (let hop = 0; hop < 3; hop++) {
@@ -1553,6 +1589,7 @@ async function epoFetchViaBrowser(targetUrl, options) {
   const viaEspacenet = !!options.viaEspacenet;
   const office = options.office || null; // 用于 dossier URL 缓存
   const docNumber = options.docNumber || null; // 用于 dossier URL 缓存
+  const docId = options.docId || null; // 目标文档 ID（用于查看器链接候选）
   const timeout = options.timeout || 120000;
 
   // 检查 dossier URL 缓存：如果有缓存，直接加载 register.epo.org，跳过 espacenet
@@ -1610,10 +1647,15 @@ async function epoFetchViaBrowser(targetUrl, options) {
     let manualMode = false; // 是否已切换到手动模式（用户手动点击 PDF 链接）
     let manualDoneClicked = false; // 用户是否点击了"全部选完"按钮
     let willDownloadHandler = null; // will-download 事件处理器（手动模式下载用）
+    let _pdfDebugger = null; // 后台直连模式下用于从网络层直接捕获 PDF 响应体
     // 自动导航获取 PDF 状态：'idle' → 'navigating' → 'extracting' → 'done'
     let autoPdfPhase = 'idle';
     let autoPdfTargetUrl = null;
     let autoPdfNavTimeout = null;
+    // 记录主框架最后一次真实 HTTP(S) 地址。Chromium 内置 PDF 查看器渲染时，
+    // webContents.getURL() 可能停留在扩展地址，用它兜底作为主进程侧取 PDF 的目标。
+    let lastNavigatedDocUrl = null;
+    const isPdfViewerUrl = (u) => /documentView|ipApplication|application\?showPdfPage|application\?documentId|documentStream|pdfstream|showPdf|\.pdf(\?|$)/i.test(String(u || ""));
     const CF_WAITING_KEYWORDS = [
       "just a moment", "attention required", "checking your browser",
       "performing security", "verifying you are human", "请稍候", "请稍等",
@@ -1654,6 +1696,12 @@ async function epoFetchViaBrowser(targetUrl, options) {
         try { session.defaultSession.removeListener("will-download", willDownloadHandler); } catch (_) {}
         willDownloadHandler = null;
       }
+      // 清理网络层 PDF 捕获调试器
+      if (_pdfDebugger) {
+        try { _pdfDebugger.removeAllListeners("message"); } catch (_) {}
+        try { if (_pdfDebugger.isAttached()) _pdfDebugger.detach(); } catch (_) {}
+        _pdfDebugger = null;
+      }
       try { win.close(); } catch (_) {}
       if (!dataReturned) resolve(result);
     };
@@ -1668,6 +1716,32 @@ async function epoFetchViaBrowser(targetUrl, options) {
     const isCfWaiting = (title) => {
       const lower = String(title || "").toLowerCase();
       return CF_WAITING_KEYWORDS.some(kw => lower.includes(kw.toLowerCase()));
+    };
+
+    // 统一处理已捕获到的 PDF（来自网络层或主进程侧请求）：
+    // 校验 PDF 头、缓存 cookies/PDF，然后立即结束并返回主应用。
+    const finishWithPdf = async (pdfBuf, sourceUrl) => {
+      if (settled || !pdfBuf || pdfBuf.length <= 4) return false;
+      if (!(pdfBuf[0] === 0x25 && pdfBuf[1] === 0x50 && pdfBuf[2] === 0x44 && pdfBuf[3] === 0x46)) return false;
+      console.log("[EPO Browser] PDF captured silently, size=" + pdfBuf.length + ", source=" + (sourceUrl || ""));
+      if (office && docNumber) {
+        try {
+          const _cookies = await session.defaultSession.cookies.get({ domain: "epo.org" });
+          const _cookieStr = _cookies.map(c => c.name + "=" + c.value).join("; ");
+          if (_cookieStr) setCachedEpoCookies(office, docNumber, _cookieStr);
+        } catch (_) {}
+      }
+      let capturedDocId = docId;
+      if (!capturedDocId && sourceUrl) {
+        const m = String(sourceUrl).match(/documentId=([^&]+)/);
+        if (m) capturedDocId = decodeURIComponent(m[1]);
+      }
+      if (office && docNumber && capturedDocId) {
+        setCachedEpoPdf(office, docNumber, capturedDocId, pdfBuf);
+      }
+      autoPdfPhase = 'done';
+      finish({ body: pdfBuf });
+      return true;
     };
 
     const extractHtml = async () => {
@@ -1938,6 +2012,29 @@ async function epoFetchViaBrowser(targetUrl, options) {
 
       popup.webContents.on("did-finish-load", async () => {
         if (popupDone) return;
+        // 先用主进程侧最新 session cookies 直接取 PDF。
+        // 若查看器直接渲染 PDF，弹窗页面上下文是 Chromium 内置 PDF 查看器，
+        // 页面内 fetch 可能受跨源限制拿不到字节，这里可静默拿到并立即关闭弹窗。
+        let livePdf = null;
+        try {
+          const liveUrl = popup.webContents.getURL() || fullUrl;
+          const live = await epoFetchPdfWithLiveSession(office, docNumber, liveUrl, clickedDocId);
+          if (live && live.body) livePdf = live.body;
+        } catch (_) {}
+        if (popupDone) return;
+        if (livePdf) {
+          if (office && docNumber && clickedDocId) setCachedEpoPdf(office, docNumber, clickedDocId, livePdf);
+          manualPdfCount++;
+          manualPdfList.push(docName);
+          const listSummary = manualPdfList.slice(-5).join("、") + (manualPdfList.length > 5 ? ` 等${manualPdfList.length}个` : "");
+          console.log("[EPO Browser] popup PDF captured via live session, name=" + docName + ", size=" + livePdf.length + ", count=" + manualPdfCount);
+          updateHint(`PatentLens: ✓ 已获取 ${manualPdfCount} 个文档: ${listSummary}。继续点击其他文档，或点击右上角按钮发送到主应用`);
+          updateButton(`✓ 发送到主应用并返回 (${manualPdfCount})`, "#22c55e");
+          popupDone = true;
+          clearTimeout(popupTimeout);
+          try { popup.close(); } catch (_) {}
+          return;
+        }
         // 等待页面渲染（PDF embed 可能需要加载时间）
         await new Promise(r => setTimeout(r, 1500));
 
@@ -2137,12 +2234,30 @@ async function epoFetchViaBrowser(targetUrl, options) {
         // 同时处理：窗口直接到达 documentView 页面（autoPdfPhase 仍为 idle）的情况
         if (wantPdf && !manualMode && autoPdfPhase !== 'done') {
           const currentUrl = win.webContents.getURL();
-          if (currentUrl.includes("documentView") || currentUrl.includes("ipApplication")
-            || currentUrl.includes("application?showPdfPage") || currentUrl.includes("application?documentId")) {
+          if (isPdfViewerUrl(currentUrl) || isPdfViewerUrl(lastNavigatedDocUrl)) {
             autoPdfPhase = 'extracting';
             if (autoPdfNavTimeout) { clearTimeout(autoPdfNavTimeout); autoPdfNavTimeout = null; }
-            console.log("[EPO Browser] auto-navigated to PDF viewer page, extracting PDF automatically, url:", currentUrl);
+            console.log("[EPO Browser] auto-navigated to PDF viewer page, extracting PDF automatically, url:", currentUrl, "lastNavigation:", lastNavigatedDocUrl);
             updateHint("PatentLens: 文档查看器已打开，正在提取 PDF...");
+            // webContents.getURL() 可能已被 Chromium PDF 查看器替换，优先使用真实跳转地址
+            const liveUrl = isPdfViewerUrl(lastNavigatedDocUrl) ? lastNavigatedDocUrl : currentUrl;
+            // 优先走主进程侧：用浏览器刚刷新的 session cookies 直接请求当前地址。
+            // 浏览器若已进入 Chromium 内置 PDF 查看器，页面内 fetch 会受跨源限制而失败，
+            // 这正是"窗口已经显示了 PDF，但主应用拿不到 PDF"的原因。
+            const _viewerDocIdMatch = (currentUrl + " " + (lastNavigatedDocUrl || "")).match(/documentId=([^&]+)/);
+            const _viewerDocId = docId
+              || (_viewerDocIdMatch ? decodeURIComponent(_viewerDocIdMatch[1]) : null);
+            const liveResult = await epoFetchPdfWithLiveSession(office, docNumber, liveUrl, _viewerDocId);
+            if (liveResult && liveResult.body) {
+              autoPdfPhase = 'done';
+              console.log("[EPO Browser] PDF extracted silently via live session, size=" + liveResult.body.length);
+              if (office && docNumber && _viewerDocId) {
+                setCachedEpoPdf(office, docNumber, _viewerDocId, liveResult.body);
+              }
+              finish({ body: liveResult.body });
+              return;
+            }
+            console.log("[EPO Browser] live session PDF fetch failed:", liveResult && liveResult.error);
             // 等待页面渲染完成（PDF embed 可能需要一点时间加载）
             await new Promise(r => setTimeout(r, 2000));
             try {
@@ -2274,14 +2389,16 @@ async function epoFetchViaBrowser(targetUrl, options) {
                 try { win.loadURL(nextUrl).catch(() => {}); } catch (_) {}
                 return;
               }
+              if (directViewerMode) {
+                // 静默模式：不在用户面前弹出已经显示 PDF 的窗口，直接返回错误
+                console.log("[EPO Browser] silent mode: all automatic PDF extraction attempts failed");
+                finish({ error: "无法自动获取该文档 PDF" });
+                return;
+              }
               console.log("[EPO Browser] auto-extraction from documentView failed, falling back to manual mode");
               autoPdfPhase = 'idle';
               manualMode = true;
               pdfRetryCount = 99;
-              // 后台直连失败时把窗口显示出来，让用户仍能手动兜底
-              if (directViewerMode && !win.isVisible()) {
-                try { win.show(); } catch (_) {}
-              }
               updateHint("PatentLens: 自动提取失败。请手动点击文档 PDF 链接，或点击右上角按钮返回");
               updateButton("✓ 开始手动选取文档", "#f59e0b");
             } catch (e) {
@@ -2295,12 +2412,14 @@ async function epoFetchViaBrowser(targetUrl, options) {
                 try { win.loadURL(nextUrl).catch(() => {}); } catch (_) {}
                 return;
               }
+              if (directViewerMode) {
+                console.log("[EPO Browser] silent mode: auto PDF extraction error, closing silently");
+                finish({ error: "自动提取 PDF 出错: " + e.message });
+                return;
+              }
               autoPdfPhase = 'idle';
               manualMode = true;
               pdfRetryCount = 99;
-              if (directViewerMode && !win.isVisible()) {
-                try { win.show(); } catch (_) {}
-              }
               updateHint("PatentLens: 自动提取出错。请手动点击文档 PDF 链接");
               updateButton("✓ 开始手动选取文档", "#f59e0b");
             }
@@ -2634,7 +2753,11 @@ async function epoFetchViaBrowser(targetUrl, options) {
       }
     });
     win.webContents.on("did-navigate", (_e, url) => {
+      if (/^https?:\/\//i.test(url || "")) lastNavigatedDocUrl = url;
       console.log("[EPO Browser] did-navigate:", url);
+    });
+    win.webContents.on("did-redirect-navigation", (_e, url) => {
+      if (/^https?:\/\//i.test(url || "")) lastNavigatedDocUrl = url;
     });
 
     const checkInterval = setInterval(() => {
@@ -2665,9 +2788,51 @@ async function epoFetchViaBrowser(targetUrl, options) {
       }
     });
 
-    console.log("[EPO Browser] loading URL (visible window, default UA, default session):", effectiveUrl);
-    win.loadURL(effectiveUrl).catch(e => {
-      console.warn("[EPO Browser] loadURL failed:", e.message);
+    // 后台直连模式：附加 Network 调试器，直接从网络响应体捕获 PDF。
+    // Chromium 内置 PDF 查看器接管页面上下文后，页面内 fetch 可能拿不到字节，
+    // 但网络层响应体始终可读，这是最可靠的静默提取方式。
+    let networkReady = Promise.resolve();
+    if (directViewerMode) {
+      try {
+        _pdfDebugger = win.webContents.debugger;
+        _pdfDebugger.attach("1.3");
+        // 等 Network.enable 生效后再开始加载，避免漏掉首个 PDF 响应
+        networkReady = _pdfDebugger.sendCommand("Network.enable").catch(() => {});
+        const pdfRequestIds = new Set();
+        _pdfDebugger.on("message", (_event, method, params) => {
+          if (settled) return;
+          if (method === "Network.responseReceived") {
+            const resp = params && params.response;
+            const mime = String((resp && resp.mimeType) || "").toLowerCase();
+            const url = String((resp && resp.url) || "");
+            if (mime.includes("pdf") || /\.pdf(\?|$)/i.test(url)
+              || /documentStream|pdfstream|showPdf/i.test(url)) {
+              pdfRequestIds.add(params.requestId);
+            }
+          } else if (method === "Network.loadingFinished" && params && pdfRequestIds.has(params.requestId)) {
+            pdfRequestIds.delete(params.requestId);
+            _pdfDebugger.sendCommand("Network.getResponseBody", { requestId: params.requestId })
+              .then((bodyResult) => {
+                if (!bodyResult || !bodyResult.body) return false;
+                const buf = Buffer.from(bodyResult.body, bodyResult.base64Encoded ? "base64" : "utf8");
+                return finishWithPdf(buf, lastNavigatedDocUrl || win.webContents.getURL());
+              })
+              .catch((err) => console.warn("[EPO Browser] PDF response capture failed:", err.message));
+          }
+        });
+        console.log("[EPO Browser] network PDF capture enabled");
+      } catch (e) {
+        console.warn("[EPO Browser] network PDF capture unavailable:", e.message);
+        _pdfDebugger = null;
+      }
+    }
+
+    networkReady.finally(() => {
+      if (settled || win.isDestroyed()) return;
+      console.log("[EPO Browser] loading URL (visible window, default UA, default session):", effectiveUrl);
+      win.loadURL(effectiveUrl).catch(e => {
+        console.warn("[EPO Browser] loadURL failed:", e.message);
+      });
     });
   });
 }
@@ -3007,6 +3172,7 @@ async function proxyGdApi(urlPath, res) {
             viaEspacenet: _urlInfo2.viaEspacenet,
             office,
             docNumber,
+            docId,
           });
         }
       } else {
