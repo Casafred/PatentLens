@@ -836,6 +836,93 @@ function _classifyEpoDescStage(key) {
   return "审查中";
 }
 
+// 去掉大小写、多余空白和末尾标点，便于用源站原文与本地译名中的英文原名比对
+function _normalizeTitleText(text) {
+  return String(text || "").toLowerCase().replace(/[\s\u00a0]+/g, " ").replace(/[.,;:]+$/, "").trim();
+}
+
+// 取本地译名末尾括号内的英文原名（如「授权通知 (Notice of Allowance)」→「notice of allowance」）
+function _nameEnglishPart(name) {
+  var m = String(name || "").match(/\(([^)]+)\)\s*$/);
+  return m ? _normalizeTitleText(m[1]) : "";
+}
+
+var _TITLE_STOP_WORDS = {
+  the: 1, of: 1, by: 1, and: 1, or: 1, for: 1, to: 1, in: 1, on: 1,
+  with: 1, etc: 1, including: 1, under: 1, from: 1
+};
+
+function _titleWords(text) {
+  return String(text || "").split(/[^a-z0-9\u4e00-\u9fa5]+/).filter(function (w) {
+    return w.length >= 3 && !_TITLE_STOP_WORDS[w];
+  });
+}
+
+// 两段标题的实词重合度（较短一方的词被较长一方覆盖的比例）
+function _titleWordCoverage(a, b) {
+  var wa = _titleWords(a);
+  var wb = _titleWords(b);
+  if (!wa.length || !wb.length) return 1;
+  var shortWords = wa.length <= wb.length ? wa : wb;
+  var longWords = wa.length <= wb.length ? wb : wa;
+  var seen = {};
+  longWords.forEach(function (w) { seen[w] = 1; });
+  var hit = 0;
+  shortWords.forEach(function (w) { if (seen[w]) hit++; });
+  return hit / shortWords.length;
+}
+
+// 译名英文部分与源站原文是否差别过大（仅一处包含另一处、或大量实词重合时视为同一文档的细微差异）
+function _isMajorTitleMismatch(enPart, descNorm) {
+  if (!enPart || !descNorm || enPart === descNorm) return false;
+  if (descNorm.indexOf(enPart) !== -1 || enPart.indexOf(descNorm) !== -1) return false;
+  return _titleWordCoverage(enPart, descNorm) < 0.4;
+}
+
+// 原文描述像一份文档标题（而不是文档 ID 之类的占位值）
+function _looksLikeDocumentTitle(text) {
+  var s = String(text || "").trim();
+  if (s.length < 10 || !/\s/.test(s)) return false;
+  return /[A-Za-z\u4e00-\u9fa5]/.test(s);
+}
+
+// 用源站原文反查已知文档：优先 office codeMap 的英文原名，其次 descMap，最后 EPO 描述映射
+function _findStatusByExactDesc(officeMap, code, desc) {
+  var descNorm = _normalizeTitleText(desc);
+  if (!descNorm) return null;
+  if (officeMap && officeMap.codeMap) {
+    for (var c in officeMap.codeMap) {
+      var info = officeMap.codeMap[c];
+      if (_nameEnglishPart(info.name) === descNorm) {
+        return { name: info.name, type: info.type, stage: info.stage };
+      }
+    }
+  }
+  if (officeMap && officeMap.descMap) {
+    for (var k in officeMap.descMap) {
+      if (_nameEnglishPart(officeMap.descMap[k]) === descNorm) {
+        var descType = classifyDocCode(code, desc);
+        return {
+          name: officeMap.descMap[k],
+          type: descType === "misc" ? "notification" : descType,
+          stage: "审查中"
+        };
+      }
+    }
+  }
+  for (var i = 0; i < _epoDescMapSortedKeys.length; i++) {
+    var ekey = _epoDescMapSortedKeys[i];
+    if (_nameEnglishPart(EPO_DESC_MAP[ekey]) === descNorm) {
+      return {
+        name: EPO_DESC_MAP[ekey],
+        type: _classifyEpoDescType(ekey),
+        stage: _classifyEpoDescStage(ekey)
+      };
+    }
+  }
+  return null;
+}
+
 function getStatusInfo(office, code, desc) {
   const officeMap = PATENT_STATUS[office];
   const upperCode = (code || "").toUpperCase();
@@ -891,16 +978,29 @@ function getStatusInfo(office, code, desc) {
     }
   }
 
-  // 5) 二次校验：从 name 提取末尾括号内英文部分，与原文 desc 精确比对。
-  //    若英文部分与 desc 完全一致 → exact=true（即使走的是 descMap/EPO_DESC_MAP）；
-  //    若英文部分是 desc 的子串或 desc 更长 → exact=false，提示用户参考原文。
+  // 5) 二次校验：从 name 提取末尾括号内英文部分，与原文 desc 比对。
+  //    - 完全一致 → exact=true（即使走的是 descMap/EPO_DESC_MAP）；
+  //    - 原文能精确反查到另一个已知文档 → 采用该更准确的名称（代码可能不可靠，描述更可信）；
+  //    - 差别过大且无法反查 → 直接呈现原文，不再强行套用近似译名；
+  //    - 仅有细微差别 → exact=false，由界面标注 * 并提示参考原文。
   //    纯中文 name（无英文括号）无法比对，保持按匹配路径判定的 exact 值。
   if (desc && result.name) {
-    var enMatch = String(result.name).match(/\(([^)]+)\)\s*$/);
-    if (enMatch) {
-      var enPart = enMatch[1].trim().toLowerCase();
-      var descNorm = String(desc).trim().toLowerCase();
-      result.exact = (enPart === descNorm);
+    var enPart = _nameEnglishPart(result.name);
+    if (enPart) {
+      var descNorm = _normalizeTitleText(desc);
+      if (enPart === descNorm) {
+        result.exact = true;
+      } else {
+        var byDesc = _findStatusByExactDesc(officeMap, code, desc);
+        if (byDesc && byDesc.name !== result.name) {
+          result = { name: byDesc.name, type: byDesc.type, stage: byDesc.stage, exact: true };
+        } else if (_isMajorTitleMismatch(enPart, descNorm) && _looksLikeDocumentTitle(desc)) {
+          result.name = desc;
+          result.exact = true;
+        } else {
+          result.exact = false;
+        }
+      }
     }
   }
 
