@@ -39,6 +39,7 @@
       "patent-parser.js",
       "preload.js",
       "cnipa-preload.js",
+      "gd-preload.js",
       "fonts/**",
       {
         "from": "src",
