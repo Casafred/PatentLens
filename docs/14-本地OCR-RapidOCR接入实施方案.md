@@ -108,6 +108,42 @@
 - 不在第一期引入 RapidDoc（体积、CPU、项目成熟度风险）。
 - 不修改 Tauri。
 
+### 2.3 为什么第一期不直接上 RapidOCR + RapidLayout
+
+先说明：**不是“不推荐”，而是“不作为第一期默认”**。RapidLayout 是有效的增强项，适合放在第二期做成可选模式。第一期不直接上的原因：
+
+1. **RapidLayout 只解决“版面框”，不解决“文档结构”**
+   它输出区域类别和坐标（title/text/table/figure 等），你仍然要：
+   - 按区域裁剪；
+   - 对每个文本区域跑 RapidOCR；
+   - 把行结果重新装回区域；
+   - 处理表格区域（RapidLayout 不会给表格结构，需要 RapidTable）；
+   - 把区域类别映射到现有 `label` 语义。
+   这部分胶水代码和失败模式，比“行排序 + 段落合并”更多。
+
+2. **体积和推理成本明显增加**
+   - `rapid_layout` 包本身约 6.6MB；
+   - 默认 `PP-DocLayoutV3` 模型实测约 **130.5MB**（V2 约 **214MB**）；
+   - 每页多一次版面模型推理，CPU 上会明显增加耗时；
+   - 还要处理模型离线分发、版本锁定和许可证。
+
+3. **它仍然不是 PaddleOCR-VL**
+   版面框 + 行文本 ≠ 结构化 Markdown。表格、公式、图表、跨栏阅读顺序仍需要额外模型。也就是说：
+   - 比纯 RapidOCR 复杂不少；
+   - 但能力又明显不如 RapidDoc/PaddleOCR-VL；
+   - 对“以单栏审查意见为主”的场景，性价比不高。
+
+4. **现有文档类型决定收益有限**
+   专利审查意见、答复、权利要求大多是单栏纯文本。实测/经验上，XY-cut + 行合并能覆盖绝大多数阅读顺序需求；RapidLayout 的收益主要集中在：
+   - 双栏/多栏论文或报刊式文档；
+   - 带附图、表格、表单的页面；
+   - 复杂页眉页脚/侧栏。
+
+5. **许可证与模型选择更复杂**
+   RapidLayout 汇集了 PP-DocLayout、YOLOv8、DocLayout-YOLO 等多个模型族，许可证不统一。若接入，必须固定使用 Apache-2.0 的 PP-DocLayout 系列，避免 DocLayout-YOLO 等模型的许可证风险。
+
+**建议**：第一期先用真实文档跑 A 方案；如果双栏/表格页的错序率超过可接受阈值，再增加 `rapidocr_layout` 作为第二期可选模式，并用同一批文档做 A/B 对比后再决定是否默认开启。
+
 ---
 
 ## 3. 总体架构
@@ -889,3 +925,58 @@ const sidecar = path.join(process.resourcesPath, "ocr-sidecar", exe);
 
 - `src/scripts/web-app.js`（净新增行必须为 0）
 - `src-tauri/**`
+
+### 13.4 体积实测与安装包增量（Windows x64）
+
+测量日期：2026-10-29。测量对象为 Windows `win_amd64` / CPython 3.12 wheel，解压后体积。
+
+| 组件 | 版本 | 解压后 |
+|---|---|---:|
+| Electron 运行时（v35.7.5） | zip 116MB | **285MB** |
+| 现有应用代码 + 字体 | `src` 16MB + `fonts` 8MB | 约 24MB |
+| rapidocr（含 PP-OCRv6 small 三模型） | 3.10.0 | **32MB**（模型 31.8MB） |
+| onnxruntime CPU | 1.31.1 | **43MB** |
+| PyMuPDF | 1.26.7 | **45MB** |
+| opencv-python-headless | 4.12 / 5.0 | **105–113MB** |
+| numpy | 2.5.4 | **44MB** |
+| 其他依赖（Pillow/Shapely/networkx 等） | — | 约 30MB |
+| **CPU 本地 OCR 合计** | — | **约 310MB** |
+
+优化后估算：
+
+- 排除 OpenCV 的 `opencv_videoio_ffmpeg*.dll`（约 28MB，OCR 不需要视频 I/O）→ 约 **282MB**。
+- 加上 PyInstaller 的 Python 运行时（约 20MB）→ sidecar **约 300MB**。
+- 若改用 `pypdfium2` 替代 PyMuPDF，可再省约 30–40MB，但文字层行/字符坐标需要自行实现，第一期不建议。
+
+对安装包的影响（估算，NSIS LZMA 压缩）：
+
+| 形态 | 安装后磁盘 | 安装包增量 |
+|---|---:|---:|
+| 现有 Electron 应用 | 约 300–320MB | 基线（安装包约 120–140MB） |
+| + 本地 OCR（CPU，small） | 约 **600–620MB** | **约 +100–130MB**（总安装包约 220–270MB） |
+| + RapidLayout（PP-DocLayoutV3 130.5MB） | 约 **730–750MB** | 再 +40–60MB |
+| + RapidDoc（版面/表格/公式模型） | 数百 MB 起 | 不建议默认内置 |
+| + onnxruntime-gpu + CUDA/cuDNN | 显著增大 | **不建议**（见 13.5） |
+
+补充：`onnxruntime-gpu` 解压后约 **229MB**（CPU 版 43MB，仅 CUDA provider DLL 就 186MB），且还需要 CUDA 12.8+ / cuDNN 9 运行时；若随包分发，会再增加数百 MB。
+
+### 13.5 NVIDIA T400 4GB 是否够用
+
+T400 规格（NVIDIA/PNY 数据）：
+
+- 384 CUDA cores
+- 4GB GDDR6
+- 峰值 FP32 约 **1.09 TFLOPS**
+- 显存带宽约 80GB/s
+- 功耗 30W
+
+结论分两层：
+
+1. **显存够用**：RapidOCR 的 PP-OCRv6 模型只有几十 MB 级，ONNX Runtime CUDA EP 默认 `gpu_mem` 配置也只预留约 500MB；4GB 对 OCR 和 RapidDoc 的版面/表格模型都不会爆显存。
+2. **但性能不是强项**：T400 是入门级 Turing 卡，CUDA 核心少、带宽低。OCR 模型很小，GPU 的 kernel launch、Host/Device 拷贝和动态 shape 开销很容易吃掉收益。RapidOCR 官方文档明确建议优先使用 **ONNX Runtime CPU**，并说明 **GPU 版不推荐用于 RapidOCR**（检测模型动态输入形状会降低性能）。
+
+因此：
+
+- **第一期按 CPU 方案做**，T400 不参与；4GB 完全不是瓶颈，CPU 的 AVX2/核心数更关键。
+- 如果后续确实要试 GPU：使用 `onnxruntime-gpu`，要求 CUDA 12.8+ 与 cuDNN 9，且要做 A/B 基准；预期只有在**批量多页**时可能有 1.2–2 倍提升，单行/单页甚至可能更慢。
+- 不建议为了 T400 引入 TensorRT/PyTorch/Triton 等额外后端；部署复杂度和体积增长远超收益。
