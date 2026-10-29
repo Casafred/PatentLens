@@ -20,7 +20,7 @@
  * @contact Please contact the original author for licensing inquiries.
  * @version 260728
  */
-const { app, BrowserWindow, shell, ipcMain, dialog, session, clipboard, Menu, MenuItem } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, dialog, session, clipboard, Menu, MenuItem, safeStorage } = require("electron");
 
 // 全局命令行配置：模拟真实Chrome浏览器环境，用于绕过WAF检测
 const CHROME_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
@@ -192,6 +192,145 @@ function _gdParseTokenStorage(raw) {
   }
 }
 
+// ── GD 登录凭据（仅保存在本机，使用 Electron safeStorage 加密）──────────
+// Okta 登录页本身不会记住密码，这里在登录窗口内自动填充，并在登录成功后
+// 把用户名/密码加密写入 userData，重启后仍可用。
+const GD_CREDENTIALS_FILE_NAME = "gd-login.json";
+let _gdPendingCredentials = null;
+
+function _gdCredentialsFile() {
+  return path.join(app.getPath("userData"), GD_CREDENTIALS_FILE_NAME);
+}
+
+function _gdReadCredentialsFile() {
+  try {
+    const file = _gdCredentialsFile();
+    if (!fs.existsSync(file)) return null;
+    const data = JSON.parse(fs.readFileSync(file, "utf-8"));
+    return data && typeof data === "object" ? data : null;
+  } catch (e) {
+    console.warn("[GD Auth] read credentials file failed:", e.message);
+    return null;
+  }
+}
+
+function _gdWriteCredentialsFile(data) {
+  try {
+    const file = _gdCredentialsFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data), { mode: 0o600 });
+    return true;
+  } catch (e) {
+    console.warn("[GD Auth] write credentials file failed:", e.message);
+    return false;
+  }
+}
+
+function _gdDecryptCredential(value) {
+  try {
+    if (!value || typeof value !== "string") return "";
+    if (!safeStorage.isEncryptionAvailable()) return "";
+    return safeStorage.decryptString(Buffer.from(value, "base64"));
+  } catch (_) {
+    return "";
+  }
+}
+
+function _gdGetRememberPreference() {
+  const data = _gdReadCredentialsFile();
+  return !(data && data.remember === false);
+}
+
+function loadGdCredentials() {
+  const data = _gdReadCredentialsFile();
+  if (!data || data.remember === false) return null;
+  const username = _gdDecryptCredential(data.username);
+  const password = _gdDecryptCredential(data.password);
+  if (!password) return null;
+  return { username, password };
+}
+
+function saveGdCredentials(username, password) {
+  const user = String(username || "").trim();
+  const pass = String(password || "");
+  if (!user || !pass) return false;
+  try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      console.warn("[GD Auth] safeStorage unavailable; skip saving credentials");
+      return false;
+    }
+    const encUser = safeStorage.encryptString(user).toString("base64");
+    const encPass = safeStorage.encryptString(pass).toString("base64");
+    return _gdWriteCredentialsFile({
+      v: 1,
+      remember: true,
+      username: encUser,
+      password: encPass,
+      updatedAt: Date.now(),
+    });
+  } catch (e) {
+    console.warn("[GD Auth] encrypt credentials failed:", e.message);
+    return false;
+  }
+}
+
+function clearGdCredentials(options) {
+  _gdPendingCredentials = null;
+  const keepOptOut = !!(options && options.keepOptOut);
+  try {
+    const file = _gdCredentialsFile();
+    if (keepOptOut) {
+      _gdWriteCredentialsFile({ v: 1, remember: false });
+    } else if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+    }
+  } catch (e) {
+    console.warn("[GD Auth] clear credentials failed:", e.message);
+  }
+}
+
+function setGdRememberPreference(remember) {
+  if (!remember) {
+    clearGdCredentials({ keepOptOut: true });
+    return false;
+  }
+  const data = _gdReadCredentialsFile();
+  if (data && data.username) return true;
+  _gdWriteCredentialsFile({ v: 1, remember: true });
+  return true;
+}
+
+// 登录页提交时只记录“候选凭据”，等真正拿到 accessToken 后再落盘，
+// 避免把错误密码保存下来。
+function _gdSetPendingCredentials(payload) {
+  if (!payload || typeof payload !== "object") return;
+  if (payload.remember === false) {
+    clearGdCredentials({ keepOptOut: true });
+    return;
+  }
+  const username = typeof payload.username === "string" ? payload.username.trim() : "";
+  const password = typeof payload.password === "string" ? payload.password : "";
+  const prev = _gdPendingCredentials || {};
+  if (!password) {
+    // Okta identifier-first 流程：先记住用户名，密码在下一步再补。
+    if (username) _gdPendingCredentials = { username, password: "" };
+    return;
+  }
+  _gdPendingCredentials = {
+    username: username || prev.username || "",
+    password,
+  };
+}
+
+function _gdCommitPendingCredentials() {
+  const pending = _gdPendingCredentials;
+  if (!pending || !pending.username || !pending.password) return;
+  if (saveGdCredentials(pending.username, pending.password)) {
+    _gdPendingCredentials = null;
+    console.log("[GD Auth] credentials saved for future logins");
+  }
+}
+
 async function _gdReadTokenFromWindow(win) {
   if (!win || win.isDestroyed()) return null;
   try {
@@ -199,7 +338,9 @@ async function _gdReadTokenFromWindow(win) {
       `(function(){try{return localStorage.getItem("okta-token-storage");}catch(e){return null;}})()`,
       true
     );
-    return _gdParseTokenStorage(raw);
+    const parsed = _gdParseTokenStorage(raw);
+    if (parsed) _gdCommitPendingCredentials();
+    return parsed;
   } catch (_) {
     return null;
   }
@@ -218,6 +359,7 @@ function _ensureGdAuthWindow() {
     title: "USPTO Global Dossier 登录（关闭窗口可跳过，改用 EPO 降级）",
     webPreferences: {
       partition: GD_AUTH_PARTITION,
+      preload: path.join(__dirname, "gd-preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -5206,6 +5348,31 @@ app.whenReady().then(async () => {
     if (typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://"))) {
       shell.openExternal(url);
     }
+  });
+
+  // IPC: GD 登录窗口（gd-preload.js）读取/保存加密登录凭据
+  ipcMain.handle("gd-credentials-get", () => loadGdCredentials());
+  ipcMain.handle("gd-credentials-state", () => {
+    const available = safeStorage.isEncryptionAvailable();
+    const creds = loadGdCredentials();
+    return {
+      remember: _gdGetRememberPreference(),
+      hasSaved: !!(creds && creds.password),
+      encryptionAvailable: available,
+    };
+  });
+  ipcMain.handle("gd-credentials-clear", () => {
+    clearGdCredentials({ keepOptOut: true });
+    return { remember: false, hasSaved: false };
+  });
+  ipcMain.handle("gd-remember-set", (_event, remember) => {
+    const enabled = !!remember;
+    setGdRememberPreference(enabled);
+    const creds = loadGdCredentials();
+    return { remember: enabled, hasSaved: !!(creds && creds.password) };
+  });
+  ipcMain.on("gd-credentials-candidate", (_event, payload) => {
+    _gdSetPendingCredentials(payload);
   });
 
   // IPC: 渲染进程请求强制重新聚焦 —— 修复 renderer frame-level focus desync
