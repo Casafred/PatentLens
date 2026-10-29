@@ -1401,10 +1401,30 @@ async function epoFetchPdf(office, docNumber, docId) {
 // doclist 成功后从 BrowserWindow session 提取的 cookies 包含 CF clearance，
 // curl 带上这些 cookies 即可通过 Cloudflare，无需再次弹窗。
 // documentView 返回的可能是内嵌查看器 HTML，这里会继续跟进 iframe 直到拿到 PDF。
-async function epoFetchPdfWithSession(office, docNumber, pdfUrl) {
+async function epoFetchPdfWithSession(office, docNumber, pdfUrl, docId) {
   const cookies = getCachedEpoCookies(office, docNumber);
   if (!cookies) return { error: "no cached session cookies" };
 
+  // 不同文档的实际查看器端点可能不同（documentView / ipApplication / application），
+  // 逐个候选项尝试；成功的那一个会被缓存，后续点击同文档直接命中。
+  const candidates = docId
+    ? epoBuildPdfUrlCandidates(office, docNumber, docId, pdfUrl)
+    : [pdfUrl].filter(Boolean);
+  let lastError = "no PDF URL";
+  for (const candidateUrl of candidates) {
+    const result = await epoFetchPdfUrlWithCookies(cookies, candidateUrl);
+    if (result.body) {
+      if (docId) setCachedEpoDocViewerUrl(office, docNumber, docId, candidateUrl);
+      return result;
+    }
+    // Cloudflare 拦截时换链接没有意义，直接返回让调用方走浏览器窗口
+    if (result.cloudflare) return result;
+    lastError = result.error || lastError;
+  }
+  return { error: lastError };
+}
+
+async function epoFetchPdfUrlWithCookies(cookies, pdfUrl) {
   let currentUrl = pdfUrl;
   for (let hop = 0; hop < 3; hop++) {
     const args = [
@@ -1480,6 +1500,29 @@ function setCachedEpoCookies(office, docNumber, cookies) {
   _epoSessionCookies.set(_dossierCacheKey(office, docNumber), cookies);
 }
 
+// 文档查看器 URL 缓存：office+docNumber+docId → 首次抓取文档列表时从页面解析出的真实查看器链接。
+// 部分文档的链接端点并不是 documentView（例如 ipApplication / application?documentId），
+// 预先记录真实链接后，点击文档时无需重新弹窗猜测 URL。
+const _epoDocViewerUrlCache = new Map();
+function _epoDocViewerKey(office, docNumber, docId) {
+  return office.toUpperCase() + "/" + docNumber + "/" + docId;
+}
+function getCachedEpoDocViewerUrl(office, docNumber, docId) {
+  if (!office || !docNumber || !docId) return null;
+  return _epoDocViewerUrlCache.get(_epoDocViewerKey(office, docNumber, docId)) || null;
+}
+function setCachedEpoDocViewerUrl(office, docNumber, docId, url) {
+  if (!office || !docNumber || !docId || !url) return;
+  _epoDocViewerUrlCache.set(_epoDocViewerKey(office, docNumber, docId), url);
+}
+function getCachedEpoDocViewerUrlByDocId(docId) {
+  if (!docId) return null;
+  for (const [key, url] of _epoDocViewerUrlCache) {
+    if (key.endsWith("/" + docId)) return url;
+  }
+  return null;
+}
+
 // PDF buffer 缓存：office+docNumber+documentId → PDF Buffer
 // 用户在弹窗中手动点击PDF后缓存，后续 doc-content 和 extract-text 请求直接复用，不再弹窗
 const _epoPdfBufferCache = new Map();
@@ -1503,6 +1546,10 @@ async function epoFetchViaBrowser(targetUrl, options) {
   options = options || {};
   const wantPdf = !!options.wantPdf;
   const pdfUrl = options.pdfUrl || null; // PDF 模式下，先加载 doclist 页面，再 fetch 这个 PDF URL
+  // 可直接尝试的文档查看器候选链接（documentView / ipApplication / application）
+  const pdfUrlCandidates = Array.isArray(options.pdfUrlCandidates)
+    ? options.pdfUrlCandidates.filter(Boolean)
+    : (pdfUrl ? [pdfUrl] : []);
   const viaEspacenet = !!options.viaEspacenet;
   const office = options.office || null; // 用于 dossier URL 缓存
   const docNumber = options.docNumber || null; // 用于 dossier URL 缓存
@@ -1520,12 +1567,24 @@ async function epoFetchViaBrowser(targetUrl, options) {
     }
   }
 
+  // 后台直连查看器模式：首次抓取文档列表时已经建立过 session 并缓存了 cookies。
+  // 点击文档查看时直接用真实查看器链接在隐藏窗口中取 PDF，
+  // 不再重新走 espacenet → GD 文档列表页（避免停在列表页并显示自动获取失败）。
+  const directViewerMode = !!(wantPdf && pdfUrlCandidates.length && office && docNumber && getCachedEpoCookies(office, docNumber));
+  let autoPdfCandidateIndex = 0;
+  if (directViewerMode) {
+    console.log("[EPO Browser] direct viewer mode, loading viewer URL in background:", pdfUrlCandidates[0]);
+    effectiveUrl = pdfUrlCandidates[0];
+    effectiveViaEspacenet = false;
+  }
+
   return new Promise((resolve) => {
     // 用默认 session（不设 partition），复用 mainWindow 的 cookie —— 与 espacenet 弹窗一致
     // 不调用 setUserAgent、不注入 onBeforeSendHeaders —— 与 espacenet 弹窗一致
-    // show: true（可见窗口）—— 与 espacenet 弹窗一致，CF 人工挑战时用户能看见并完成
+    // 普通模式 show: true（可见窗口），CF 人工挑战时用户能看见并完成；
+    // 后台直连查看器模式先隐藏，遇到 CF 挑战或自动提取失败时再显示。
     const win = new BrowserWindow({
-      show: true,
+      show: !directViewerMode,
       width: 1100,
       height: 800,
       title: wantPdf
@@ -1537,6 +1596,8 @@ async function epoFetchViaBrowser(targetUrl, options) {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
+        // 隐藏窗口仍需要执行 JS 抓取 PDF；关闭后台节流避免定时器/渲染被挂起
+        backgroundThrottling: !directViewerMode,
       },
     });
 
@@ -1633,6 +1694,14 @@ async function epoFetchViaBrowser(targetUrl, options) {
                 var numberMatch = qs.match(/number=([^&'"\\s<)]+)/);
                 var docIdMatch = qs.match(/documentId=([^&'"\\s<)]+)/);
                 if (!docIdMatch) return;
+                // 记录该文档在列表页上的真实查看器链接（可能是 documentView / ipApplication / application）。
+                // 后端点击文档时直接复用这个链接，不再重新拼接 URL 导致部分文档获取失败。
+                var rawLink = (href && href !== '#' ? href : '') + ' ' + onclick;
+                var endpointMatch = rawLink.match(/(documentView|ipApplication|application)\\?([^"'\\s)]+)/);
+                var viewUrl = '';
+                if (endpointMatch) {
+                  viewUrl = 'https://register.epo.org/' + endpointMatch[1] + '?' + endpointMatch[2].replace(/&amp;/g, '&');
+                }
                 // 从父行提取日期和页数（EP Register 第一列是勾选框，日期在第二列；
                 // Global Dossier 没有勾选框，日期在第一列）
                 var row = link.closest('tr');
@@ -1653,7 +1722,8 @@ async function epoFetchViaBrowser(targetUrl, options) {
                   desc: text,
                   pages: pages,
                   number: numberMatch ? numberMatch[1] : '',
-                  docId: docIdMatch[1]
+                  docId: docIdMatch[1],
+                  viewUrl: viewUrl
                 });
               });
 
@@ -2050,6 +2120,10 @@ async function epoFetchViaBrowser(targetUrl, options) {
       try {
         const title = win.webContents.getTitle();
         if (isCfWaiting(title)) {
+          // 后台直连模式遇到 Cloudflare 人工挑战时必须显示窗口，用户才能完成验证
+          if (directViewerMode && !win.isVisible()) {
+            try { win.show(); } catch (_) {}
+          }
           cfWaitCount++;
           console.log(`[EPO Browser] Cloudflare waiting (title="${title}", count=${cfWaitCount})`);
           updateHint(`PatentLens: Cloudflare 验证中... (${cfWaitCount}/60) 若需手动完成验证请在下方操作，完成后点击右侧按钮`);
@@ -2063,7 +2137,8 @@ async function epoFetchViaBrowser(targetUrl, options) {
         // 同时处理：窗口直接到达 documentView 页面（autoPdfPhase 仍为 idle）的情况
         if (wantPdf && !manualMode && autoPdfPhase !== 'done') {
           const currentUrl = win.webContents.getURL();
-          if (currentUrl.includes("documentView") || currentUrl.includes("ipApplication") || currentUrl.includes("application?showPdfPage")) {
+          if (currentUrl.includes("documentView") || currentUrl.includes("ipApplication")
+            || currentUrl.includes("application?showPdfPage") || currentUrl.includes("application?documentId")) {
             autoPdfPhase = 'extracting';
             if (autoPdfNavTimeout) { clearTimeout(autoPdfNavTimeout); autoPdfNavTimeout = null; }
             console.log("[EPO Browser] auto-navigated to PDF viewer page, extracting PDF automatically, url:", currentUrl);
@@ -2188,17 +2263,44 @@ async function epoFetchViaBrowser(targetUrl, options) {
                   return;
                 }
               }
+              // 当前查看器链接提取失败：后台直连模式下换下一个候选链接再试，
+              // 避免同一篇文档因端点不同而直接退回弹窗手动模式。
+              if (directViewerMode && autoPdfCandidateIndex + 1 < pdfUrlCandidates.length) {
+                autoPdfCandidateIndex++;
+                const nextUrl = pdfUrlCandidates[autoPdfCandidateIndex];
+                console.log("[EPO Browser] auto extraction failed, trying next viewer candidate:", nextUrl);
+                autoPdfPhase = 'navigating';
+                updateHint("PatentLens: 正在尝试其他文档链接获取 PDF...");
+                try { win.loadURL(nextUrl).catch(() => {}); } catch (_) {}
+                return;
+              }
               console.log("[EPO Browser] auto-extraction from documentView failed, falling back to manual mode");
               autoPdfPhase = 'idle';
               manualMode = true;
               pdfRetryCount = 99;
+              // 后台直连失败时把窗口显示出来，让用户仍能手动兜底
+              if (directViewerMode && !win.isVisible()) {
+                try { win.show(); } catch (_) {}
+              }
               updateHint("PatentLens: 自动提取失败。请手动点击文档 PDF 链接，或点击右上角按钮返回");
               updateButton("✓ 开始手动选取文档", "#f59e0b");
             } catch (e) {
               console.warn("[EPO Browser] auto PDF extraction error:", e.message);
+              if (directViewerMode && autoPdfCandidateIndex + 1 < pdfUrlCandidates.length) {
+                autoPdfCandidateIndex++;
+                const nextUrl = pdfUrlCandidates[autoPdfCandidateIndex];
+                console.log("[EPO Browser] auto PDF extraction error, trying next viewer candidate:", nextUrl);
+                autoPdfPhase = 'navigating';
+                updateHint("PatentLens: 正在尝试其他文档链接获取 PDF...");
+                try { win.loadURL(nextUrl).catch(() => {}); } catch (_) {}
+                return;
+              }
               autoPdfPhase = 'idle';
               manualMode = true;
               pdfRetryCount = 99;
+              if (directViewerMode && !win.isVisible()) {
+                try { win.show(); } catch (_) {}
+              }
               updateHint("PatentLens: 自动提取出错。请手动点击文档 PDF 链接");
               updateButton("✓ 开始手动选取文档", "#f59e0b");
             }
@@ -2594,6 +2696,32 @@ function epoBuildPdfUrl(office, docNumber, docId) {
   return `${EPO_REGISTER_BASE}/documentView?number=${encodeURIComponent(apn)}&documentId=${encodeURIComponent(docId)}`;
 }
 
+// PDF 查看器候选 URL：优先使用首次抓取文档列表时缓存/前端传来的真实链接，
+// 再回退到 documentView / ipApplication / application 等不同端点。
+// 不同文档在 EPO 页面上使用的端点并不完全一致，逐个尝试可避免点击时弹窗猜测 URL。
+function epoBuildPdfUrlCandidates(office, docNumber, docId, preferredUrl) {
+  const list = [];
+  const add = (u) => {
+    const v = String(u || "").trim();
+    if (v && !list.includes(v)) list.push(v);
+  };
+  add(preferredUrl);
+  add(getCachedEpoDocViewerUrl(office, docNumber, docId));
+  add(getCachedEpoDocViewerUrlByDocId(docId));
+
+  const isEp = office.toUpperCase() === "EP";
+  const apn = getCachedRealApn(office, docNumber) || (isEp
+    ? `EP${docNumber}`
+    : `${office}.${docNumber}.A`);
+  add(`${EPO_REGISTER_BASE}/documentView?number=${encodeURIComponent(apn)}&documentId=${encodeURIComponent(docId)}`);
+  if (isEp) {
+    add(`${EPO_REGISTER_BASE}/application?showPdfPage=1&documentId=${encodeURIComponent(docId)}&appnumber=${encodeURIComponent(apn)}&proc=`);
+  } else {
+    add(`${EPO_REGISTER_BASE}/ipApplication?documentId=${encodeURIComponent(docId)}&number=${encodeURIComponent(apn)}&patentScope=false`);
+  }
+  return list;
+}
+
 // 从 DOM 提取的结构化文档列表构建 EPO doclist 结果（比正则解析 HTML 更可靠）
 function epoParseDocListFromDom(domDocs, office, docNumber, kindCode) {
   const isEp = office.toUpperCase() === "EP";
@@ -2601,7 +2729,10 @@ function epoParseDocListFromDom(domDocs, office, docNumber, kindCode) {
     const realApn = d.number || (isEp ? "EP" + docNumber : `${office}.${docNumber}.${kindCode || "A"}`);
     const docId = d.docId;
     const cls = epoClassifyDoc(d.desc, "");
-    const pdfUrl = `${EPO_REGISTER_BASE}/documentView?number=${encodeURIComponent(realApn)}&documentId=${encodeURIComponent(docId)}`;
+    // 优先保留文档列表页上的真实查看器链接；只有缺失时才按端点规则拼接。
+    // 这样点击文档时直接复用列表抓取阶段的链接匹配结果，不再靠后端猜测。
+    const pdfUrl = d.viewUrl
+      || `${EPO_REGISTER_BASE}/documentView?number=${encodeURIComponent(realApn)}&documentId=${encodeURIComponent(docId)}`;
     return {
       docId, docCode: cls.docCode, docDesc: d.desc, documentDescription: d.desc,
       documentDate: epoNormalizeDate(d.date), date: epoNormalizeDate(d.date),
@@ -2845,10 +2976,13 @@ async function proxyGdApi(urlPath, res) {
             viaEspacenet: false,
           }
         : epoBuildDocListUrl(office, docNumber, "A");
-      // 优先使用前端传来的 epoPdfUrl（从 dossier 页面解析的 documentView 链接），
-      // 兜底用 epoBuildPdfUrl 构造
-      const _effectivePdfUrl = epoPdfUrlParam || epoBuildPdfUrl(office, docNumber, docId);
-      console.log(`[EPO Direct] doc-content PDF URL: ${_effectivePdfUrl}${epoPdfUrlParam ? " (from epoPdfUrl param)" : " (constructed)"}`);
+      // 优先使用前端传来的 epoPdfUrl（从 dossier 页面解析的真实查看器链接），
+      // 其次使用文档列表抓取阶段缓存的真实链接，最后才按端点规则构造
+      const _cachedViewerUrl = getCachedEpoDocViewerUrl(office, docNumber, docId)
+        || getCachedEpoDocViewerUrlByDocId(docId);
+      const _effectivePdfUrl = epoPdfUrlParam || _cachedViewerUrl || epoBuildPdfUrl(office, docNumber, docId);
+      const _pdfUrlSource = epoPdfUrlParam ? "epoPdfUrl param" : (_cachedViewerUrl ? "cached viewer url" : "constructed");
+      console.log(`[EPO Direct] doc-content PDF URL: ${_effectivePdfUrl} (${_pdfUrlSource})`);
 
       let epoResult = null;
       if (epoDirect) {
@@ -2856,7 +2990,7 @@ async function proxyGdApi(urlPath, res) {
         const cachedCookies = getCachedEpoCookies(office, docNumber);
         if (cachedCookies) {
           console.log(`[EPO Direct] trying PDF with cached session cookies for ${office}/${docNumber}`);
-          epoResult = await epoFetchPdfWithSession(office, docNumber, _effectivePdfUrl);
+          epoResult = await epoFetchPdfWithSession(office, docNumber, _effectivePdfUrl, docId);
           if (epoResult.body) {
             console.log(`[EPO Direct] PDF succeeded via cached session, size=${epoResult.body.length}`);
           } else {
@@ -2869,6 +3003,7 @@ async function proxyGdApi(urlPath, res) {
           epoResult = await epoFetchViaBrowser(_urlInfo2.url, {
             wantPdf: true,
             pdfUrl: _effectivePdfUrl,
+            pdfUrlCandidates: epoBuildPdfUrlCandidates(office, docNumber, docId, _effectivePdfUrl),
             viaEspacenet: _urlInfo2.viaEspacenet,
             office,
             docNumber,
@@ -2986,6 +3121,14 @@ async function proxyGdApi(urlPath, res) {
         epoResult = await epoFetchDocList(office, docNumber, "A");
       }
       if (epoResult.docs) {
+        // 缓存每篇文档的真实查看器链接（含 EP 公开号→申请号两种键），
+        // 用户点击文档查看时后端可直接复用该链接后台获取 PDF，无需再次弹窗。
+        const cacheNum = epoResult.docNumber || docNumber;
+        for (const d of epoResult.docs) {
+          if (!d.docId || !d.epoPdfUrl) continue;
+          setCachedEpoDocViewerUrl(office, cacheNum, d.docId, d.epoPdfUrl);
+          if (cacheNum !== docNumber) setCachedEpoDocViewerUrl(office, docNumber, d.docId, d.epoPdfUrl);
+        }
         console.log(`[EPO Fallback] EPO doclist succeeded for ${office}/${docNumber}, got ${epoResult.totalDocs} docs`);
         res.writeHead(200, { "Content-Type": "application/json", "X-Epo-Fallback": "1", ...corsHeaders });
         res.end(JSON.stringify(epoResult));
@@ -3971,6 +4114,9 @@ async function extractPdfText(req, res) {
   const engine = urlObj.searchParams.get("engine") || "auto";
   const apiKey = urlObj.searchParams.get("api_key") || "";
   const epoDirect = urlObj.searchParams.get("epoDirect") === "1";
+  // 前端传入的文档查看器链接（首次抓取文档列表时解析得到）
+  let epoPdfUrlParam = urlObj.searchParams.get("epoPdfUrl");
+  if (epoPdfUrlParam && !/^https?:\/\//i.test(epoPdfUrlParam)) epoPdfUrlParam = null;
   // PaddleOCR 外化配置：前端传入则使用，为空时 ocrWithPaddleVl 内部回退到内置默认值
   const paddleOpts = {
     url: urlObj.searchParams.get("paddleUrl") || "",
@@ -4116,8 +4262,11 @@ async function extractPdfText(req, res) {
           // EPO 直走模式：优先用缓存的 session cookies 直接 curl 请求（不弹窗）
           const cachedCookies = getCachedEpoCookies(epOffice, epDocNum);
           if (cachedCookies) {
-            const _pdfUrl = epoBuildPdfUrl(epOffice, epDocNum, epDocId);
-            const epoResult = await epoFetchPdfWithSession(epOffice, epDocNum, _pdfUrl);
+            // 优先使用前端传来/列表抓取阶段缓存的真实查看器链接
+            const _cachedViewerUrl = getCachedEpoDocViewerUrl(epOffice, epDocNum, epDocId)
+              || getCachedEpoDocViewerUrlByDocId(epDocId);
+            const _pdfUrl = epoPdfUrlParam || _cachedViewerUrl || epoBuildPdfUrl(epOffice, epDocNum, epDocId);
+            const epoResult = await epoFetchPdfWithSession(epOffice, epDocNum, _pdfUrl, epDocId);
             if (epoResult.body) {
               console.log(`[EPO Fallback] extractPdfText EPO PDF succeeded via cached session, size=${epoResult.body.length}`);
               pdfBuffer = epoResult.body;
