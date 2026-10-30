@@ -849,10 +849,10 @@
             <div id="settings-tab-ocr" class="settings-tab-content">
               <div class="form-group">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                  <input type="checkbox" id="ocr-auto-checkbox" checked>
-                  打开 PDF 时自动 OCR 提取文字
+                  <input type="checkbox" id="ocr-auto-checkbox">
+                  对文字版 PDF 也自动 OCR（一般无需开启）
                 </label>
-                <small style="color:var(--text-secondary);margin-top:4px;display:block;margin-left:24px">关闭后可在阅读器中点击"OCR 提取"按钮手动触发</small>
+                <small style="color:var(--text-secondary);margin-top:4px;display:block;margin-left:24px">默认关闭：文字版 PDF 可直接在阅读器中选择/复制文字；扫描件（无文字层）会自动 OCR。勾选后文字版 PDF 也会自动 OCR。</small>
               </div>
               <div class="form-group">
                 <label>OCR 引擎</label>
@@ -1338,6 +1338,7 @@
   <script src="scripts/app/features/history-access-tracker.js?v=260824a"></script>
   <script src="scripts/app/features/claimdiff-tree.js?v=260914a"></script>
   <script src="scripts/app/features/pdf-viewer-quality.js?v=261030a"></script>
+  <script src="scripts/app/features/ocr-auto-scan.js?v=261030a"></script>
   <script src="scripts/comparison/comparison-utils.js?v=260717d"></script>
   <script src="scripts/comparison/comparison-prompts.js?v=260717d"></script>
   <script src="scripts/comparison/comparison-core.js?v=260917a"></script>
