@@ -4,9 +4,10 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-function loadQualityHelpers() {
+function loadQualityHelpers(overrides) {
   const file = path.resolve(__dirname, '../src/scripts/app/features/pdf-viewer-quality.js');
-  const context = vm.createContext({ window: {}, Math });
+  const sandbox = Object.assign({ window: {}, Math }, overrides || {});
+  const context = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
   return context.window.__pdfViewerQuality;
 }
@@ -58,6 +59,14 @@ test('缺少 hasEOL 时按基线位置识别换行', () => {
   const items = buildTextItems(textContent, viewport);
   assert.equal(items.length, 2);
   assert.equal(items[0].eol, true);
+});
+
+test('文字选择模式默认开启，可被 localStorage 关闭', () => {
+  assert.equal(loadQualityHelpers().isTextSelectModeEnabled(), true);
+  const disabled = loadQualityHelpers({
+    window: { localStorage: { getItem: () => 'false' } },
+  });
+  assert.equal(disabled.isTextSelectModeEnabled(), false);
 });
 
 test('空文本或空内容不生成文本片段', () => {

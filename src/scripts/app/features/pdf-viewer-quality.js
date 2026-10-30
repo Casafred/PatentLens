@@ -12,6 +12,53 @@
   "use strict";
 
   const MAX_DEVICE_PIXEL_RATIO = 2;
+  const TEXT_SELECT_KEY = "patentlens_pdf_text_select_mode";
+
+  function isTextSelectModeEnabled() {
+    try {
+      return window.localStorage.getItem(TEXT_SELECT_KEY) !== "false";
+    } catch (_) {
+      return true;
+    }
+  }
+
+  // 文字选择模式：启用时文字层优先接收鼠标事件，OCR 文本框不再拦截拖动；
+  // 关闭后恢复 OCR 文本框点击、右键菜单与整页框选交互。
+  function applyTextSelectMode() {
+    if (typeof document === "undefined") return;
+    const enabled = isTextSelectModeEnabled();
+    const container = document.getElementById("reader-pdf-container");
+    if (container) container.classList.toggle("pdf-text-select-mode", enabled);
+    const btn = document.getElementById("pdf-text-select-btn");
+    if (btn) {
+      btn.classList.toggle("active", enabled);
+      btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+      btn.textContent = enabled ? "选字 ✓" : "选字";
+    }
+  }
+
+  function ensureTextSelectButton() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById("pdf-text-select-btn")) {
+      applyTextSelectMode();
+      return;
+    }
+    const anchor = document.getElementById("pdf-annot-hide-ocr");
+    const group = anchor && anchor.parentElement;
+    if (!group) return;
+    const btn = document.createElement("button");
+    btn.id = "pdf-text-select-btn";
+    btn.type = "button";
+    btn.className = "pdf-toolbar-btn pdf-toolbar-btn-text";
+    btn.title = "开启后可拖动选择并复制 PDF 文字；关闭后恢复 OCR 文本框点击/框选";
+    btn.addEventListener("click", () => {
+      const next = !isTextSelectModeEnabled();
+      try { window.localStorage.setItem(TEXT_SELECT_KEY, next ? "true" : "false"); } catch (_) {}
+      applyTextSelectMode();
+    });
+    group.insertBefore(btn, anchor);
+    applyTextSelectMode();
+  }
 
   // 兼容 pdf.js 的 Util.transform：两个 2D 仿射矩阵相乘
   function multiplyTransform(m1, m2) {
@@ -129,6 +176,7 @@
 
   function onTextLayerMouseDown(ev) {
     if (ev.button !== 0) return;
+    if (!isTextSelectModeEnabled()) return;
     if (typeof pdfViewState !== "undefined" && pdfViewState.annotTool) {
       // 标注工具激活：交给 wrapper 处理标注拖拽，同时避免触发文字选择
       ev.preventDefault();
@@ -219,12 +267,16 @@
     patchPage,
     patchPdfDocument,
     addTextLayers,
+    applyTextSelectMode,
+    ensureTextSelectButton,
+    isTextSelectModeEnabled,
   };
   if (typeof window !== "undefined") {
     window.__pdfViewerQuality = api;
   }
 
   if (typeof document === "undefined" || typeof window === "undefined") return;
+  try { ensureTextSelectButton(); } catch (_) {}
   if (typeof renderAllPdfPages !== "function") return;
 
   const originalRenderAllPdfPages = renderAllPdfPages;
@@ -236,6 +288,7 @@
     } catch (e) {
       if (typeof console !== "undefined") console.warn("[PDF文字层] 生成失败:", e && e.message);
     }
+    try { applyTextSelectMode(); } catch (_) {}
     return result;
   };
 })();

@@ -3195,6 +3195,25 @@ body {
   height: 0;
 }
 
+/* 文字选择模式：OCR 文本框位于文字层上方，会拦截鼠标拖动，
+   开启时让它们不接收鼠标事件，交给文字层完成原生选择。 */
+.reader-pdf-container.pdf-text-select-mode {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.reader-pdf-container.pdf-text-select-mode .pdf-block-overlay {
+  pointer-events: none !important;
+}
+
+/* 关闭文字选择模式时，文字层不拦截事件，恢复 OCR 文本框点击/框选 */
+.reader-pdf-container:not(.pdf-text-select-mode) .pdf-text-layer,
+.reader-pdf-container:not(.pdf-text-select-mode) .pdf-text-layer span {
+  pointer-events: none !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .pdf-page-wrapper.ocr-page-selectable {
   cursor: pointer;
   box-shadow: 0 0 0 2px var(--accent), var(--shadow);
