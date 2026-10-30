@@ -950,7 +950,6 @@ function _dossierCloseTab(key) {
         const appEl = document.getElementById("app");
         if (appEl) appEl.classList.add("home-mode");
         resultSection.classList.add("hidden");
-        if (patentInput) patentInput.value = "";
         pdfViewState.annotList = {};
         pdfViewState.annotUndoStack = {};
         pdfViewState.annotRedoStack = {};
@@ -20269,7 +20268,6 @@ function _closePdTab(pn) {
       _pdActivePatent = null;
       window._currentPatentData = null;
       patentDetailContent.innerHTML = '<p class="placeholder">请输入专利号查询</p>';
-      if (patentInput) patentInput.value = "";
       _clearFindHighlights();
       if (pdFindBar) pdFindBar.classList.add("hidden");
     }
