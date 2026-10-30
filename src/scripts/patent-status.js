@@ -78,10 +78,12 @@ var PATENT_STATUS = {
       "DRW.NONBW": { name: "非黑白线条图 (Drawings - Other than Black and White Line Drawings)", type: "patent_doc", stage: "审查中" },
       "SES.LOSS": { name: "小实体资格丧失通知 (Notification of Loss of Entitlement to Small Entity Status)", type: "notification", stage: "审查中" },
       "PA": { name: "初步修改 (Preliminary Amendment)", type: "response", stage: "审查前" },
-      "WDR": { name: "审查前正式通知答复 (Applicant Response to Pre-Exam Formalities Notice)", type: "response", stage: "审查前" },
+      "WDR": { name: "审查前形式审查通知答复 (Applicant Response to Pre-Exam Formalities Notice)", type: "response", stage: "审查前" },
+      "PEFR": { name: "审查前形式审查通知答复 (Applicant Response to Pre-Exam Formalities Notice)", type: "response", stage: "审查前" },
+      "PEFN": { name: "审查前形式审查通知 (Pre-Exam Formalities Notice)", type: "notification", stage: "审查前" },
       "DRW": { name: "黑白线条图 (Drawings - Black and White Line Drawings)", type: "patent_doc", stage: "审查中" },
       "SEQ": { name: "序列表 (Sequence Listing)", type: "patent_doc", stage: "审查中" },
-      "ABN": { name: "放弃 (Abandonment)", type: "notification", stage: "审查中" },
+      "ABN": { name: "放弃 (Abandonment)", type: "notification", stage: "完成" },
       "TRN": { name: "新申请传送 (Transmittal of New Application)", type: "misc", stage: "审查前" },
       "CFP": { name: "外国优先权认证副本 (Certified Copy of Foreign Priority Application)", type: "misc", stage: "审查前" },
       "NTC.PUB": { name: "公开通知 (Notice of Publication)", type: "notification", stage: "审查中" },
@@ -147,8 +149,16 @@ var PATENT_STATUS = {
       "english translation of the claims": "权利要求英文翻译 (English Translation of the Claims)",
       "decision to allow further processing": "准予继续审查决定 (Decision to Allow Further Processing)",
       "notice of new or revised publication date": "新修订公开日期通知 (Notice of New or Revised Publication Date)",
+      "communication regarding the transmission of the european search report": "检索报告传送通知 (Communication re Transmission of the European Search Report)",
+      "communication re transmission of search report": "检索报告传送通知 (Communication re Transmission of Search Report)",
+      "transmission of search report": "检索报告传送通知 (Communication re Transmission of Search Report)",
+      "after final consideration program decision": "最终驳回后考虑计划决定 (After Final Consideration Program Decision)",
       "amendment after final or under 37cfr 1.312": "最终驳回后修改或37CFR 1.312修改 (Amendment After Final or under 37CFR 1.312)",
       "applicant response to pre-exam formalities notice": "审查前形式审查通知答复 (Applicant Response to Pre-Exam Formalities Notice)",
+      "pre-exam formalities notice": "审查前形式审查通知 (Pre-Exam Formalities Notice)",
+      "pre exam formalities notice": "审查前形式审查通知 (Pre-Exam Formalities Notice)",
+      "notice of abandonment": "放弃通知 (Notice of Abandonment)",
+      "abandonment": "放弃 (Abandonment)",
       "appeal brief filed": "复审请求书 (Appeal Brief Filed)",
       "examiner's answer to appeal brief": "审查员复审答辩意见 (Examiner's Answer to Appeal Brief)",
       "reply brief filed": "复审答复书 (Reply Brief Filed)",
@@ -367,10 +377,13 @@ var PATENT_STATUS = {
       "supplementary european search report": "补充欧洲检索报告",
       "notification of forthcoming publication": "公开通知",
       "communication regarding the transmission of the european search report": "检索报告传送通知",
+      "communication re claims amendment/fees": "权利要求修改/费用通知",
+      "annex to intention to grant": "拟授权通知附件",
       "reminder period for payment of examination fee": "审查费缴费提醒",
       "invitation to confirm maintenance": "确认维持申请邀请",
       "bibliographic data": "书目数据",
       "filing of the translations of the claims": "提交权利要求翻译",
+      "filing of translations of the claims": "提交权利要求翻译",
       "german translation of the claims": "德文权利要求翻译",
       "french translation of claims": "法文权利要求翻译",
       "letter accompanying subsequently filed items": "后续提交文件附函",
@@ -510,20 +523,23 @@ function classifyDocCode(code, desc) {
 
   // === Patent documents (专利文件) - check first ===
   // Claims, specification, abstract, drawings, sequence listing
-  if (/\bclaims?\b/.test(text) && !/cited/.test(text)) return "patent_doc";
+  // 单独的 Claims/权利要求是专利文件；但"修改后的权利要求/答复/译文提交"属于申请人答复或请求
+  if (/\bclaims?\b/.test(text) && !/cited/.test(text)
+      && !/amend|annotat|filing of (the )?translations? of (the )?claims|response|reply/.test(text)) return "patent_doc";
   if (/claim\s*(worksheet|index|translation)/i.test(text)) return "patent_doc";
   if (/specification/.test(text) && !/notice|notification|communication|not entered|amendment not/.test(text)) return "patent_doc";
-  if (/\bdescription\b/.test(text) && !/notice|notification|communication|amended/i.test(text)) return "patent_doc";
+  if (/\bdescription\b/.test(text) && !/notice|notification|communication|amended|substitute sheet/i.test(text)) return "patent_doc";
   if (/\babstract\b/.test(text)) return "patent_doc";
   if (/drawings?\s*(-|—)\s*other than black and white/i.test(text)) return "patent_doc";
   if (/black and white line drawings?/.test(text)) return "patent_doc";
   if (/drawings?/.test(text) && /description|claims|abstract|figures/i.test(text)) return "patent_doc";
+  if (/drawings?/.test(text) && !/notice|notification|communication|deficien|defect|amendment/i.test(text)) return "patent_doc";
   if (/zeichnung/.test(descLower)) return "patent_doc";
   if (/beschreibung/.test(descLower)) return "patent_doc";
   if (/ansprüche/.test(descLower)) return "patent_doc";
   if (/zusammenfassung/.test(descLower)) return "patent_doc";
   if (/right.?claiming document/.test(text)) return "patent_doc";
-  if (/sequence listing/.test(text)) return "patent_doc";
+  if (/sequence listing/.test(text) && !/deficien|defect/i.test(text)) return "patent_doc";
   if (/english translation of the claims/.test(text)) return "patent_doc";
   if (/german translation of claims|french translation of claims/i.test(text)) return "patent_doc";
   if (/instructions/.test(descLower) && !/notice|notification|communication/i.test(text)) return "patent_doc";
@@ -531,18 +547,21 @@ function classifyDocCode(code, desc) {
   if (/说明书|权利要求|摘要|附图/.test(text)) return "patent_doc";
 
   // === Citations (审查员引用) - search reports, cited references, search strategy, bibliographic ===
-  if (/search report|supplementary.*search report|priority search results|isr cited documents/i.test(text)) return "citation";
-  if (/list of references cited|cited by (examiner|applicant)|foreign reference|non-patent literature cited/i.test(text)) return "citation";
+  if (/search report|supplementary.*search report|priority search results|isr cited documents/i.test(text)
+      && !/transmission of|communication regarding|notification about|amended (claims?|description)|response|reply/i.test(text)) return "citation";
+  if (/list of references cited|cited by (examiner|applicant)|foreign reference|other reference|non-patent literature cited/i.test(text)) return "citation";
+  if (/first search/.test(descLower)) return "citation";
   if (/search strategy|information on search strategy/i.test(text)) return "citation";
   if (/search information.*classification|search information.*databases/i.test(text)) return "citation";
-  if (/bibliographic data|bibliograph/i.test(text)) return "citation";
+  if (/bibliographic data|bibliograph/i.test(text) && !/mitteilung|notification/i.test(text)) return "citation";
   if (/recherche/.test(descLower)) return "citation";
   if (/information disclosure statement|\bids\b/i.test(text)) return "citation";
   if (/^892$|^1449$|^SRNT$|^SRFW$|^BIB$|^FOR$|^1503$|^1503SS$|^SRCHSTRAEP$|^CDOCNPL$|^ISA210|^PRSR$|^PRSR-X$|^ISR$|^IDS$|^IDS\.FEE\.ASSN$/.test(codeUpper)) return "citation";
 
   // === Office Actions (审查意见) ===
   if (/european search opinion/.test(descLower)) return "office_action";
-  if (/communication from the examining division/.test(descLower)) return "office_action";
+  if (/communication from the examining division/.test(descLower)
+      && !/reply to|response to/i.test(descLower)) return "office_action";
   if (/annex to the communication/.test(descLower)) return "office_action";
   if (/written opinion of the isa/.test(descLower)) return "office_action";
   if (/consultation by telephone|consultation.*in person/.test(descLower)) return "office_action";
@@ -550,12 +569,16 @@ function classifyDocCode(code, desc) {
   if (/notice of examination opinions|examination opinion/.test(descLower)) return "office_action";
   if (/prüfungsbescheid/.test(descLower)) return "office_action";
   if (/notice of reasons for refusal/.test(descLower)) return "office_action";
-  if (/restriction|election of species/.test(text)) return "office_action";
-  if (/final rejection/.test(text)) return "office_action";
-  if (/non.?final rejection/.test(text)) return "office_action";
+  if (/annex to intention to grant/.test(descLower)) return "office_action";
+  if (/restriction|election of species/.test(text) && !/response|reply|filed/.test(text)) return "office_action";
+  if (/final rejection/.test(text) && !/non.?final|amendment|response|reconsideration|arguments|remarks/i.test(text)) return "office_action";
+  if (/non.?final rejection/.test(text)
+      && !/amendment|response|reconsideration|arguments|remarks/i.test(text)) return "office_action";
   if (/office action/.test(text)) return "office_action";
-  if (/rejection/.test(text)) return "office_action";
-  if (/appeal|examiner's answer/.test(text)) return "office_action";
+  if (/rejection/.test(text)
+      && !/amendment|response|reconsideration|arguments|remarks/i.test(text)) return "office_action";
+  // 仅审查员答辩属于审查意见；上诉通知/复审请求书/答复书属于申请人答复
+  if (/examiner'?s answer|examiner answer/.test(text)) return "office_action";
   if (/^CTNF$|^CTFR$|^CTRS$|^NFOA$|^FOA$|^OA$|^F$|^Q$|^R$|^B$|^EX\.A$|^EXBR$/.test(codeUpper)) return "office_action";
   if (/^1703$|^2001$|^2906$|^2049A$|^2036$|^ISA237/.test(codeUpper)) return "office_action";
   if (/^200103-CN$|^A131/.test(codeUpper)) return "office_action";
@@ -566,20 +589,21 @@ function classifyDocCode(code, desc) {
   if (/decision to grant/.test(descLower)) return "allowance";
   if (/text intended for grant/.test(descLower)) return "allowance";
   if (/notice of grant|grant notification|authorization notice/.test(descLower)) return "allowance";
-  if (/notice of allowance/.test(text)) return "allowance";
+  if (/notice of allowance/.test(text) && !/amendment|response|reply|arguments|remarks/i.test(text)) return "allowance";
   if (/egrant|e-grant/.test(text)) return "allowance";
   if (/erteilungsbescheid/.test(descLower)) return "allowance";
   if (/erteilung/.test(descLower) && !/antrag/.test(descLower)) return "allowance";
   if (/decision to grant a patent/.test(descLower)) return "allowance";
   if (/issue information.*classification|issue notification/i.test(text)) return "allowance";
-  if (/^NOA$|^AIPA$|^IIFW$|^ISSUE|^EGRN$|^NTC\.EGRN$|^EGRT$|^EGRANT|^ISS\.NTF$|^2004$|^2006A$|^2035-4$|^DREX$|^EDREX/.test(codeUpper)) return "allowance";
+  if (/^NOA$|^AIPA$|^IIFW$|^ISSUE|^IFEE$|^EGRN$|^NTC\.EGRN$|^EGRT$|^EGRANT|^ISS\.NTF$|^2004$|^2006A$|^2035-4$|^DREX$|^EDREX/.test(codeUpper)) return "allowance";
   if (/^200201-CN$|^A01/.test(codeUpper)) return "allowance";
-  if (/授权|allowance/.test(text)) return "allowance";
+  if (/授权|allowance/.test(text) && !/修改|答复|response|amendment|post allowance/.test(text)) return "allowance";
 
   // === Applicant Requests (申请人其他请求) - procedural/administrative requests, NOT responses to OA ===
-  if (/filing of the translations of the claims/.test(descLower)) return "applicant_request";
+  if (/filing of (the )?translations? of (the )?claims/.test(descLower)) return "applicant_request";
   if (/request for grant of a european patent/.test(descLower)) return "applicant_request";
-  if (/request for entry into the european phase|entry into european phase/.test(descLower)) return "applicant_request";
+  if (/request for entry into the european phase|entry into european phase/.test(descLower)
+      && !/information on/i.test(descLower)) return "applicant_request";
   if (/electronic request for international application/.test(descLower)) return "applicant_request";
   if (/request for extension of time limit/.test(descLower)) return "applicant_request";
   if (/request for continued examination/.test(text)) return "applicant_request";
@@ -591,6 +615,9 @@ function classifyDocCode(code, desc) {
   if (/pre-appeal brief conference request/.test(text)) return "applicant_request";
   if (/request for corrected filing receipt/.test(text)) return "applicant_request";
   if (/request for examination/.test(descLower)) return "applicant_request";
+  if (/request for substantive examination/.test(descLower)) return "applicant_request";
+  if (/antrag.*erteilung/.test(descLower)) return "applicant_request";
+  if (/prüfungsantrag/.test(descLower)) return "applicant_request";
   if (/extension of time/.test(text) && /request|authorization/.test(text)) return "applicant_request";
   if (/refund request/.test(text)) return "applicant_request";
   if (/request under 37cfr/.test(text)) return "applicant_request";
@@ -607,33 +634,34 @@ function classifyDocCode(code, desc) {
   if (/reply to communication from the examining division/.test(descLower)) return "response";
   if (/reply to the invitation to remedy/.test(descLower)) return "response";
   if (/substitute sheet/.test(descLower)) return "response";
-  if (/request for substantive examination/.test(descLower)) return "response";
   if (/statement of opinions|opinion statement/.test(descLower)) return "response";
-  if (/correction|amendment.*replacement|replacement page/.test(descLower)) return "response";
+  if (/correction|amendment.*replacement|replacement page/.test(descLower)
+      && !/certificate of correction|post issue|supervisory/.test(descLower)) return "response";
   if (/reexamination request|request for reexamination/.test(descLower)) return "response";
   if (/invalidation request|request for invalidation/.test(descLower)) return "response";
   if (/written opinion/.test(descLower)) return "response";
   if (/written amendment/.test(descLower)) return "response";
   if (/erwidung/.test(descLower)) return "response";
   if (/beschränkung/.test(descLower)) return "response";
-  if (/antrag.*erteilung/.test(descLower)) return "response";
-  if (/prüfungsantrag/.test(descLower)) return "response";
   if (/einspruch/.test(descLower)) return "response";
   if (/beschwerde/.test(descLower)) return "response";
   if (/preliminary amendment/.test(text)) return "response";
-  if (/pre.?exam formalities/.test(text)) return "response";
+  // "Pre-Exam Formalities Notice" 本身是官方通知；只有申请人答复才是 response
+  if (/pre.?exam formalities/.test(text) && /response|reply|applicant/.test(text)) return "response";
+  if (/amended (claims?|description)/.test(text)) return "response";
   if (/election.*restriction.*filed/.test(text)) return "response";
   if (/amendment.*after.*non.?final|reconsideration.*after.*non.?final/.test(text)) return "response";
-  if (/response after final|after final consideration/.test(text)) return "response";
+  if (/response after final|after final consideration/.test(text) && !/decision/.test(text)) return "response";
   if (/amendment.*after.*notice of allowance/.test(text)) return "response";
   if (/applicant argument|applicant remark|remarks made in an amendment/.test(text)) return "response";
-  if (/notice of appeal filed/.test(text)) return "response";
+  if (/notice of appeal filed|appeal brief filed|reply brief filed/.test(text)) return "response";
   if (/^CTED$|^CTEQ$|^AMSB$|^A\.NE$|^A\.NE\.AFCP$|^A\.NA$|^REM$|^AFCP$|^BRAP$|^REBR$|^NOAP$/.test(codeUpper)) return "response";
-  if (/^IFEE$|^PA$/.test(codeUpper)) return "response";
+  if (/^PA$/.test(codeUpper)) return "response";
   if (/^ABEX$|^CLMSABEX$|^DESCABEX$|^EXRE3$|^FORAREPLY$|^CLMS-HWA$|^DESC-HWA$|^RO-DESC-26$/.test(codeUpper)) return "response";
   if (/^200104-CN$|^200105-CN$|^200106-CN$|^200107-CN$|^200108-CN$/.test(codeUpper)) return "response";
   if (/^A53$|^A523$/.test(codeUpper)) return "response";
-  if (/response|amendment|reply|remand/.test(text) && !/notification/.test(text)) return "response";
+  if (/response|amendment|reply|remand/.test(text)
+      && !/notification|certificate of correction|supervisory|post issue|not entered|invitation to indicate the basis|communication re claims amendment/.test(text)) return "response";
   if (/答复|修改|补正|意见陈述/.test(text)) return "response";
 
   // === Notifications (通知) ===
@@ -658,6 +686,7 @@ function classifyDocCode(code, desc) {
   if (/anschreiben/.test(descLower)) return "notification";
   if (/empfangsbestätigung/.test(descLower)) return "notification";
   if (/bibliographie.*mitteilung|bibliografie.*mitteilung/.test(descLower)) return "notification";
+  if (/pre.?exam formalities notice/.test(text)) return "notification";
   if (/abandonment/.test(text)) return "notification";
   if (/notice of publication/.test(text)) return "notification";
   if (/pre-brief appeal conference decision/.test(text)) return "notification";
@@ -721,6 +750,10 @@ var EPO_DESC_MAP = {
   "request for continued examination": "请求继续审查 (Request for Continued Examination)",
   "appeal brief": "复审请求书 (Appeal Brief)",
   "reply brief": "复审答复书 (Reply Brief)",
+  "annex to intention to grant": "拟授权通知附件 (Annex to Intention to Grant)",
+  "communication re claims amendment/fees": "权利要求修改/费用通知 (Communication re Claims Amendment/Fees)",
+  "amended claims": "修改后的权利要求 (Amended Claims)",
+  "amended description": "修改后的说明书 (Amended Description)",
   // ── 授权通知类 ──
   "notice of allowance": "授权通知 (Notice of Allowance)",
   "intention to grant": "授权意向 (Intention to Grant)",
@@ -753,6 +786,13 @@ var EPO_DESC_MAP = {
   "electronic filing system acknowledgment receipt": "电子提交确认回执 (Electronic Filing System Acknowledgment Receipt)",
   "filing receipt": "申请受理回执 (Filing Receipt)",
   "notice of publication": "公开通知 (Notice of Publication)",
+  "transmission of search report": "检索报告传送通知 (Communication re Transmission of Search Report)",
+  "after final consideration program decision": "最终驳回后考虑计划决定 (After Final Consideration Program Decision)",
+  "applicant response to pre-exam formalities notice": "审查前形式审查通知答复 (Applicant Response to Pre-Exam Formalities Notice)",
+  "pre-exam formalities notice": "审查前形式审查通知 (Pre-Exam Formalities Notice)",
+  "pre exam formalities notice": "审查前形式审查通知 (Pre-Exam Formalities Notice)",
+  "notice of abandonment": "放弃通知 (Notice of Abandonment)",
+  "abandonment": "放弃 (Abandonment)",
   "publication": "公开 (Publication)",
   "power of attorney": "代理委托书 (Power of Attorney)",
   "change of address": "地址变更 (Change of Address)",
@@ -773,7 +813,7 @@ var EPO_DESC_MAP = {
   "declaration": "声明 (Declaration)",
   "oath": "宣誓 (Oath)",
   // ── EPO/GD 特有 ──
-  "placeholder sheet indicating presence of supplemental content": "补充内容占位页 (Supplemental Complex Repository for Examiners - SCORE)",
+  "placeholder sheet indicating presence of supplemental content": "补充内容占位页 (Placeholder Sheet Indicating Presence of Supplemental Content)",
   "supplemental complex repository": "补充内容占位页 (Supplemental Complex Repository for Examiners - SCORE)",
   "opposition": "异议 (Opposition)",
   // ── EPO 通信/登记类 ──
@@ -793,7 +833,7 @@ function _classifyEpoDescType(key) {
   // 审查意见类
   if (["non-final rejection", "final rejection", "examiner's answer", "office action",
        "examination report", "examination communication", "search opinion",
-       "written opinion"].includes(key)) return "office_action";
+       "written opinion", "annex to intention to grant"].includes(key)) return "office_action";
   // 申请人答复类
   if (["applicant arguments/remarks made in an amendment",
        "amendment/request for reconsideration-after non-final rejection",
@@ -802,25 +842,30 @@ function _classifyEpoDescType(key) {
        "response after final rejection",
        "amendment after non-final", "amendment", "response", "reply", "observations",
        "remarks", "arguments", "request for reconsideration",
-       "appeal brief", "reply brief"].includes(key)) return "response";
+       "appeal brief", "reply brief",
+       "applicant response to pre-exam formalities notice",
+       "amended claims", "amended description"].includes(key)) return "response";
   // 申请人其他请求类
-  if (["request for continued examination", "entry into european phase", "european phase",
-       "extension of time", "authorization for extension",
-       "transfer of rights"].includes(key)) return "applicant_request";
+  if (["request for continued examination", "extension of time"].includes(key)) return "applicant_request";
   // 授权通知类
   if (["notice of allowance", "intention to grant", "grant notification",
        "issue notification", "issue information", "decision to grant", "grant of patent"].includes(key)) return "allowance";
   // 引用文献/IDS类（检索策略归入此类，与 classifyDocCode 和 EP codeMap 保持一致）
   if (["information disclosure", "foreign reference",
-       "priority documents electronically retrieved", "list of references",
-       "cited by examiner", "references cited", "european search report",
-       "search report", "search strategy", "search information"].includes(key)) return "citation";
+       "list of references", "cited by examiner", "references cited",
+       "european search report", "search report", "search strategy",
+       "search information", "bibliographic data"].includes(key)) return "citation";
   // 专利文件类
   if (["claims", "specification", "drawings-only black and white line drawings",
-       "drawings", "abstract", "bibliographic data", "sequence listing",
+       "drawings", "abstract", "publication", "sequence listing",
        "english translation of the claims"].includes(key)) return "patent_doc";
-  // 异议类
-  if (key === "opposition" || key === "client data request") return "misc";
+  // 官方通知类
+  if (["transmission of search report", "after final consideration program decision",
+       "communication re claims amendment/fees",
+       "pre-exam formalities notice", "pre exam formalities notice",
+       "notice of abandonment", "abandonment"].includes(key)) return "notification";
+  // 异议/客户数据请求：归入通知栏，保证在看板中有对应列
+  if (key === "opposition" || key === "client data request") return "notification";
   // 默认为通知类
   return "notification";
 }
@@ -829,10 +874,14 @@ function _classifyEpoDescType(key) {
 function _classifyEpoDescStage(key) {
   if (["notice of allowance", "intention to grant", "grant notification",
        "issue notification", "issue information", "decision to grant", "grant of patent",
-       "issue fee"].includes(key)) return "授权";
+       "issue fee", "annex to intention to grant"].includes(key)) return "授权";
   if (["appeal brief", "reply brief"].includes(key)) return "复审";
   if (["filing receipt", "electronic filing system acknowledgment receipt",
-       "transmittal letter", "transmittal"].includes(key)) return "审查前";
+       "transmittal letter", "transmittal",
+       "applicant response to pre-exam formalities notice",
+       "pre-exam formalities notice", "pre exam formalities notice",
+       "entry into european phase", "european phase"].includes(key)) return "审查前";
+  if (["abandonment", "notice of abandonment"].includes(key)) return "完成";
   return "审查中";
 }
 
@@ -931,7 +980,8 @@ function getStatusInfo(office, code, desc) {
   // 1) 优先用 office codeMap 精确匹配（GD 正常源返回的 docCode）
   if (officeMap && officeMap.codeMap[upperCode]) {
     const info = officeMap.codeMap[upperCode];
-    result = { name: info.name, type: info.type, stage: info.stage, exact: true };
+    // "misc（其他文件）"统一归入通知栏，避免在看板/筛选中消失
+    result = { name: info.name, type: info.type === "misc" ? "notification" : info.type, stage: info.stage, exact: true };
   }
 
   // 2) office codeMap 未命中：先用 office descMap 模糊匹配（常规 GD 兜底）
