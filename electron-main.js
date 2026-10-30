@@ -20,7 +20,7 @@
  * @contact Please contact the original author for licensing inquiries.
  * @version 260728
  */
-const { app, BrowserWindow, shell, ipcMain, dialog, session, clipboard, Menu, MenuItem, safeStorage } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, dialog, session, net, clipboard, Menu, MenuItem, safeStorage } = require("electron");
 
 // 全局命令行配置：模拟真实Chrome浏览器环境，用于绕过WAF检测
 const CHROME_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
@@ -1428,23 +1428,81 @@ async function epoFetchPdfWithSession(office, docNumber, pdfUrl, docId, options)
   return { error: lastError };
 }
 
-// 用浏览器窗口“当前最新”的 session cookies 在主进程侧直接取 PDF。
-// 关键：当浏览器已经跳转到 documentView / documentStream 等查看器/PDF 地址时，
-// 页面上下文可能运行在 Chromium 内置 PDF 查看器中，页面内 fetch 会被跨源策略拦截；
-// 这里改为从 session 读取最新 cookies，用 Node/curl 侧请求同一个地址（含重定向后的地址），
-// 从而静默拿到 PDF 字节，无需依赖页面内 fetch。
+// 用 Electron/Chromium 网络栈请求 PDF。
+// 这是与 Edge 等浏览器行为一致的关键：它复用当前 session 的 cookies、
+// Cloudflare clearance、系统代理和 TLS 指纹；而 curl 不带系统代理/指纹，
+// 在需要代理或 CF 校验的环境里很容易得到 403/超时，最终表现为 502。
+async function epoFetchPdfUrlViaNet(pdfUrl, options) {
+  options = options || {};
+  const ses = session.defaultSession;
+  // session.fetch 使用该 session 的网络栈（系统代理、cookies、CF clearance）；
+  // 老版本 Electron 没有 session.fetch 时退回 net.fetch（默认 session）。
+  const fetchFn = typeof ses.fetch === "function"
+    ? (url, init) => ses.fetch(url, init)
+    : (typeof net.fetch === "function" ? (url, init) => net.fetch(url, init) : null);
+  if (!fetchFn) return { error: "electron fetch unavailable" };
+  const maxHops = options.maxHops || 2;
+  const timeoutMs = (options.maxTimeSec || 60) * 1000;
+  let currentUrl = pdfUrl;
+  for (let hop = 0; hop < maxHops; hop++) {
+    let resp;
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      resp = await fetchFn(currentUrl, {
+        method: "GET",
+        credentials: "include",
+        redirect: "follow",
+        signal: controller.signal,
+        headers: {
+          "Accept": "application/pdf,*/*",
+          "Referer": EPO_REGISTER_BASE + "/",
+        },
+      });
+    } catch (e) {
+      return { error: "net fetch error: " + (e && e.message ? e.message : e) };
+    } finally {
+      clearTimeout(abortTimer);
+    }
+    if (!resp || !resp.ok) {
+      return { error: `HTTP ${resp ? resp.status : "unknown"}` };
+    }
+    const contentType = resp.headers.get("content-type") || "";
+    let buf;
+    try {
+      buf = Buffer.from(await resp.arrayBuffer());
+    } catch (e) {
+      return { error: "read body error: " + (e && e.message ? e.message : e) };
+    }
+    if (buf.length > 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) {
+      return { body: buf };
+    }
+    const text = buf.slice(0, Math.min(200 * 1024, buf.length)).toString("utf-8");
+    if (epoDetectCloudflare(text)) {
+      return { cloudflare: true, error: "Cloudflare verification required" };
+    }
+    // 查看器页面可能内嵌 iframe，继续跟进到 PDF 本体
+    const nextUrl = epoExtractPdfViewerUrl(text, currentUrl);
+    if (!nextUrl || nextUrl === currentUrl) {
+      return { error: `not a PDF, contentType=${contentType}, size=${buf.length}` };
+    }
+    console.log(`[EPO Net] viewer HTML, following iframe (hop ${hop + 1}): ${nextUrl}`);
+    currentUrl = nextUrl;
+  }
+  return { error: "not a PDF after following viewer iframes" };
+}
+
+// 后台直连查看器时取 PDF：优先用 Chromium 网络栈（与 Edge 一致），
+// 失败再用带 session cookies 的 curl 兜底。
 async function epoFetchPdfWithLiveSession(office, docNumber, urlOrUrls, docId, options) {
   options = options || {};
   let cookieStr = "";
   try {
     const cookies = await session.defaultSession.cookies.get({ domain: "epo.org" });
     cookieStr = cookies.map(c => c.name + "=" + c.value).join("; ");
-  } catch (_) {
-    return { error: "failed to read session cookies" };
-  }
-  if (!cookieStr) return { error: "no session cookies" };
+  } catch (_) {}
   // 浏览器可能刚刷新过 __cf_bm，同步回缓存供后续点击直接使用
-  if (office && docNumber) setCachedEpoCookies(office, docNumber, cookieStr);
+  if (office && docNumber && cookieStr) setCachedEpoCookies(office, docNumber, cookieStr);
 
   // 浏览器实际落地的地址最可信，直接请求它（内部会自动跟进 iframe 到 PDF 本体）
   const rawCandidates = Array.isArray(urlOrUrls) ? urlOrUrls : [urlOrUrls];
@@ -1461,7 +1519,10 @@ async function epoFetchPdfWithLiveSession(office, docNumber, urlOrUrls, docId, o
   let lastError = "no PDF URL";
   for (let i = 0; i < candidates.length && i < maxAttempts; i++) {
     const candidateUrl = candidates[i];
-    const result = await epoFetchPdfUrlWithCookies(cookieStr, candidateUrl, options);
+    let result = await epoFetchPdfUrlViaNet(candidateUrl, options);
+    if (!result.body && !result.cloudflare && cookieStr) {
+      result = await epoFetchPdfUrlWithCookies(cookieStr, candidateUrl, options);
+    }
     if (result.body) {
       if (docId) setCachedEpoDocViewerUrl(office, docNumber, docId, candidateUrl);
       return result;
@@ -3218,7 +3279,14 @@ async function proxyGdApi(urlPath, res) {
           });
         }
       } else {
-        epoResult = await epoFetchPdf(office, docNumber, docId);
+        // 非 EPO 直走模式下也优先用 Chromium 网络栈（与用户浏览器一致的代理/CF）
+        const _pdfCandidates = epoBuildPdfUrlCandidates(office, docNumber, docId, _effectivePdfUrl);
+        epoResult = await epoFetchPdfWithLiveSession(office, docNumber, _pdfCandidates, docId, {
+          maxTimeSec: 15, maxHops: 2, maxAttempts: 2,
+        });
+        if (!epoResult || !epoResult.body) {
+          epoResult = await epoFetchPdf(office, docNumber, docId);
+        }
       }
       epoResult = epoResult || {};
       if (epoResult.body) {
@@ -4467,46 +4535,39 @@ async function extractPdfText(req, res) {
       pdfBuffer = cachedPdf;
     } else {
       try {
-        if (epoDirect) {
-          // EPO 直走模式：优先使用当前默认 session 的最新 cookies（不弹窗）
-          const cachedCookies = getCachedEpoCookies(epOffice, epDocNum);
-          if (cachedCookies) {
-            // 优先使用前端传来/列表抓取阶段缓存的真实查看器链接
-            const _cachedViewerUrl = getCachedEpoDocViewerUrl(epOffice, epDocNum, epDocId)
-              || getCachedEpoDocViewerUrlByDocId(epDocId);
-            const _pdfUrl = epoPdfUrlParam || _cachedViewerUrl || epoBuildPdfUrl(epOffice, epDocNum, epDocId);
-            const _pdfCandidates = epoBuildPdfUrlCandidates(epOffice, epDocNum, epDocId, _pdfUrl);
-            let epoResult = await epoFetchPdfWithLiveSession(epOffice, epDocNum, _pdfCandidates, epDocId, {
-              maxTimeSec: 20, maxHops: 2, maxAttempts: 2,
-            });
-            if (!epoResult || !epoResult.body) {
+        // 优先使用 Chromium 网络栈（与用户浏览器一致的代理/CF/cookies），
+        // curl 只在网络栈失败且存在 session cookies 时兜底。
+        const _cachedViewerUrl = getCachedEpoDocViewerUrl(epOffice, epDocNum, epDocId)
+          || getCachedEpoDocViewerUrlByDocId(epDocId);
+        const _pdfUrl = epoPdfUrlParam || _cachedViewerUrl || epoBuildPdfUrl(epOffice, epDocNum, epDocId);
+        const _pdfCandidates = epoBuildPdfUrlCandidates(epOffice, epDocNum, epDocId, _pdfUrl);
+        let epoResult = await epoFetchPdfWithLiveSession(epOffice, epDocNum, _pdfCandidates, epDocId, {
+          maxTimeSec: 20, maxHops: 2, maxAttempts: 2,
+        });
+        if (!epoResult || !epoResult.body) {
+          if (epoDirect) {
+            const cachedCookies = getCachedEpoCookies(epOffice, epDocNum);
+            if (cachedCookies) {
               epoResult = await epoFetchPdfWithSession(epOffice, epDocNum, _pdfUrl, epDocId, {
                 maxTimeSec: 20, maxHops: 2, maxAttempts: 2,
               });
-            }
-            if (epoResult.body) {
-              console.log(`[EPO Fallback] extractPdfText EPO PDF succeeded via cached session, size=${epoResult.body.length}`);
-              pdfBuffer = epoResult.body;
-              setCachedEpoPdf(epOffice, epDocNum, epDocId, pdfBuffer);
             } else {
-              console.log(`[EPO Fallback] extractPdfText cached session failed (${epoResult.error}), OCR 跳过`);
+              epoResult = epoResult || { error: "no session cookies" };
             }
           } else {
-            console.log(`[EPO Fallback] extractPdfText no cached cookies, OCR 跳过（不弹窗）`);
+            epoResult = await epoFetchPdf(epOffice, epDocNum, epDocId);
           }
-        } else {
-          // 非 EPO 直走模式：保留原 curl 路径
-          const epoResult = await epoFetchPdf(epOffice, epDocNum, epDocId);
-          if (epoResult.body) {
-            console.log(`[EPO Fallback] extractPdfText EPO PDF succeeded, size=${epoResult.body.length}`);
-            pdfBuffer = epoResult.body;
-          } else if (epoResult.cloudflare) {
-            const browserUrl = `https://register.epo.org/application?number=${epOffice}${epDocNum}&lng=en&tab=doclist`;
-            notifyDataSourceIssue(alertSource, "cloudflare", "EPO Register 要求完成人机验证", browserUrl);
-            res.writeHead(200, corsHeaders);
-            res.end(JSON.stringify({ text: "", markdown: "", engine: "none", error: "EPO Register需要人机验证，请在浏览器中打开register.epo.org完成验证后重试", cloudflare: true, browserUrl }));
-            return;
-          }
+        }
+        if (epoResult.body) {
+          console.log(`[EPO Fallback] extractPdfText EPO PDF succeeded, size=${epoResult.body.length}`);
+          pdfBuffer = epoResult.body;
+          setCachedEpoPdf(epOffice, epDocNum, epDocId, pdfBuffer);
+        } else if (epoResult.cloudflare) {
+          const browserUrl = `https://register.epo.org/application?number=${epOffice}${epDocNum}&lng=en&tab=doclist`;
+          notifyDataSourceIssue(alertSource, "cloudflare", "EPO Register 要求完成人机验证", browserUrl);
+          res.writeHead(200, corsHeaders);
+          res.end(JSON.stringify({ text: "", markdown: "", engine: "none", error: "EPO Register需要人机验证，请在浏览器中打开register.epo.org完成验证后重试", cloudflare: true, browserUrl }));
+          return;
         }
       } catch (e) {
         console.error("[EPO Fallback] extractPdfText EPO error:", e);
