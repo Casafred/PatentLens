@@ -533,6 +533,7 @@ function classifyDocCode(code, desc) {
   if (/drawings?\s*(-|—)\s*other than black and white/i.test(text)) return "patent_doc";
   if (/black and white line drawings?/.test(text)) return "patent_doc";
   if (/drawings?/.test(text) && /description|claims|abstract|figures/i.test(text)) return "patent_doc";
+  if (/drawings?/.test(text) && !/notice|notification|communication|deficien|defect|amendment/i.test(text)) return "patent_doc";
   if (/zeichnung/.test(descLower)) return "patent_doc";
   if (/beschreibung/.test(descLower)) return "patent_doc";
   if (/ansprüche/.test(descLower)) return "patent_doc";
@@ -548,17 +549,19 @@ function classifyDocCode(code, desc) {
   // === Citations (审查员引用) - search reports, cited references, search strategy, bibliographic ===
   if (/search report|supplementary.*search report|priority search results|isr cited documents/i.test(text)
       && !/transmission of|communication regarding|notification about|amended (claims?|description)|response|reply/i.test(text)) return "citation";
-  if (/list of references cited|cited by (examiner|applicant)|foreign reference|non-patent literature cited/i.test(text)) return "citation";
+  if (/list of references cited|cited by (examiner|applicant)|foreign reference|other reference|non-patent literature cited/i.test(text)) return "citation";
+  if (/first search/.test(descLower)) return "citation";
   if (/search strategy|information on search strategy/i.test(text)) return "citation";
   if (/search information.*classification|search information.*databases/i.test(text)) return "citation";
-  if (/bibliographic data|bibliograph/i.test(text)) return "citation";
+  if (/bibliographic data|bibliograph/i.test(text) && !/mitteilung|notification/i.test(text)) return "citation";
   if (/recherche/.test(descLower)) return "citation";
   if (/information disclosure statement|\bids\b/i.test(text)) return "citation";
   if (/^892$|^1449$|^SRNT$|^SRFW$|^BIB$|^FOR$|^1503$|^1503SS$|^SRCHSTRAEP$|^CDOCNPL$|^ISA210|^PRSR$|^PRSR-X$|^ISR$|^IDS$|^IDS\.FEE\.ASSN$/.test(codeUpper)) return "citation";
 
   // === Office Actions (审查意见) ===
   if (/european search opinion/.test(descLower)) return "office_action";
-  if (/communication from the examining division/.test(descLower)) return "office_action";
+  if (/communication from the examining division/.test(descLower)
+      && !/reply to|response to/i.test(descLower)) return "office_action";
   if (/annex to the communication/.test(descLower)) return "office_action";
   if (/written opinion of the isa/.test(descLower)) return "office_action";
   if (/consultation by telephone|consultation.*in person/.test(descLower)) return "office_action";
@@ -612,6 +615,9 @@ function classifyDocCode(code, desc) {
   if (/pre-appeal brief conference request/.test(text)) return "applicant_request";
   if (/request for corrected filing receipt/.test(text)) return "applicant_request";
   if (/request for examination/.test(descLower)) return "applicant_request";
+  if (/request for substantive examination/.test(descLower)) return "applicant_request";
+  if (/antrag.*erteilung/.test(descLower)) return "applicant_request";
+  if (/prüfungsantrag/.test(descLower)) return "applicant_request";
   if (/extension of time/.test(text) && /request|authorization/.test(text)) return "applicant_request";
   if (/refund request/.test(text)) return "applicant_request";
   if (/request under 37cfr/.test(text)) return "applicant_request";
@@ -628,7 +634,6 @@ function classifyDocCode(code, desc) {
   if (/reply to communication from the examining division/.test(descLower)) return "response";
   if (/reply to the invitation to remedy/.test(descLower)) return "response";
   if (/substitute sheet/.test(descLower)) return "response";
-  if (/request for substantive examination/.test(descLower)) return "response";
   if (/statement of opinions|opinion statement/.test(descLower)) return "response";
   if (/correction|amendment.*replacement|replacement page/.test(descLower)
       && !/certificate of correction|post issue|supervisory/.test(descLower)) return "response";
@@ -638,8 +643,6 @@ function classifyDocCode(code, desc) {
   if (/written amendment/.test(descLower)) return "response";
   if (/erwidung/.test(descLower)) return "response";
   if (/beschränkung/.test(descLower)) return "response";
-  if (/antrag.*erteilung/.test(descLower)) return "response";
-  if (/prüfungsantrag/.test(descLower)) return "response";
   if (/einspruch/.test(descLower)) return "response";
   if (/beschwerde/.test(descLower)) return "response";
   if (/preliminary amendment/.test(text)) return "response";
@@ -810,7 +813,7 @@ var EPO_DESC_MAP = {
   "declaration": "声明 (Declaration)",
   "oath": "宣誓 (Oath)",
   // ── EPO/GD 特有 ──
-  "placeholder sheet indicating presence of supplemental content": "补充内容占位页 (Supplemental Complex Repository for Examiners - SCORE)",
+  "placeholder sheet indicating presence of supplemental content": "补充内容占位页 (Placeholder Sheet Indicating Presence of Supplemental Content)",
   "supplemental complex repository": "补充内容占位页 (Supplemental Complex Repository for Examiners - SCORE)",
   "opposition": "异议 (Opposition)",
   // ── EPO 通信/登记类 ──
@@ -874,8 +877,9 @@ function _classifyEpoDescStage(key) {
        "issue fee", "annex to intention to grant"].includes(key)) return "授权";
   if (["appeal brief", "reply brief"].includes(key)) return "复审";
   if (["filing receipt", "electronic filing system acknowledgment receipt",
-       "transmittal letter", "transmittal", "pre-exam formalities notice",
-       "pre exam formalities notice",
+       "transmittal letter", "transmittal",
+       "applicant response to pre-exam formalities notice",
+       "pre-exam formalities notice", "pre exam formalities notice",
        "entry into european phase", "european phase"].includes(key)) return "审查前";
   if (["abandonment", "notice of abandonment"].includes(key)) return "完成";
   return "审查中";
