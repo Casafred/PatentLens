@@ -3115,6 +3115,43 @@ body {
   display: block;
 }
 
+/* pdf.js 文本层：透明文字覆盖在 canvas 上，用于选择 / 复制 */
+.pdf-text-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  line-height: 1;
+  z-index: 20;
+  pointer-events: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.pdf-text-layer span {
+  position: absolute;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: transparent;
+  white-space: pre;
+  transform-origin: 0 0;
+  cursor: text;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.pdf-text-layer span::selection {
+  background: rgba(79, 143, 247, 0.35);
+  color: transparent;
+}
+
+.pdf-text-layer .pdf-text-layer-eol {
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+
 .pdf-page-wrapper.ocr-page-selectable {
   cursor: pointer;
   box-shadow: 0 0 0 2px var(--accent), var(--shadow);
