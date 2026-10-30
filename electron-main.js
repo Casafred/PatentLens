@@ -809,6 +809,12 @@ function epoClassifyDoc(desc, phase) {
     docCode = "CTNF"; docType = "office_action"; stage = "审查意见";
   } else if (lower.includes("final rejection") || lower.includes("ctfr")) {
     docCode = "CTFR"; docType = "office_action"; stage = "审查意见";
+  } else if (/pre.?exam formalities/.test(lower) && (lower.includes("response") || lower.includes("applicant"))) {
+    docCode = "PEFR"; docType = "response"; stage = "申请人答复";
+  } else if (/pre.?exam formalities/.test(lower)) {
+    docCode = "PEFN"; docType = "notification"; stage = "通知";
+  } else if (lower.includes("abandonment")) {
+    docCode = "ABN"; docType = "notification"; stage = "通知";
   } else if (lower.includes("office action")
     || (lower.includes("communication") && !lower.includes("power of attorney"))
     || lower.includes("examination report")
