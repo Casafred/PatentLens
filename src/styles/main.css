@@ -1291,11 +1291,19 @@ body {
 }
 
 /* ── 审查文档列表（doclist）样式 ── */
+/* 整体内容区居中，使文档条带、顶部标题与右侧操作按钮在同一宽度范围内对齐 */
+#doclist-content {
+  width: 100%;
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
 .doclist-header {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
+  padding-right: 4px;
   flex-wrap: wrap;
 }
 .doclist-title {
@@ -1311,8 +1319,6 @@ body {
   max-height: calc(100vh - 220px);
   overflow-y: auto;
   padding-right: 4px;
-  /* 限制条带宽度，避免宽屏下左侧文档信息与右侧按钮相距过远 */
-  max-width: 960px;
 }
 .doclist-items {
   display: flex;
