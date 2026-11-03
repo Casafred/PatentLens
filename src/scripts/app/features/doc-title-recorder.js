@@ -54,7 +54,8 @@
   }
 
   function isEnabled() {
-    return safeStorageGet(ENABLED_KEY) === "true";
+    // 默认开启；只有用户明确关闭过（存为 "false"）才不记录
+    return safeStorageGet(ENABLED_KEY) !== "false";
   }
 
   function readRecords() {
@@ -146,7 +147,29 @@
     renderSettingsPanel();
   }
 
+  function pruneTranslatedRecords() {
+    var records = readRecords();
+    var changed = false;
+    Object.keys(records).forEach(function (key) {
+      var record = records[key];
+      if (!record || !record.title) return;
+      var status = null;
+      try {
+        if (typeof window.getStatusInfo === "function") {
+          status = window.getStatusInfo(record.office, record.docCode, record.title);
+        }
+      } catch (_) {}
+      // 译名表更新后，已经能匹配到中文的记录自动从后台记录中剔除
+      if (status && hasChinese(status.name)) {
+        delete records[key];
+        changed = true;
+      }
+    });
+    if (changed) writeRecords(records);
+  }
+
   function sortedRecords() {
+    pruneTranslatedRecords();
     var records = readRecords();
     return Object.keys(records).map(function (key) {
       return { key: key, record: records[key] };

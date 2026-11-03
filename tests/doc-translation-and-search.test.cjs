@@ -16,6 +16,7 @@ function loadPatentStatus() {
 function fakeDocument() {
   return {
     readyState: 'complete',
+    documentElement: { style: { setProperty: () => {} } },
     getElementById: () => null,
     querySelector: () => null,
     querySelectorAll: () => [],
@@ -26,8 +27,14 @@ function fakeDocument() {
 }
 
 function loadFeature(file, extra = {}) {
-  const window = { localStorage: null, ...extra };
-  const context = vm.createContext({ window, document: fakeDocument(), console, setTimeout, clearTimeout });
+  const window = { localStorage: null, addEventListener: () => {}, ...extra };
+  const context = vm.createContext({
+    window,
+    document: extra.document || fakeDocument(),
+    console,
+    setTimeout,
+    clearTimeout,
+  });
   vm.runInContext(read(file), context, { filename: file });
   return window;
 }
@@ -61,6 +68,34 @@ test('document title recorder only treats real English titles as recordable', ()
   assert.equal(recorder._looksLikeEnglishTitle('拒绝通知'), false);
   assert.equal(recorder._looksLikeEnglishTitle('12345/2026'), false);
   assert.equal(recorder._looksLikeEnglishTitle('ABC'), false);
+});
+
+test('document title recorder is enabled by default and prunes newly translated records', () => {
+  const recordsKey = 'patentlens_doc_title_records_v1';
+  const store = new Map();
+  store.set(recordsKey, JSON.stringify({
+    'advisory action': {
+      title: 'Advisory Action',
+      office: 'US',
+      docCode: 'CTAD',
+      count: 1,
+      firstSeen: 1,
+      lastSeen: 1,
+    },
+  }));
+  const storage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, String(value)),
+    removeItem: (key) => store.delete(key),
+  };
+  const window = loadFeature('src/scripts/app/features/doc-title-recorder.js', {
+    localStorage: storage,
+    getStatusInfo: () => ({ name: '建议性意见 (Advisory Action)' }),
+  });
+  const recorder = window.PatentLensDocTitleRecorder;
+  assert.equal(recorder.isEnabled(), true);
+  assert.equal(recorder.getRecords().length, 0);
+  assert.equal(JSON.parse(store.get(recordsKey) || '{}')['advisory action'], undefined);
 });
 
 test('document search builds searchable text from name, description, code and date', () => {
@@ -182,5 +217,52 @@ test('GD citation renderer adds per-column filters and fixed-layout table classe
   assert.match(html, />l\. 48-57</);
   assert.doesNotMatch(html, /Fig\. 5\)/);
   assert.doesNotMatch(html, /Relevancy code:/);
+});
+
+test('history alt action adds the opposite-mode query button without changing row click', () => {
+  let appended = null;
+  const restored = [];
+  const main = { appendChild(el) { appended = el; } };
+  const item = {
+    dataset: { patent: 'US12030161B2', type: 'patent' },
+    querySelector(selector) {
+      if (selector === '.history-item-alt-actions') return null;
+      if (selector === '.history-item-main') return main;
+      return null;
+    },
+  };
+  const list = {
+    classList: { contains: () => false },
+    querySelectorAll: () => [item],
+  };
+  const doc = Object.assign(fakeDocument(), {
+    getElementById: (id) => (id === 'history-list' ? list : null),
+    createElement: () => {
+      const el = {
+        className: '',
+        textContent: '',
+        title: '',
+        type: '',
+        style: {},
+        children: [],
+        appendChild(child) { this.children.push(child); },
+        addEventListener(name, fn) { if (name === 'click') this.onclick = fn; },
+      };
+      return el;
+    },
+  });
+
+  const window = loadFeature('src/scripts/app/features/history-alt-actions.js', {
+    document: doc,
+    refreshHistoryList: () => 'ok',
+    restoreFromHistory: (patentNumber) => restored.push(patentNumber),
+  });
+
+  assert.ok(window.PatentLensHistoryAltActions);
+  assert.ok(appended);
+  const button = appended.children[0];
+  assert.equal(button.textContent, '查审查文档');
+  button.onclick({ preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(restored, ['US12030161B2']);
 });
 

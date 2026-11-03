@@ -5519,10 +5519,18 @@ body {
 /* ══════════════════════════════════════════
    Stable S-Shaped Timeline
    ══════════════════════════════════════════ */
+/* 审查时间轴内容与审查文档列表保持同样的左右宽度 */
+#timeline-tab-content {
+  width: 100%;
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .tl-s-scroll {
   overflow-x: auto;
   overflow-y: visible;
-  padding: 10px 24px 30px 24px;
+  padding: 10px 12px 30px 12px;
   -webkit-overflow-scrolling: touch;
 }
 .tl-s-scroll::-webkit-scrollbar { height: 6px; }
@@ -7000,6 +7008,26 @@ body {
   display: flex;
   gap: 4px;
   margin-top: 4px;
+}
+.history-item-alt-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 5px;
+}
+.history-item-alt-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.history-item-alt-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .history-badge {
   font-size: 10px;
@@ -13913,7 +13941,13 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  position: sticky;
+  top: var(--doc-search-sticky-top, 92px);
+  z-index: 30;
+  background: var(--bg-primary);
+  padding: 8px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
 .doc-search-bar .doc-filter-input {
