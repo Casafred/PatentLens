@@ -304,7 +304,99 @@
     new MutationObserver(function () {
       // 渲染完成后重新对齐关键词与当前命中项，不主动滚动，避免打断用户
       refreshAfterRender(which);
+      if (which === "doclist") syncDoclistSearchWidth();
     }).observe(board, { childList: true, subtree: false });
+  }
+
+  // 让文档列表搜索栏宽度与下方文档条带完全一致（含滚动条占用的宽度）
+  function syncDoclistSearchWidth() {
+    var bar = document.getElementById("doclist-doc-search-bar");
+    var board = document.getElementById("doclist-board");
+    if (!bar || !board) return;
+    var items = board.querySelector(".doclist-items");
+    var width = 0;
+    try {
+      width = items ? items.getBoundingClientRect().width : 0;
+    } catch (_) {
+      width = 0;
+    }
+    if (width > 0) {
+      bar.style.width = width + "px";
+      bar.style.marginLeft = "0";
+      bar.style.marginRight = "auto";
+    } else {
+      bar.style.width = "";
+      bar.style.marginLeft = "";
+      bar.style.marginRight = "";
+    }
+  }
+
+  // ── 贴顶悬浮：根据顶部标签栏实际高度计算 sticky 偏移 ──────────────────────
+
+  var stickyOffsetQueued = false;
+
+  function updateStickyOffset() {
+    stickyOffsetQueued = false;
+    var tabsWrapper = document.querySelector(".tabs-wrapper");
+    var tabsTop = 0;
+    if (tabsWrapper) {
+      try {
+        tabsTop = parseFloat(window.getComputedStyle(tabsWrapper).top) || 0;
+      } catch (_) {
+        tabsTop = 0;
+      }
+    }
+    // 标签栏 sticky 的 top（有 dossier 标签栏时为 40px）+ 标签栏自身高度
+    var offset = tabsTop + (tabsWrapper ? (tabsWrapper.offsetHeight || 0) : 0);
+    document.documentElement.style.setProperty("--doc-search-sticky-top", Math.max(0, offset) + "px");
+  }
+
+  function scheduleStickyOffset() {
+    if (stickyOffsetQueued) return;
+    stickyOffsetQueued = true;
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(updateStickyOffset);
+    } else {
+      setTimeout(updateStickyOffset, 0);
+    }
+  }
+
+  function observeStickyLayout() {
+    window.addEventListener("resize", scheduleStickyOffset);
+    window.addEventListener("resize", syncDoclistSearchWidth);
+    var doclistTabBtn = document.querySelector('.tab-btn[data-tab="doclist"]');
+    if (doclistTabBtn) {
+      doclistTabBtn.addEventListener("click", function () {
+        setTimeout(syncDoclistSearchWidth, 0);
+      });
+    }
+    var doclistTabContent = document.getElementById("tab-doclist");
+    if (doclistTabContent && typeof MutationObserver === "function") {
+      new MutationObserver(function () {
+        if (doclistTabContent.classList.contains("active")) {
+          setTimeout(syncDoclistSearchWidth, 0);
+        }
+      }).observe(doclistTabContent, { attributes: true, attributeFilter: ["class"] });
+    }
+    var tabsWrapper = document.querySelector(".tabs-wrapper");
+    if (tabsWrapper && typeof ResizeObserver === "function") {
+      try { new ResizeObserver(scheduleStickyOffset).observe(tabsWrapper); } catch (_) {}
+    }
+    var dossierBar = document.getElementById("dossier-tabs-bar");
+    if (dossierBar) {
+      if (typeof ResizeObserver === "function") {
+        try { new ResizeObserver(scheduleStickyOffset).observe(dossierBar); } catch (_) {}
+      }
+      if (typeof MutationObserver === "function") {
+        try {
+          new MutationObserver(scheduleStickyOffset).observe(dossierBar, {
+            attributes: true,
+            attributeFilter: ["class", "style"],
+          });
+        } catch (_) {}
+      }
+    }
+    scheduleStickyOffset();
   }
 
   function init() {
@@ -326,6 +418,8 @@
     });
     observeBoard("tl-board", "tl");
     observeBoard("doclist-board", "doclist");
+    observeStickyLayout();
+    syncDoclistSearchWidth();
   }
 
   window.PatentLensDocSearch = {

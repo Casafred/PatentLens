@@ -111,7 +111,7 @@
     // ── 稳定S轴布局参数（倒序：第一行从左到右是最新→较旧，蛇形向下） ──
     var COL_WIDTH = 200;
     var ROW_HEIGHT = 320; // 增大行距：上下两排相向的卡片间留出明显空隙，避免贴合误认
-    var EDGE_PAD = 80;
+    var EDGE_PAD = 48;
     var CURVE_R = 22;
     var TOP_PAD = 150;
     var BOTTOM_PAD = 150;
