@@ -83,9 +83,18 @@
   function scrollIntoViewSafe(el) {
     if (!el || typeof el.scrollIntoView !== "function") return;
     try {
-      el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+      // 即时滚动，避免长时间 smooth 动画占用主线程、让输入框感觉被卡住
+      el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
     } catch (_) {
       el.scrollIntoView();
+    }
+  }
+
+  function defer(fn) {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(fn);
+    } else {
+      setTimeout(fn, 0);
     }
   }
 
@@ -145,13 +154,17 @@
     }
     state.pos = (state.pos + step + state.matches.length) % state.matches.length;
     var item = state.matches[state.pos];
-    var ok = revealTimelineDocument(item.idx);
     var prefix = state.keyword ? "第 " + (state.pos + 1) + " / " + state.matches.length + " 个：" : "";
-    updateInfo(
-      state,
-      "tl-doc-search-info",
-      ok ? prefix + labelFor(item) : prefix + labelFor(item) + "（未在时间轴中找到节点）"
-    );
+    updateInfo(state, "tl-doc-search-info", prefix + labelFor(item));
+    // 把 DOM 滚动/弹层展开放到下一帧，保证输入框事件先返回
+    defer(function () {
+      var ok = revealTimelineDocument(item.idx);
+      updateInfo(
+        state,
+        "tl-doc-search-info",
+        ok ? prefix + labelFor(item) : prefix + labelFor(item) + "（未在时间轴中找到节点）"
+      );
+    });
   }
 
   function recomputeTimeline(keyword) {
@@ -159,16 +172,18 @@
     state.keyword = String(keyword || "").trim();
     state.matches = findMatches(state.keyword);
     state.pos = -1;
+    clearHits();
     if (!state.keyword) {
-      clearHits();
       updateInfo(state, "tl-doc-search-info", "");
       return;
     }
-    if (state.matches.length) {
-      jumpTimeline(1);
-    } else {
-      updateInfo(state, "tl-doc-search-info", "无匹配文档");
-    }
+    updateInfo(
+      state,
+      "tl-doc-search-info",
+      state.matches.length
+        ? "共 " + state.matches.length + " 个匹配 · 按回车或“下一个”定位"
+        : "无匹配文档"
+    );
   }
 
   // ── 审查文档列表 ──────────────────────────────────────────────────────────
@@ -192,13 +207,16 @@
     }
     state.pos = (state.pos + step + state.matches.length) % state.matches.length;
     var item = state.matches[state.pos];
-    var ok = revealDocListItem(item.idx);
     var prefix = state.keyword ? "第 " + (state.pos + 1) + " / " + state.matches.length + " 个：" : "";
-    updateInfo(
-      state,
-      "doclist-doc-search-info",
-      ok ? prefix + labelFor(item) : prefix + labelFor(item) + "（未在列表中找到条带）"
-    );
+    updateInfo(state, "doclist-doc-search-info", prefix + labelFor(item));
+    defer(function () {
+      var ok = revealDocListItem(item.idx);
+      updateInfo(
+        state,
+        "doclist-doc-search-info",
+        ok ? prefix + labelFor(item) : prefix + labelFor(item) + "（未在列表中找到条带）"
+      );
+    });
   }
 
   function recomputeDocList(keyword) {
@@ -206,16 +224,18 @@
     state.keyword = String(keyword || "").trim();
     state.matches = findMatches(state.keyword);
     state.pos = -1;
+    clearHits();
     if (!state.keyword) {
-      clearHits();
       updateInfo(state, "doclist-doc-search-info", "");
       return;
     }
-    if (state.matches.length) {
-      jumpDocList(1);
-    } else {
-      updateInfo(state, "doclist-doc-search-info", "无匹配文档");
-    }
+    updateInfo(
+      state,
+      "doclist-doc-search-info",
+      state.matches.length
+        ? "共 " + state.matches.length + " 个匹配 · 按回车或“下一个”定位"
+        : "无匹配文档"
+    );
   }
 
   // ── 事件绑定 ──────────────────────────────────────────────────────────────
@@ -227,22 +247,21 @@
     if (!input || input.dataset.docSearchBound) return;
     input.dataset.docSearchBound = "1";
 
-    var timer = null;
+    // 输入时只更新匹配数量和提示，不做滚动/展开等重活，保证输入框随时可响应
     input.addEventListener("input", function () {
-      clearTimeout(timer);
-      timer = setTimeout(function () { options.recompute(input.value); }, 220);
+      options.recompute(input.value);
     });
 
     input.addEventListener("keydown", function (event) {
       if (event.key !== "Enter") return;
       event.preventDefault();
-      clearTimeout(timer);
       var state = states[options.stateKey];
       if (state.keyword !== String(input.value || "").trim() || !state.matches.length) {
         options.recompute(input.value);
-        return;
       }
-      options.jump(event.shiftKey ? -1 : 1);
+      if (states[options.stateKey].matches.length) {
+        options.jump(event.shiftKey ? -1 : 1);
+      }
     });
 
     if (prev) {
@@ -273,7 +292,7 @@
     updateInfo(
       state,
       infoId,
-      "第 " + (state.pos + 1) + " / " + state.matches.length + " 个：" + labelFor(state.matches[state.pos])
+      "第 " + (state.pos + 1) + " / " + state.matches.length + " 个：" + labelFor(state.matches[state.pos]) + "（按回车继续定位）"
     );
   }
 

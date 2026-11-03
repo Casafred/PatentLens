@@ -205,6 +205,40 @@
     return rows;
   }
 
+  function bindColumnFilters(body) {
+    if (!body) return;
+    body.querySelectorAll(".gd-citation-table").forEach(function (table) {
+      var inputs = table.querySelectorAll(".gd-citation-filter");
+      if (!inputs.length) return;
+
+      function applyFilters() {
+        var rows = table.querySelectorAll("tbody tr");
+        rows.forEach(function (row) {
+          var show = true;
+          inputs.forEach(function (input) {
+            var keyword = String(input.value || "").trim().toLowerCase();
+            if (!keyword) return;
+            var col = parseInt(input.getAttribute("data-col"), 10);
+            var cell = row.children[col];
+            var text = cell ? String(cell.textContent || "").toLowerCase() : "";
+            if (text.indexOf(keyword) === -1) show = false;
+          });
+          row.style.display = show ? "" : "none";
+        });
+      }
+
+      inputs.forEach(function (input) {
+        input.addEventListener("input", applyFilters);
+        input.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") {
+            input.value = "";
+            applyFilters();
+          }
+        });
+      });
+    });
+  }
+
   function renderCitationData(body, response) {
     var citationList = response && Array.isArray(response.citationList) ? response.citationList : [];
     var nplList = response && Array.isArray(response.nplCitationList) ? response.nplCitationList : [];
@@ -224,22 +258,34 @@
     var html = "";
     if (citationList.length) {
       html += '<div class="pd-section-title">Patent documents（专利文献 ' + citationList.length + '）</div>';
-      html += '<div class="gd-citation-table-wrap"><table class="gd-citation-table"><thead><tr>';
+      html += '<div class="gd-citation-table-wrap"><table class="gd-citation-table gd-citation-table-patent"><thead><tr>';
       html += "<th>Publication/patent number</th><th>Relevant Section</th><th>Relevancy/Claims</th><th>Cited in</th><th>Cited by</th>";
+      html += '</tr><tr class="gd-citation-filter-row">';
+      html += '<th><input type="text" class="gd-citation-filter" data-col="0" placeholder="筛选..."></th>';
+      html += '<th><input type="text" class="gd-citation-filter" data-col="1" placeholder="筛选..."></th>';
+      html += '<th><input type="text" class="gd-citation-filter" data-col="2" placeholder="筛选..."></th>';
+      html += '<th><input type="text" class="gd-citation-filter" data-col="3" placeholder="筛选..."></th>';
+      html += '<th><input type="text" class="gd-citation-filter" data-col="4" placeholder="筛选..."></th>';
       html += "</tr></thead><tbody>";
       html += patentRowsHtml(citationList);
       html += "</tbody></table></div>";
     }
     if (nplList.length) {
       html += '<div class="pd-section-title" style="margin-top:14px;">NPL（非专利文献 ' + nplList.length + '）</div>';
-      html += '<div class="gd-citation-table-wrap"><table class="gd-citation-table"><thead><tr>';
+      html += '<div class="gd-citation-table-wrap"><table class="gd-citation-table gd-citation-table-npl"><thead><tr>';
       html += "<th>Reference</th><th>Cited in</th><th>Cited by</th>";
+      html += '</tr><tr class="gd-citation-filter-row">';
+      html += '<th><input type="text" class="gd-citation-filter" data-col="0" placeholder="筛选..."></th>';
+      html += '<th><input type="text" class="gd-citation-filter" data-col="1" placeholder="筛选..."></th>';
+      html += '<th><input type="text" class="gd-citation-filter" data-col="2" placeholder="筛选..."></th>';
       html += "</tr></thead><tbody>";
       html += nplRowsHtml(nplList);
       html += "</tbody></table></div>";
     }
     html += '<div class="gd-citation-source">数据来源：USPTO Global Dossier · Citation Data</div>';
     body.innerHTML = html;
+
+    bindColumnFilters(body);
 
     body.querySelectorAll(".pd-patent-link").forEach(function (link) {
       link.addEventListener("click", function (event) {

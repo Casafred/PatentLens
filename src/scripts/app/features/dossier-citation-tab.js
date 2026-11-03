@@ -4,6 +4,7 @@
  * 在“审查文档”结果区新增「引用数据」标签页：
  *  - 按当前审查申请查询 GD Citation Data；
  *  - 复用 gd-citation-data.js 的抓取与渲染逻辑；
+ *  - 按审查文档标签页缓存结果，切换标签后再次回到引用数据无需重新请求；
  *  - 引用专利号通过链接渲染，点击后复用 _openPdPatent，
  *    在原文模式新开标签页并走 GP 查询。
  */
@@ -12,8 +13,9 @@
 
   if (typeof window === "undefined" || typeof document === "undefined") return;
 
-  var loadedKey = "";
-  var loading = false;
+  var MAX_CACHE = 12;
+  var cache = Object.create(null); // key -> { response, loadedAt }
+  var loadingKeys = Object.create(null);
 
   function getContext() {
     var data = null;
@@ -71,6 +73,19 @@
     };
   }
 
+  function activeDossierKey() {
+    try {
+      if (typeof _dossierActiveKey !== "undefined" && _dossierActiveKey) {
+        return String(_dossierActiveKey);
+      }
+    } catch (_) {}
+    return "";
+  }
+
+  function cacheKeyFor(ctx) {
+    return activeDossierKey() + "::" + ctx.key;
+  }
+
   function bodyEl() {
     return document.getElementById("citation-data-body");
   }
@@ -79,16 +94,73 @@
     return document.getElementById("citation-status");
   }
 
+  function citationTabActive() {
+    var tab = document.getElementById("tab-citation");
+    return !!(tab && tab.classList.contains("active"));
+  }
+
   function setPlaceholder(text) {
     var body = bodyEl();
     if (body) body.innerHTML = '<div class="citation-empty-hint">' + text + "</div>";
   }
 
-  function resetForNewData() {
-    loadedKey = "";
+  function setStatus(text) {
     var status = statusEl();
-    if (status) status.textContent = "";
-    setPlaceholder("当前审查申请已更新，打开本标签页时会自动加载 GD Citation Data。");
+    if (status) status.textContent = text;
+  }
+
+  function countsOf(response) {
+    return {
+      citations: response && Array.isArray(response.citationList) ? response.citationList.length : 0,
+      npl: response && Array.isArray(response.nplCitationList) ? response.nplCitationList.length : 0,
+    };
+  }
+
+  function statusFor(response) {
+    var counts = countsOf(response);
+    return counts.citations || counts.npl
+      ? "专利文献 " + counts.citations + " · NPL " + counts.npl
+      : "未获取到引用数据";
+  }
+
+  function renderResponse(response) {
+    var body = bodyEl();
+    var api = window.PatentLensGdCitationData;
+    if (!body || !api || typeof api.renderCitationData !== "function") return;
+    api.renderCitationData(body, response);
+    setStatus(statusFor(response));
+  }
+
+  function pruneCache() {
+    var keys = Object.keys(cache);
+    if (keys.length <= MAX_CACHE) return;
+    keys.sort(function (a, b) {
+      return (cache[a].loadedAt || 0) - (cache[b].loadedAt || 0);
+    });
+    keys.slice(0, keys.length - MAX_CACHE).forEach(function (key) {
+      delete cache[key];
+    });
+  }
+
+  function syncForCurrentTab() {
+    var ctx = getContext();
+    if (!ctx) {
+      setStatus("");
+      setPlaceholder("请先查询审查文档，再加载 GD Citation Data。");
+      return;
+    }
+    var key = cacheKeyFor(ctx);
+    var entry = cache[key];
+    if (entry) {
+      renderResponse(entry.response);
+      return;
+    }
+    if (loadingKeys[key]) return;
+    setStatus("");
+    setPlaceholder("打开本标签页时自动加载当前审查申请的 GD Citation Data。");
+    if (citationTabActive()) {
+      setTimeout(function () { ensureLoaded(false); }, 0);
+    }
   }
 
   async function ensureLoaded(force) {
@@ -99,36 +171,41 @@
       setPlaceholder("请先查询审查文档，再加载 GD Citation Data。");
       return;
     }
-    if (!force && loadedKey === ctx.key) return;
-    if (loading) return;
+
+    var key = cacheKeyFor(ctx);
+    if (!force && cache[key]) {
+      renderResponse(cache[key].response);
+      return;
+    }
 
     var api = window.PatentLensGdCitationData;
     if (!api || typeof api.fetchCitationData !== "function" || typeof api.renderCitationData !== "function") {
       setPlaceholder("GD Citation Data 模块未加载。");
       return;
     }
+    if (loadingKeys[key]) return;
 
-    loading = true;
-    var status = statusEl();
-    if (status) status.textContent = "加载中...";
+    loadingKeys[key] = true;
+    setStatus("加载中...");
     setPlaceholder("正在从 Global Dossier 获取 Citation Data...");
 
     try {
       var response = await api.fetchCitationData(ctx.office, ctx.candidates);
-      api.renderCitationData(body, response);
-      var citations = response && Array.isArray(response.citationList) ? response.citationList.length : 0;
-      var npl = response && Array.isArray(response.nplCitationList) ? response.nplCitationList.length : 0;
-      if (status) {
-        status.textContent = citations || npl
-          ? "专利文献 " + citations + " · NPL " + npl
-          : "未获取到引用数据";
+      cache[key] = { response: response, loadedAt: Date.now() };
+      pruneCache();
+      // 用户可能已经切换到其他审查文档标签：只缓存，不覆盖当前页面
+      var current = getContext();
+      if (current && cacheKeyFor(current) === key) {
+        renderResponse(response);
       }
-      loadedKey = ctx.key;
     } catch (error) {
-      setPlaceholder("GD Citation Data 获取失败：" + String((error && error.message) || error));
-      if (status) status.textContent = "加载失败";
+      var currentOnError = getContext();
+      if (currentOnError && cacheKeyFor(currentOnError) === key) {
+        setPlaceholder("GD Citation Data 获取失败：" + String((error && error.message) || error));
+        setStatus("加载失败");
+      }
     } finally {
-      loading = false;
+      delete loadingKeys[key];
     }
   }
 
@@ -137,15 +214,7 @@
     var original = window.renderOverview;
     var wrapped = function (data) {
       var result = original.apply(this, arguments);
-      try {
-        var ctx = getContext();
-        if (!ctx || loadedKey !== ctx.key) resetForNewData();
-        // 当前正停留在引用数据标签页时，随查询自动刷新
-        var tab = document.getElementById("tab-citation");
-        if (tab && tab.classList.contains("active")) {
-          setTimeout(function () { ensureLoaded(true); }, 0);
-        }
-      } catch (_) {}
+      try { syncForCurrentTab(); } catch (_) {}
       return result;
     };
     wrapped.__dossierCitationWrapped = true;
@@ -198,6 +267,7 @@
   window.PatentLensDossierCitation = {
     refresh: function () { return ensureLoaded(true); },
     getContext: getContext,
+    clearCache: function () { cache = Object.create(null); },
   };
 
   if (document.readyState === "loading") {
