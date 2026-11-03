@@ -14025,11 +14025,12 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   margin-top: 8px;
 }
 .gd-citation-table-wrap {
-  overflow-x: auto;
+  overflow-x: hidden;
   margin-top: 8px;
 }
 .gd-citation-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -14039,16 +14040,55 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   padding: 6px 8px;
   text-align: left;
   vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 .gd-citation-table th {
   background: var(--bg-secondary);
   color: var(--text-secondary);
   font-weight: 600;
-  white-space: nowrap;
+  white-space: normal;
 }
 .gd-citation-table .gd-citation-num {
-  white-space: nowrap;
+  white-space: normal;
+}
+.gd-citation-table-patent th:nth-child(1),
+.gd-citation-table-patent td:nth-child(1) { width: 20%; }
+.gd-citation-table-patent th:nth-child(2),
+.gd-citation-table-patent td:nth-child(2) { width: 26%; }
+.gd-citation-table-patent th:nth-child(3),
+.gd-citation-table-patent td:nth-child(3) { width: 20%; }
+.gd-citation-table-patent th:nth-child(4),
+.gd-citation-table-patent td:nth-child(4) { width: 17%; }
+.gd-citation-table-patent th:nth-child(5),
+.gd-citation-table-patent td:nth-child(5) { width: 17%; }
+.gd-citation-table-npl th:nth-child(1),
+.gd-citation-table-npl td:nth-child(1) { width: 52%; }
+.gd-citation-table-npl th:nth-child(2),
+.gd-citation-table-npl td:nth-child(2) { width: 24%; }
+.gd-citation-table-npl th:nth-child(3),
+.gd-citation-table-npl td:nth-child(3) { width: 24%; }
+.gd-citation-filter-row th {
+  padding: 4px;
+  background: var(--bg-card);
+}
+.gd-citation-filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+}
+.gd-citation-filter:focus {
+  border-color: var(--accent);
+}
+.gd-citation-filter::placeholder {
+  color: var(--text-muted);
 }
 .gd-citation-table .gd-citation-relevance {
   color: var(--text-secondary);
@@ -14086,12 +14126,22 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 }
 .citation-data-body {
   min-height: 80px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .citation-empty-hint {
   font-size: 12px;
   color: var(--text-muted);
   padding: 10px 0;
   line-height: 1.7;
+}
+
+/* 专利原文详情中的 GD Citation Data 也限制高度，改为纵向滚动 */
+.gd-citation-body {
+  max-height: 55vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* 同族专利可点击链接 */

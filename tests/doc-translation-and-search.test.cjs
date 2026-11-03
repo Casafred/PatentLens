@@ -135,3 +135,35 @@ test('family member links prefer publication numbers and fall back to office + a
     /^https:\/\/globaldossier\.uspto\.gov\/#\/result\/publication\/US\/20220301610A1\/\d+$/
   );
 });
+
+test('GD citation renderer adds per-column filters and fixed-layout table classes', () => {
+  const window = loadFeature('src/scripts/app/features/gd-citation-data.js', { renderPatentDetail() {} });
+  const citation = window.PatentLensGdCitationData;
+
+  let html = '';
+  const body = {
+    get innerHTML() { return html; },
+    set innerHTML(value) { html = value; },
+    closest() { return null; },
+    querySelectorAll() { return []; },
+  };
+
+  citation.renderCitationData(body, {
+    citationList: [{
+      citedDocument: { docCountry: 'US', docNumber: '1234567', docKindCode: 'B2', title: 'Test patent' },
+      relevancyText: 'Claims 1-2',
+      relevantInfos: [{ category: 'Y', claims: '1-2' }],
+      citedIn: 'US',
+      citedBy: 'EP',
+    }],
+    nplCitationList: [{ text: 'Test paper', citedIn: 'US', citedBy: 'EP' }],
+  });
+
+  assert.match(html, /Publication\/patent number/);
+  assert.match(html, /gd-citation-table-patent/);
+  assert.match(html, /gd-citation-table-npl/);
+  assert.match(html, /gd-citation-filter-row/);
+  assert.match(html, /class="gd-citation-filter"/);
+  assert.match(html, /US1234567B2/);
+});
+
