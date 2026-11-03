@@ -2,11 +2,10 @@
  * PatentLens OCR 默认策略
  * Copyright (c) 2026 Alfred Shi. All rights reserved.
  *
- * 阅读器已支持直接选择/复制文字版 PDF 的文字，因此默认不再对所有 PDF 自动 OCR：
+ * 阅读器已支持直接选择/复制文字版 PDF 的文字，因此默认不再自动 OCR：
  *   1. 未设置 autoOcr 时按「关闭」处理（设置面板默认不勾选）；
- *   2. 只有扫描件（页面没有文字层）才自动触发 OCR，文字版 PDF 保持按需手动 OCR。
- *
- * 用户显式勾选「对所有 PDF 自动 OCR」时，仍保留原有行为（由 web-app.js 处理）。
+ *   2. 扫描件也不再自动 OCR，只有用户点击工具栏 OCR 按钮才会识别；
+ *   3. 只有用户显式勾选 autoOcr 时，才恢复自动 OCR 行为。
  */
 (function () {
   "use strict";
@@ -47,6 +46,18 @@
     AI.__plOcrDefaultOff = true;
   }
 
+  // 只有用户显式开启 autoOcr 时才允许自动 OCR（默认关闭，扫描件也不例外）
+  function isExplicitAutoOcrEnabled() {
+    try {
+      if (!window.AI || typeof window.AI.loadAIConfig !== "function" || typeof window.AI.getOCRConfig !== "function") return false;
+      const config = window.AI.loadAIConfig();
+      const ocr = window.AI.getOCRConfig(config);
+      return !!(ocr && ocr.autoOcr === true);
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function detectScannedPdf(pdfDoc, totalPages) {
     const pages = Number(totalPages) || Number(pdfDoc && pdfDoc.numPages) || 0;
     const sample = Math.min(pages, SAMPLE_PAGES);
@@ -62,6 +73,7 @@
 
   function autoOcrForScannedPdf(idx) {
     if (idx == null) return;
+    if (!isExplicitAutoOcrEnabled()) return;
     if (typeof pdfViewState === "undefined" || !pdfViewState.active) return;
     if (pdfViewState.currentDocIdx !== idx) return;
     if (pdfViewState.traceJumpPending) return;

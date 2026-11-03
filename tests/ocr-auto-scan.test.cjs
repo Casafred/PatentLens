@@ -91,7 +91,16 @@ function createViewerSandbox(options) {
   const kanbanState = { extractions: {} };
   if (opts.blocks) kanbanState.extractions[idx] = { blocks: opts.blocks };
   const sandbox = {
-    window: {},
+    window: {
+      AI: {
+        loadAIConfig() {
+          return { ocr: { autoOcr: !!opts.autoOcr } };
+        },
+        getOCRConfig(config) {
+          return config.ocr;
+        },
+      },
+    },
     Math,
     document: { getElementById: () => (opts.scopeOpen ? {} : null) },
     pdfViewState,
@@ -113,33 +122,40 @@ async function flushAsyncWork() {
 }
 
 test('文字版 PDF 不自动 OCR', async () => {
-  const { context, calls } = createViewerSandbox({ pageText: 'This page has a real text layer.' });
+  const { context, calls } = createViewerSandbox({ pageText: 'This page has a real text layer.', autoOcr: true });
   await context.renderPdfView(7);
   await flushAsyncWork();
   assert.equal(calls.ocrPdf, 0);
 });
 
-test('扫描件（无文字层）自动触发 OCR', async () => {
+test('扫描件默认不自动触发 OCR', async () => {
   const { context, calls } = createViewerSandbox({ pageText: '' });
+  await context.renderPdfView(7);
+  await flushAsyncWork();
+  assert.equal(calls.ocrPdf, 0);
+});
+
+test('用户显式开启 autoOcr 后，扫描件自动触发 OCR', async () => {
+  const { context, calls } = createViewerSandbox({ pageText: '', autoOcr: true });
   await context.renderPdfView(7);
   await flushAsyncWork();
   assert.equal(calls.ocrPdf, 1);
 });
 
 test('已有提取块或已有 OCR 任务时不重复触发', async () => {
-  const withBlocks = createViewerSandbox({ pageText: '', blocks: [{}] });
+  const withBlocks = createViewerSandbox({ pageText: '', autoOcr: true, blocks: [{}] });
   await withBlocks.context.renderPdfView(7);
   await flushAsyncWork();
   assert.equal(withBlocks.calls.ocrPdf, 0);
 
-  const withJob = createViewerSandbox({ pageText: '', job: { status: 'done' } });
+  const withJob = createViewerSandbox({ pageText: '', autoOcr: true, job: { status: 'done' } });
   await withJob.context.renderPdfView(7);
   await flushAsyncWork();
   assert.equal(withJob.calls.ocrPdf, 0);
 });
 
 test('扫描件页数较多时弹出 OCR 范围选择而不是直接全量 OCR', async () => {
-  const { context, calls } = createViewerSandbox({ pageText: '', numPages: 12 });
+  const { context, calls } = createViewerSandbox({ pageText: '', autoOcr: true, numPages: 12 });
   await context.renderPdfView(7);
   await flushAsyncWork();
   assert.equal(calls.ocrPdf, 0);
@@ -147,12 +163,12 @@ test('扫描件页数较多时弹出 OCR 范围选择而不是直接全量 OCR',
 });
 
 test('正在选择 OCR 页码或追踪跳转时不自动触发', async () => {
-  const scopeOpen = createViewerSandbox({ pageText: '', scopeOpen: true });
+  const scopeOpen = createViewerSandbox({ pageText: '', autoOcr: true, scopeOpen: true });
   await scopeOpen.context.renderPdfView(7);
   await flushAsyncWork();
   assert.equal(scopeOpen.calls.ocrPdf, 0);
 
-  const traceJump = createViewerSandbox({ pageText: '', traceJump: true });
+  const traceJump = createViewerSandbox({ pageText: '', autoOcr: true, traceJump: true });
   await traceJump.context.renderPdfView(7);
   await flushAsyncWork();
   assert.equal(traceJump.calls.ocrPdf, 0);
