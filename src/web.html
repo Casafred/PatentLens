@@ -265,6 +265,7 @@
             <button class="tab-btn active" data-tab="overview">概览</button>
             <button class="tab-btn" data-tab="timeline">时间轴</button>
             <button class="tab-btn" data-tab="doclist">审查文档列表</button>
+            <button class="tab-btn" data-tab="citation">引用数据</button>
             <button class="tab-btn" data-tab="kanban">审查分栏看板</button>
             <button class="tab-btn" data-tab="ai-analysis">AI分析结果</button>
           </div>
@@ -347,6 +348,19 @@
             <div id="tl-filter-bar" class="tl-filter-bar"></div>
             <div id="tl-board" class="tl-board">
               <p class="placeholder">请先查询专利，审查文档加载后可生成时间轴</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-citation" class="tab-content">
+          <div id="citation-tab-content" class="citation-tab-content">
+            <div class="citation-header">
+              <span class="citation-title">GD Citation Data（审查引用数据）</span>
+              <span id="citation-status" class="citation-status"></span>
+              <button id="citation-refresh-btn" class="btn-secondary citation-refresh-btn">刷新</button>
+            </div>
+            <div id="citation-data-body" class="citation-data-body">
+              <div class="citation-empty-hint">打开本标签页时自动加载当前审查申请的 GD Citation Data。</div>
             </div>
           </div>
         </div>
@@ -1379,6 +1393,8 @@
   <script src="scripts/app/features/doc-title-recorder.js?v=261103a"></script>
   <script src="scripts/app/features/doc-list-search.js?v=261103a"></script>
   <script src="scripts/app/features/gd-citation-data.js?v=261103a"></script>
+  <script src="scripts/app/features/dossier-citation-tab.js?v=261103b"></script>
+  <script src="scripts/app/features/dossier-family-links.js?v=261103b"></script>
   <script src="scripts/app/features/ocr-auto-scan.js?v=261030a"></script>
   <script src="scripts/comparison/comparison-utils.js?v=260717d"></script>
   <script src="scripts/comparison/comparison-prompts.js?v=260717d"></script>

@@ -94,3 +94,44 @@ test('GD citation helpers parse patent numbers and citation fields', () => {
   assert.equal(citation.splitSections('Section 1\n\nSection 2').join('|'), 'Section 1|Section 2');
   assert.equal(citation.cleanCitedIn('US\norigin\nEP'), 'US\nEP');
 });
+
+test('dossier citation tab builds GD candidates from the current dossier application', () => {
+  const window = loadFeature('src/scripts/app/features/dossier-citation-tab.js', {
+    renderOverview() {},
+  });
+  window.currentData = {
+    office: 'US',
+    applicationNumber: '16123456',
+    raw: 'US16123456',
+  };
+  const context = window.PatentLensDossierCitation.getContext();
+  assert.ok(context);
+  assert.equal(context.office, 'US');
+  assert.equal(context.appNum, '16123456');
+  assert.equal(context.candidates[0].type, 'application');
+  assert.equal(context.candidates[0].docNumber, '16123456');
+});
+
+test('family member links prefer publication numbers and fall back to office + application number', () => {
+  const window = loadFeature('src/scripts/app/features/dossier-family-links.js', {
+    renderFamily() {},
+  });
+  const links = window.PatentLensFamilyLinks;
+  assert.ok(links);
+  assert.equal(
+    links.queryForMember({ countryCode: 'US', appNum: '16123456' }),
+    'US16123456'
+  );
+  assert.equal(
+    links.queryForMember({
+      countryCode: 'EP',
+      appNum: '21123456.7',
+      pubList: [{ pubCountry: 'EP', pubNum: '4252965A3' }],
+    }),
+    'EP4252965A3'
+  );
+  assert.match(
+    links.gdUrlForMember({ countryCode: 'US', appNum: '16123456', publicationNumber: 'US20220301610A1' }),
+    /^https:\/\/globaldossier\.uspto\.gov\/#\/result\/publication\/US\/20220301610A1\/\d+$/
+  );
+});

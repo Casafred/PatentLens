@@ -264,6 +264,34 @@
     });
   }
 
+  async function fetchCitationData(office, candidates) {
+    var response = null;
+    var lastError = null;
+    var seen = {};
+    for (var i = 0; i < candidates.length; i++) {
+      var candidate = candidates[i];
+      if (!candidate || !candidate.docNumber) continue;
+      var candidateKey = candidate.type + "/" + candidate.docNumber + "/" + candidate.kindCode;
+      if (seen[candidateKey]) continue;
+      seen[candidateKey] = true;
+      try {
+        var path = "/citation-classification/svc/citation/" + candidate.type + "/"
+          + encodeURIComponent(office) + "/"
+          + encodeURIComponent(candidate.docNumber) + "/"
+          + encodeURIComponent(candidate.kindCode || "A");
+        response = await window.gdFetch(path);
+        if (response && (Array.isArray(response.citationList) && response.citationList.length
+          || Array.isArray(response.nplCitationList) && response.nplCitationList.length)) {
+          return response;
+        }
+      } catch (candidateError) {
+        lastError = candidateError;
+      }
+    }
+    if (!response && lastError) throw lastError;
+    return response;
+  }
+
   async function loadCitationData(section, data) {
     var body = section.querySelector("#gd-citation-body");
     var button = section.querySelector("#gd-citation-load-btn");
@@ -296,29 +324,7 @@
       candidates.push({ type: "publication", docNumber: context.applicationNumber, kindCode: context.kindCode || "A" });
       candidates.push({ type: "patent", docNumber: context.applicationNumber, kindCode: context.kindCode || "A" });
 
-      var response = null;
-      var lastError = null;
-      var seen = {};
-      for (var i = 0; i < candidates.length; i++) {
-        var candidate = candidates[i];
-        var candidateKey = candidate.type + "/" + candidate.docNumber + "/" + candidate.kindCode;
-        if (seen[candidateKey] || !candidate.docNumber) continue;
-        seen[candidateKey] = true;
-        try {
-          var path = "/citation-classification/svc/citation/" + candidate.type + "/"
-            + encodeURIComponent(ref.office) + "/"
-            + encodeURIComponent(candidate.docNumber) + "/"
-            + encodeURIComponent(candidate.kindCode || "A");
-          response = await window.gdFetch(path);
-          if (response && (Array.isArray(response.citationList) && response.citationList.length
-            || Array.isArray(response.nplCitationList) && response.nplCitationList.length)) {
-            break;
-          }
-        } catch (candidateError) {
-          lastError = candidateError;
-        }
-      }
-      if (!response && lastError) throw lastError;
+      var response = await fetchCitationData(ref.office, candidates);
       renderCitationData(body, response);
       button.textContent = "刷新";
     } catch (error) {
@@ -382,6 +388,7 @@
     splitSections: splitSections,
     cleanCitedIn: cleanCitedIn,
     renderCitationData: renderCitationData,
+    fetchCitationData: fetchCitationData,
     // 供测试使用
     _parseNumberFallback: parseNumberFallback,
   };

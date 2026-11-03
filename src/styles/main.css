@@ -14058,3 +14058,65 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   color: var(--text-muted);
   padding: 8px 0;
 }
+
+/* 审查文档模式 → 引用数据标签页 */
+.citation-tab-content {
+  padding: 4px 2px 24px;
+}
+.citation-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.citation-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.citation-status {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.citation-refresh-btn {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 5px 12px;
+}
+.citation-data-body {
+  min-height: 80px;
+}
+.citation-empty-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 10px 0;
+  line-height: 1.7;
+}
+
+/* 同族专利可点击链接 */
+.family-member-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  word-break: break-all;
+}
+.family-member-link:hover {
+  color: var(--accent-hover, var(--accent));
+  opacity: 0.85;
+}
+.family-member-gd {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.family-member-gd:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
