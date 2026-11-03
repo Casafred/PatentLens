@@ -192,6 +192,10 @@ var PATENT_STATUS = {
       "notification of loss of entitlement to small entity status via pc": "PC途径小实体资格丧失通知 (Notification of loss of entitlement to small entity status via PC)",
       "notice of omitted items application": "申请遗漏项目通知 (Notice of Omitted Items Application)",
       "request for uspto to retrieve priority docs": "USPTO取回优先权文件请求 (Request for USPTO to retrieve priority docs)",
+      "notice of do/eo missing requirements mailed": "指定局/选定局缺失要求通知 (Notice of DO/EO Missing Requirements Mailed)",
+      "electronic request for interview with examiner": "与审查员面谈的电子请求 (Electronic Request for Interview with Examiner)",
+      "examiner initiated interview summary": "审查员发起的面谈摘要 (Examiner Initiated Interview Summary)",
+      "advisory action": "建议性意见 (Advisory Action)",
     },
     stageNames: {
       "审查前": "审查前",
@@ -559,6 +563,7 @@ function classifyDocCode(code, desc) {
   if (/^892$|^1449$|^SRNT$|^SRFW$|^BIB$|^FOR$|^1503$|^1503SS$|^SRCHSTRAEP$|^CDOCNPL$|^ISA210|^PRSR$|^PRSR-X$|^ISR$|^IDS$|^IDS\.FEE\.ASSN$/.test(codeUpper)) return "citation";
 
   // === Office Actions (审查意见) ===
+  if (/advisory action/.test(descLower)) return "office_action";
   if (/european search opinion/.test(descLower)) return "office_action";
   if (/communication from the examining division/.test(descLower)
       && !/reply to|response to/i.test(descLower)) return "office_action";
@@ -600,6 +605,7 @@ function classifyDocCode(code, desc) {
   if (/授权|allowance/.test(text) && !/修改|答复|response|amendment|post allowance/.test(text)) return "allowance";
 
   // === Applicant Requests (申请人其他请求) - procedural/administrative requests, NOT responses to OA ===
+  if (/electronic request for interview with examiner/.test(descLower)) return "applicant_request";
   if (/filing of (the )?translations? of (the )?claims/.test(descLower)) return "applicant_request";
   if (/request for grant of a european patent/.test(descLower)) return "applicant_request";
   if (/request for entry into the european phase|entry into european phase/.test(descLower)
@@ -793,6 +799,10 @@ var EPO_DESC_MAP = {
   "pre exam formalities notice": "审查前形式审查通知 (Pre-Exam Formalities Notice)",
   "notice of abandonment": "放弃通知 (Notice of Abandonment)",
   "abandonment": "放弃 (Abandonment)",
+  "notice of do/eo missing requirements mailed": "指定局/选定局缺失要求通知 (Notice of DO/EO Missing Requirements Mailed)",
+  "electronic request for interview with examiner": "与审查员面谈的电子请求 (Electronic Request for Interview with Examiner)",
+  "examiner initiated interview summary": "审查员发起的面谈摘要 (Examiner Initiated Interview Summary)",
+  "advisory action": "建议性意见 (Advisory Action)",
   "publication": "公开 (Publication)",
   "power of attorney": "代理委托书 (Power of Attorney)",
   "change of address": "地址变更 (Change of Address)",
@@ -833,7 +843,7 @@ function _classifyEpoDescType(key) {
   // 审查意见类
   if (["non-final rejection", "final rejection", "examiner's answer", "office action",
        "examination report", "examination communication", "search opinion",
-       "written opinion", "annex to intention to grant"].includes(key)) return "office_action";
+       "written opinion", "annex to intention to grant", "advisory action"].includes(key)) return "office_action";
   // 申请人答复类
   if (["applicant arguments/remarks made in an amendment",
        "amendment/request for reconsideration-after non-final rejection",
@@ -846,7 +856,8 @@ function _classifyEpoDescType(key) {
        "applicant response to pre-exam formalities notice",
        "amended claims", "amended description"].includes(key)) return "response";
   // 申请人其他请求类
-  if (["request for continued examination", "extension of time"].includes(key)) return "applicant_request";
+  if (["request for continued examination", "extension of time",
+       "electronic request for interview with examiner"].includes(key)) return "applicant_request";
   // 授权通知类
   if (["notice of allowance", "intention to grant", "grant notification",
        "issue notification", "issue information", "decision to grant", "grant of patent"].includes(key)) return "allowance";
@@ -863,7 +874,9 @@ function _classifyEpoDescType(key) {
   if (["transmission of search report", "after final consideration program decision",
        "communication re claims amendment/fees",
        "pre-exam formalities notice", "pre exam formalities notice",
-       "notice of abandonment", "abandonment"].includes(key)) return "notification";
+       "notice of abandonment", "abandonment",
+       "notice of do/eo missing requirements mailed",
+       "examiner initiated interview summary"].includes(key)) return "notification";
   // 异议/客户数据请求：归入通知栏，保证在看板中有对应列
   if (key === "opposition" || key === "client data request") return "notification";
   // 默认为通知类

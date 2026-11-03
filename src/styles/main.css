@@ -13905,3 +13905,156 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 }
 
 
+
+/* ══════════════════════════════════════════
+   审查文档搜索定位（时间轴 / 文档列表）
+   ══════════════════════════════════════════ */
+.doc-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.doc-search-bar .doc-filter-input {
+  flex: 1;
+  min-width: 220px;
+}
+.doc-search-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.doc-search-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.doc-search-info {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 150px;
+  max-width: 520px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-search-hit {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 2px;
+  background: rgba(245, 158, 11, 0.14) !important;
+  border-radius: 6px;
+}
+.tl-s-card.doc-search-hit {
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.55);
+}
+.tl-s-popup-item.doc-search-hit {
+  background: rgba(245, 158, 11, 0.24);
+}
+
+/* 设置 → 文档标题记录 */
+.doc-title-recorder-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.doc-title-recorder-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.doc-title-recorder-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.doc-title-recorder-office,
+.doc-title-recorder-code {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.doc-title-recorder-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.doc-title-recorder-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-word;
+  line-height: 1.5;
+}
+.doc-title-recorder-remove {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+.doc-title-recorder-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 10px 0;
+}
+
+/* GD Citation Data */
+.gd-citation-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  padding: 6px 0;
+}
+.gd-citation-source {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+.gd-citation-table-wrap {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+.gd-citation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.gd-citation-table th,
+.gd-citation-table td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  word-break: break-word;
+}
+.gd-citation-table th {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gd-citation-table .gd-citation-num {
+  white-space: nowrap;
+}
+.gd-citation-table .gd-citation-relevance {
+  color: var(--text-secondary);
+}
+.gd-citation-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
