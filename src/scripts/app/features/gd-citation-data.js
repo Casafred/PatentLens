@@ -136,23 +136,131 @@
     }).join("\n");
   }
 
-  function relevantInfoHtml(list) {
-    if (!Array.isArray(list) || !list.length) return "";
-    return list.map(function (info) {
-      var category = String((info && info.category) || "").trim();
-      var claims = String((info && info.claims) || "").trim();
-      var parts = [];
-      if (category) parts.push("Relevancy code: " + escapeHtml(category));
-      if (claims) parts.push("Claims: " + escapeHtml(claims));
-      return '<div class="gd-citation-relevance">' + parts.join(" · ") + "</div>";
-    }).join("");
+  function cleanToken(token) {
+    return String(token || "")
+      .replace(/\s+/g, " ")
+      .replace(/^[\s|,;:]+/, "")
+      .replace(/[)\]]+$/, "")
+      .replace(/^[(\[]+/, "")
+      .replace(/[\s|,;:]+$/, "")
+      .trim();
+  }
+
+  function classifyToken(token) {
+    var text = String(token || "").trim();
+    var head = text.toLowerCase().split(/[.\s]/)[0];
+    if (head === "fig" || head === "figure" || head === "figures") return "figure";
+    if (head === "claim" || head === "claims") return "claim";
+    if (head === "col" || head === "column" || head === "columns" || head === "c") return "column";
+    if (head === "section" || head === "sections" || /^§/.test(text)) return "section";
+    if (head === "line" || head === "lines" || head === "l") return "lines";
+    if (head === "paragraph" || head === "paragraphs" || head === "para" || /^¶/.test(text)) return "paragraph";
+    return "text";
+  }
+
+  function tokenLabel(token, kind) {
+    if (kind === "figure") {
+      var figureMatch = token.match(/^fig(?:ures?)?\.?\s+/i);
+      var figurePlural = !!(figureMatch && /s/i.test(figureMatch[0]));
+      return (figurePlural ? "Figs. " : "Fig. ") + token.slice(figureMatch ? figureMatch[0].length : 0);
+    }
+    if (kind === "claim") {
+      var claimMatch = token.match(/^claims?\s+/i);
+      var claimPlural = !!(claimMatch && /s/i.test(claimMatch[0]));
+      return (claimPlural ? "Claims " : "Claim ") + token.slice(claimMatch ? claimMatch[0].length : 0);
+    }
+    if (kind === "section") return token.replace(/^sections?\s+/i, "§ ");
+    if (kind === "lines") return token.replace(/^lines?\s+/i, "l. ");
+    if (kind === "paragraph") return token.replace(/^paragraphs?\s+/i, "¶ ");
+    return token;
+  }
+
+  function tokenizeSection(text) {
+    var seen = {};
+    return String(text || "")
+      .split(/[|\n]+/)
+      .map(cleanToken)
+      .filter(function (token) {
+        return token && !/^(undefined|origin)$/i.test(token);
+      })
+      .map(function (token) {
+        var kind = classifyToken(token);
+        return { kind: kind, label: tokenLabel(token, kind) };
+      })
+      .filter(function (token) {
+        var key = token.kind + ":" + token.label.toLowerCase();
+        if (seen[key]) return false;
+        seen[key] = true;
+        return true;
+      });
   }
 
   function sectionHtml(list) {
     if (!list.length) return "";
-    return list.map(function (part) {
-      return "<div>" + escapeHtml(part).replace(/\n/g, "<br>") + "</div>";
-    }).join("");
+    var html = "";
+    list.forEach(function (part) {
+      var tokens = tokenizeSection(part);
+      if (!tokens.length) return;
+      html += '<div class="gd-sect-block"><div class="gd-sect-tags">';
+      tokens.forEach(function (token) {
+        html += '<span class="gd-tag gd-tag-' + token.kind + '">' + escapeHtml(token.label) + "</span> ";
+      });
+      html += "</div></div>";
+    });
+    return html;
+  }
+
+  function formatClaimRef(claims) {
+    var value = String(claims || "").trim().replace(/^claims?\s*:\s*/i, "");
+    if (!value) return "";
+    if (/^claims?\b/i.test(value)) return value;
+    var multiple = /[,;\-–]|\band\b/i.test(value);
+    return (multiple ? "Claims " : "Claim ") + value;
+  }
+
+  function categoryClass(category) {
+    var code = String(category || "").trim().toUpperCase();
+    if (code === "X") return "gd-rel-x";
+    if (code === "Y") return "gd-rel-y";
+    if (code === "A") return "gd-rel-a";
+    if (code === "E") return "gd-rel-e";
+    if (code === "D") return "gd-rel-d";
+    return "gd-rel-other";
+  }
+
+  function relevantInfoHtml(list) {
+    if (!Array.isArray(list) || !list.length) return "";
+    var html = '<div class="gd-rel-list">';
+    list.forEach(function (info) {
+      var category = String((info && info.category) || "").trim();
+      var claims = String((info && info.claims) || "").trim();
+      if (!category && !claims) return;
+      html += '<div class="gd-rel-item">';
+      if (category) {
+        html += '<span class="gd-rel-badge ' + categoryClass(category) + '">' + escapeHtml(category) + "</span> ";
+      }
+      if (claims) {
+        html += '<span class="gd-rel-claims">' + escapeHtml(formatClaimRef(claims)) + "</span>";
+      }
+      html += "</div>";
+    });
+    html += "</div>";
+    return html;
+  }
+
+  function citedHtml(value) {
+    var text = String(value || "").trim();
+    if (!text) return "-";
+    var parts = text.split(/[,;\n\t]+/).map(function (part) {
+      return part.trim();
+    }).filter(Boolean);
+    if (!parts.length) return "-";
+    if (parts.length === 1) {
+      return '<span class="gd-tag gd-tag-text">' + escapeHtml(parts[0]) + "</span>";
+    }
+    return '<div class="gd-sect-tags">' + parts.map(function (part) {
+      return '<span class="gd-tag gd-tag-text">' + escapeHtml(part) + "</span> ";
+    }).join("") + "</div>";
   }
 
   function patentRowsHtml(citationList) {
@@ -176,8 +284,8 @@
       rows += "</td>";
       rows += "<td>" + (sections || "-") + "</td>";
       rows += "<td>" + (relevancy || "-") + "</td>";
-      rows += "<td>" + (citedIn ? escapeHtml(citedIn).replace(/\n/g, "<br>") : "-") + "</td>";
-      rows += "<td>" + (citedBy ? escapeHtml(citedBy).replace(/\n/g, "<br>") : "-") + "</td>";
+      rows += "<td>" + citedHtml(citedIn) + "</td>";
+      rows += "<td>" + citedHtml(citedBy) + "</td>";
       rows += "</tr>";
     });
     return rows;
@@ -198,8 +306,8 @@
           + escapeHtml(source) + '">查看引用</button></div>';
       }
       rows += "</td>";
-      rows += "<td>" + (citedIn ? escapeHtml(citedIn).replace(/\n/g, "<br>") : "-") + "</td>";
-      rows += "<td>" + (citedBy ? escapeHtml(citedBy).replace(/\n/g, "<br>") : "-") + "</td>";
+      rows += "<td>" + citedHtml(citedIn) + "</td>";
+      rows += "<td>" + citedHtml(citedBy) + "</td>";
       rows += "</tr>";
     });
     return rows;

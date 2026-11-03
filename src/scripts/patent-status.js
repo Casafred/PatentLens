@@ -122,6 +122,11 @@ var PATENT_STATUS = {
       "PET.OP.REV": { name: "请愿处审查请愿 (Petition for review by the Office of Petitions)", type: "applicant_request", stage: "审查中" },
       "RFP": { name: "继续审查请求 (Request for Further Processing)", type: "applicant_request", stage: "审查中" },
       "SPEC.AMD.NE": { name: "说明书修改未录入 (Specification-Amendment Not Entered)", type: "notification", stage: "审查中" },
+      "DIST.E.FILE": { name: "终端弃权声明-电子提交 (Terminal Disclaimer-Filed (Electronic))", type: "response", stage: "审查中" },
+      "DISQ.E.FILE": { name: "终端弃权声明-电子批准 (Terminal Disclaimer-Electronic-Approved)", type: "notification", stage: "审查中" },
+      "PET.DEC.AUTO": { name: "电子请愿批准信 (ePetition Grant Letter)", type: "notification", stage: "审查中" },
+      "PET.AUTO": { name: "电子请愿请求表 (ePetition Request Form)", type: "applicant_request", stage: "审查中" },
+      "MES.GIB": { name: "微小实体资格证明（总收入基准） (Certification of Micro Entity (Gross Income Basis))", type: "misc", stage: "审查前" },
     },
     typeNames: {
       "office_action": "审查意见",
@@ -196,6 +201,11 @@ var PATENT_STATUS = {
       "electronic request for interview with examiner": "与审查员面谈的电子请求 (Electronic Request for Interview with Examiner)",
       "examiner initiated interview summary": "审查员发起的面谈摘要 (Examiner Initiated Interview Summary)",
       "advisory action": "建议性意见 (Advisory Action)",
+      "terminal disclaimer-filed (electronic)": "终端弃权声明-电子提交 (Terminal Disclaimer-Filed (Electronic))",
+      "terminal disclaimer-electronic-approved": "终端弃权声明-电子批准 (Terminal Disclaimer-Electronic-Approved)",
+      "epetition grant letter": "电子请愿批准信 (ePetition Grant Letter)",
+      "epetition request form": "电子请愿请求表 (ePetition Request Form)",
+      "certification of micro entity (gross income basis)": "微小实体资格证明（总收入基准） (Certification of Micro Entity (Gross Income Basis))",
     },
     stageNames: {
       "审查前": "审查前",
@@ -605,6 +615,8 @@ function classifyDocCode(code, desc) {
   if (/授权|allowance/.test(text) && !/修改|答复|response|amendment|post allowance/.test(text)) return "allowance";
 
   // === Applicant Requests (申请人其他请求) - procedural/administrative requests, NOT responses to OA ===
+  if (/epetition request form/.test(descLower)) return "applicant_request";
+  if (/terminal disclaimer-filed/.test(descLower)) return "response";
   if (/electronic request for interview with examiner/.test(descLower)) return "applicant_request";
   if (/filing of (the )?translations? of (the )?claims/.test(descLower)) return "applicant_request";
   if (/request for grant of a european patent/.test(descLower)) return "applicant_request";
@@ -803,6 +815,11 @@ var EPO_DESC_MAP = {
   "electronic request for interview with examiner": "与审查员面谈的电子请求 (Electronic Request for Interview with Examiner)",
   "examiner initiated interview summary": "审查员发起的面谈摘要 (Examiner Initiated Interview Summary)",
   "advisory action": "建议性意见 (Advisory Action)",
+  "terminal disclaimer-filed (electronic)": "终端弃权声明-电子提交 (Terminal Disclaimer-Filed (Electronic))",
+  "terminal disclaimer-electronic-approved": "终端弃权声明-电子批准 (Terminal Disclaimer-Electronic-Approved)",
+  "epetition grant letter": "电子请愿批准信 (ePetition Grant Letter)",
+  "epetition request form": "电子请愿请求表 (ePetition Request Form)",
+  "certification of micro entity (gross income basis)": "微小实体资格证明（总收入基准） (Certification of Micro Entity (Gross Income Basis))",
   "publication": "公开 (Publication)",
   "power of attorney": "代理委托书 (Power of Attorney)",
   "change of address": "地址变更 (Change of Address)",

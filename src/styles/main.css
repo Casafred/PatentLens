@@ -14054,15 +14054,15 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   white-space: normal;
 }
 .gd-citation-table-patent th:nth-child(1),
-.gd-citation-table-patent td:nth-child(1) { width: 20%; }
+.gd-citation-table-patent td:nth-child(1) { width: 18%; }
 .gd-citation-table-patent th:nth-child(2),
-.gd-citation-table-patent td:nth-child(2) { width: 26%; }
+.gd-citation-table-patent td:nth-child(2) { width: 30%; }
 .gd-citation-table-patent th:nth-child(3),
 .gd-citation-table-patent td:nth-child(3) { width: 20%; }
 .gd-citation-table-patent th:nth-child(4),
-.gd-citation-table-patent td:nth-child(4) { width: 17%; }
+.gd-citation-table-patent td:nth-child(4) { width: 16%; }
 .gd-citation-table-patent th:nth-child(5),
-.gd-citation-table-patent td:nth-child(5) { width: 17%; }
+.gd-citation-table-patent td:nth-child(5) { width: 16%; }
 .gd-citation-table-npl th:nth-child(1),
 .gd-citation-table-npl td:nth-child(1) { width: 52%; }
 .gd-citation-table-npl th:nth-child(2),
@@ -14093,6 +14093,98 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 .gd-citation-table .gd-citation-relevance {
   color: var(--text-secondary);
 }
+
+/* Citation 引用片段的标签化展示 */
+.gd-sect-block {
+  margin-bottom: 6px;
+}
+.gd-sect-block:last-child {
+  margin-bottom: 0;
+}
+.gd-sect-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.gd-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1.65;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.gd-tag-figure {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.35);
+  color: #8b5cf6;
+}
+.gd-tag-claim {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.32);
+  color: #2563eb;
+}
+.gd-tag-column,
+.gd-tag-section,
+.gd-tag-lines,
+.gd-tag-paragraph {
+  background: rgba(100, 116, 139, 0.1);
+  border-color: rgba(100, 116, 139, 0.26);
+  color: #64748b;
+}
+.gd-tag-text {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+/* Relevancy / Claims：只保留 X/Y 类别徽标与权利要求编号 */
+.gd-rel-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.gd-rel-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 7px 1px 2px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+.gd-rel-badge {
+  min-width: 18px;
+  text-align: center;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.65;
+  color: #fff;
+}
+.gd-rel-x { background: #ef4444; }
+.gd-rel-y { background: #f59e0b; }
+.gd-rel-a { background: #8b5cf6; }
+.gd-rel-e { background: #3b82f6; }
+.gd-rel-d { background: #64748b; }
+.gd-rel-other { background: var(--accent); }
+.gd-rel-claims {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.gd-citation-table tbody tr:hover td {
+  background: var(--bg-secondary);
+}
 .gd-citation-empty {
   font-size: 12px;
   color: var(--text-muted);
@@ -14101,6 +14193,10 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
 
 /* 审查文档模式 → 引用数据标签页 */
 .citation-tab-content {
+  width: 100%;
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
   padding: 4px 2px 24px;
 }
 .citation-header {

@@ -94,11 +94,6 @@
     return document.getElementById("citation-status");
   }
 
-  function citationTabActive() {
-    var tab = document.getElementById("tab-citation");
-    return !!(tab && tab.classList.contains("active"));
-  }
-
   function setPlaceholder(text) {
     var body = bodyEl();
     if (body) body.innerHTML = '<div class="citation-empty-hint">' + text + "</div>";
@@ -155,12 +150,15 @@
       renderResponse(entry.response);
       return;
     }
-    if (loadingKeys[key]) return;
-    setStatus("");
-    setPlaceholder("打开本标签页时自动加载当前审查申请的 GD Citation Data。");
-    if (citationTabActive()) {
-      setTimeout(function () { ensureLoaded(false); }, 0);
+    if (loadingKeys[key]) {
+      setStatus("加载中...");
+      setPlaceholder("正在从 Global Dossier 获取 Citation Data...");
+      return;
     }
+    setStatus("");
+    setPlaceholder("正在准备当前审查申请的 GD Citation Data...");
+    // 与其他模块一致：查询完成后立即在后台获取，而不是等用户点击标签页
+    setTimeout(function () { ensureLoaded(false); }, 0);
   }
 
   async function ensureLoaded(force) {
@@ -256,7 +254,7 @@
       }).observe(tabContent, { attributes: true, attributeFilter: ["class"] });
     }
 
-    setPlaceholder("打开本标签页时自动加载当前审查申请的 GD Citation Data。");
+    setPlaceholder("查询完成后会自动获取当前审查申请的 GD Citation Data。");
   }
 
   function init() {
