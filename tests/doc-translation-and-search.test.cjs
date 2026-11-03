@@ -39,6 +39,11 @@ test('US GD fallback titles have Chinese translations for newly requested docume
     ['INTV.REQ', 'Electronic Request for Interview with Examiner', 'applicant_request'],
     ['EXIN', 'Examiner Initiated Interview Summary', 'notification'],
     ['CTAD', 'Advisory Action', 'office_action'],
+    ['DIST.E.FILE', 'Terminal Disclaimer-Filed (Electronic)', 'response'],
+    ['DISQ.E.FILE', 'Terminal Disclaimer-Electronic-Approved', 'notification'],
+    ['PET.DEC.AUTO', 'ePetition Grant Letter', 'notification'],
+    ['PET.AUTO', 'ePetition Request Form', 'applicant_request'],
+    ['MES.GIB', 'Certification of Micro Entity (Gross Income Basis)', 'notification'],
   ];
 
   for (const [code, title, type] of cases) {
@@ -151,9 +156,9 @@ test('GD citation renderer adds per-column filters and fixed-layout table classe
   citation.renderCitationData(body, {
     citationList: [{
       citedDocument: { docCountry: 'US', docNumber: '1234567', docKindCode: 'B2', title: 'Test patent' },
-      relevancyText: 'Claims 1-2',
-      relevantInfos: [{ category: 'Y', claims: '1-2' }],
-      citedIn: 'US',
+      relevancyText: 'col. 2|c. 103|section 102|lines 48-57)|figure 5)|claim 10|claims 1, 2, 4',
+      relevantInfos: [{ category: 'X', claims: '10' }, { category: 'Y', claims: '1, 2' }],
+      citedIn: 'US, examiner',
       citedBy: 'EP',
     }],
     nplCitationList: [{ text: 'Test paper', citedIn: 'US', citedBy: 'EP' }],
@@ -165,5 +170,17 @@ test('GD citation renderer adds per-column filters and fixed-layout table classe
   assert.match(html, /gd-citation-filter-row/);
   assert.match(html, /class="gd-citation-filter"/);
   assert.match(html, /US1234567B2/);
+  assert.match(html, /gd-tag-figure/);
+  assert.match(html, /gd-tag-claim/);
+  assert.match(html, /gd-tag-column/);
+  assert.match(html, /gd-rel-badge gd-rel-x/);
+  assert.match(html, /Claim 10/);
+  assert.match(html, />Fig\. 5</);
+  assert.match(html, />col\. 2</);
+  assert.match(html, />c\. 103</);
+  assert.match(html, />§ 102</);
+  assert.match(html, />l\. 48-57</);
+  assert.doesNotMatch(html, /Fig\. 5\)/);
+  assert.doesNotMatch(html, /Relevancy code:/);
 });
 
