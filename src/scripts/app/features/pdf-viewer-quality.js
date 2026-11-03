@@ -257,6 +257,8 @@
 
       layer.addEventListener("mousedown", onTextLayerMouseDown);
       wrapper.appendChild(layer);
+      // 只有真正存在文字层的页面，才在“选字模式”下让 OCR 框让位给文字选择
+      wrapper.classList.add("has-text-layer");
     }
   }
 
