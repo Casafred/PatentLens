@@ -46,9 +46,25 @@
           }
           return;
         }
+        if (window.PatentLensOpenGp && typeof window.PatentLensOpenGp.open === "function") {
+          window.PatentLensOpenGp.open(patentNumber);
+          return;
+        }
         if (typeof window._openPdPatent === "function") {
           window._openPdPatent(patentNumber);
+          return;
         }
+        // 兜底：切到专利原文模式并使用现有搜索按钮的专利查询流程
+        try {
+          searchMode = "patent";
+          document.querySelectorAll(".search-mode-btn").forEach(function (modeButton) {
+            modeButton.classList.toggle("active", modeButton.dataset.mode === "patent");
+          });
+          var input = document.getElementById("patent-input");
+          if (input) { input.style.display = ""; input.value = patentNumber; }
+          var searchButton = document.getElementById("search-btn");
+          if (searchButton) searchButton.click();
+        } catch (_) {}
       });
 
       wrap.appendChild(button);

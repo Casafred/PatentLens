@@ -61,7 +61,10 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
+  /* overflow-x:hidden 会让 body 成为垂直滚动容器，导致内部 position:sticky
+     （顶部标签栏、审查文档搜索栏）失效。clip 只裁剪不建立滚动容器。 */
   overflow-x: hidden;
+  overflow-x: clip;
   scrollbar-gutter: stable;
 }
 
@@ -5519,10 +5522,10 @@ body {
 /* ══════════════════════════════════════════
    Stable S-Shaped Timeline
    ══════════════════════════════════════════ */
-/* 审查时间轴内容与审查文档列表保持同样的左右宽度 */
+/* 时间轴比文档列表宽 20%，容纳更多列、减少上下排布长度 */
 #timeline-tab-content {
   width: 100%;
-  max-width: 960px;
+  max-width: 1152px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -7081,6 +7084,27 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.cache-confirm-message {
+  white-space: pre-line;
+}
+.pl-cache-choice-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.pl-cache-choice-close:hover {
+  color: var(--danger);
+  background: var(--bg-hover);
 }
 .cache-confirm-dialog.hidden {
   display: none !important;
@@ -13943,7 +13967,8 @@ body.anno-mode-active .pd-split-img-btn.anno-toggle-btn:hover {
   gap: 8px;
   position: sticky;
   top: var(--doc-search-sticky-top, 92px);
-  z-index: 30;
+  /* 高于顶部标签栏（100）和 dossier 标签栏（101），避免向下滚动时被其盖住 */
+  z-index: 102;
   background: var(--bg-primary);
   padding: 8px 0;
   margin-bottom: 8px;
