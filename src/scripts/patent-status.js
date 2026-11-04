@@ -206,6 +206,8 @@ var PATENT_STATUS = {
       "epetition grant letter": "电子请愿批准信 (ePetition Grant Letter)",
       "epetition request form": "电子请愿请求表 (ePetition Request Form)",
       "certification of micro entity (gross income basis)": "微小实体资格证明（总收入基准） (Certification of Micro Entity (Gross Income Basis))",
+      "track one request granted": "Track One 优先审查请求获批 (Track One Request Granted)",
+      "track one request": "Track One 优先审查请求 (Track One Request)",
     },
     stageNames: {
       "审查前": "审查前",
@@ -615,6 +617,9 @@ function classifyDocCode(code, desc) {
   if (/授权|allowance/.test(text) && !/修改|答复|response|amendment|post allowance/.test(text)) return "allowance";
 
   // === Applicant Requests (申请人其他请求) - procedural/administrative requests, NOT responses to OA ===
+  // Track One 优先审查：获批通知属于官方通知，申请本身属于申请人请求
+  if (/track one request granted/.test(descLower)) return "notification";
+  if (/track one request/.test(descLower)) return "applicant_request";
   if (/epetition request form/.test(descLower)) return "applicant_request";
   if (/terminal disclaimer-filed/.test(descLower)) return "response";
   if (/electronic request for interview with examiner/.test(descLower)) return "applicant_request";
@@ -820,6 +825,8 @@ var EPO_DESC_MAP = {
   "epetition grant letter": "电子请愿批准信 (ePetition Grant Letter)",
   "epetition request form": "电子请愿请求表 (ePetition Request Form)",
   "certification of micro entity (gross income basis)": "微小实体资格证明（总收入基准） (Certification of Micro Entity (Gross Income Basis))",
+  "track one request granted": "Track One 优先审查请求获批 (Track One Request Granted)",
+  "track one request": "Track One 优先审查请求 (Track One Request)",
   "publication": "公开 (Publication)",
   "power of attorney": "代理委托书 (Power of Attorney)",
   "change of address": "地址变更 (Change of Address)",
@@ -874,7 +881,8 @@ function _classifyEpoDescType(key) {
        "amended claims", "amended description"].includes(key)) return "response";
   // 申请人其他请求类
   if (["request for continued examination", "extension of time",
-       "electronic request for interview with examiner"].includes(key)) return "applicant_request";
+       "electronic request for interview with examiner",
+       "track one request"].includes(key)) return "applicant_request";
   // 授权通知类
   if (["notice of allowance", "intention to grant", "grant notification",
        "issue notification", "issue information", "decision to grant", "grant of patent"].includes(key)) return "allowance";
@@ -893,7 +901,8 @@ function _classifyEpoDescType(key) {
        "pre-exam formalities notice", "pre exam formalities notice",
        "notice of abandonment", "abandonment",
        "notice of do/eo missing requirements mailed",
-       "examiner initiated interview summary"].includes(key)) return "notification";
+       "examiner initiated interview summary",
+       "track one request granted"].includes(key)) return "notification";
   // 异议/客户数据请求：归入通知栏，保证在看板中有对应列
   if (key === "opposition" || key === "client data request") return "notification";
   // 默认为通知类

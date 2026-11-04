@@ -109,17 +109,20 @@
     });
 
     // ── 稳定S轴布局参数（倒序：第一行从左到右是最新→较旧，蛇形向下） ──
-    var COL_WIDTH = 200;
-    var ROW_HEIGHT = 320; // 增大行距：上下两排相向的卡片间留出明显空隙，避免贴合误认
-    var EDGE_PAD = 48;
+    // 卡片实际宽度 165px（见 .tl-s-card-wrap）。左右留白必须大于半个卡片宽度，
+    // 否则最左/最右卡片会溢出容器并被横向滚动裁切，也会让搜索栏无法与卡片外沿对齐。
+    var CARD_WIDTH = 165;
+    var CARD_MARGIN = 12;
+    var COL_WIDTH = 185; // 卡片中心间距（165 宽 + 20 间隙），在 1152px 内容区可容纳 6 列
+    var ROW_HEIGHT = 320;
+    var EDGE_PAD = CARD_WIDTH / 2 + CARD_MARGIN;
     var CURVE_R = 22;
     var TOP_PAD = 150;
     var BOTTOM_PAD = 150;
 
     var boardWidth = Math.max(board.clientWidth || 960, 640);
-    var usableWidth = boardWidth - 48;
-    var colsPerRow = Math.max(3, Math.floor((usableWidth - EDGE_PAD * 2) / COL_WIDTH) + 1);
-    colsPerRow = Math.min(5, colsPerRow);
+    var colsPerRow = Math.floor((boardWidth - EDGE_PAD * 2) / COL_WIDTH) + 1;
+    colsPerRow = Math.max(2, Math.min(6, colsPerRow));
 
     // 按蛇形排列分组 - 预计算每个节点精确位置
     var nodePositions = [];

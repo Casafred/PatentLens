@@ -26,6 +26,75 @@ function fakeDocument() {
   };
 }
 
+function fakeClassList() {
+  const set = new Set();
+  return {
+    add: (name) => set.add(name),
+    remove: (name) => set.delete(name),
+    contains: (name) => set.has(name),
+    toggle: (name, force) => (force ? set.add(name) : set.delete(name)),
+  };
+}
+
+function fakeElement(tagName) {
+  const listeners = {};
+  const el = {
+    tagName: String(tagName).toUpperCase(),
+    id: '',
+    className: '',
+    dataset: {},
+    style: {},
+    children: [],
+    classList: fakeClassList(),
+    addEventListener(name, fn) { (listeners[name] = listeners[name] || []).push(fn); },
+    dispatch(name) { (listeners[name] || []).forEach((fn) => fn({ preventDefault() {}, stopPropagation() {} })); },
+    appendChild(child) { el.children.push(child); },
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+  };
+  Object.defineProperty(el, 'innerHTML', {
+    configurable: true,
+    get() { return el._html || ''; },
+    set(value) {
+      el._html = value;
+      const stub = (dataset) => ({
+        dataset: dataset || {},
+        style: {},
+        classList: fakeClassList(),
+        addEventListener(name, fn) { this._listeners = this._listeners || {}; (this._listeners[name] = this._listeners[name] || []).push(fn); },
+        dispatch(name) { for (const fn of (this._listeners && this._listeners[name]) || []) fn({ preventDefault() {}, stopPropagation() {} }); },
+      });
+      el._q = {
+        '.cache-confirm-overlay': stub(),
+        '.pl-cache-choice-close': stub(),
+        '.cache-confirm-message': stub(),
+      };
+      el._choices = [
+        stub({ cacheChoice: 'cache' }),
+        stub({ cacheChoice: 'reload' }),
+        stub({ cacheChoice: 'cancel' }),
+      ];
+    },
+  });
+  el.querySelector = (selector) => (el._q && el._q[selector]) || null;
+  el.querySelectorAll = (selector) => (selector === '[data-cache-choice]' && el._choices ? el._choices.slice() : []);
+  return el;
+}
+
+function fakeDialogDocument() {
+  const keydown = [];
+  return {
+    readyState: 'complete',
+    documentElement: { style: { setProperty: () => {} } },
+    body: fakeElement('body'),
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    createElement: (tag) => fakeElement(tag),
+    addEventListener(name, fn) { if (name === 'keydown') keydown.push(fn); },
+  };
+}
+
 function loadFeature(file, extra = {}) {
   const window = { localStorage: null, addEventListener: () => {}, ...extra };
   const context = vm.createContext({
@@ -51,6 +120,8 @@ test('US GD fallback titles have Chinese translations for newly requested docume
     ['PET.DEC.AUTO', 'ePetition Grant Letter', 'notification'],
     ['PET.AUTO', 'ePetition Request Form', 'applicant_request'],
     ['MES.GIB', 'Certification of Micro Entity (Gross Income Basis)', 'notification'],
+    ['', 'Track One Request Granted', 'notification'],
+    ['', 'Track One Request', 'applicant_request'],
   ];
 
   for (const [code, title, type] of cases) {
@@ -217,6 +288,62 @@ test('GD citation renderer adds per-column filters and fixed-layout table classe
   assert.match(html, />l\. 48-57</);
   assert.doesNotMatch(html, /Fig\. 5\)/);
   assert.doesNotMatch(html, /Relevancy code:/);
+});
+
+test('cache choice dialog cancel aborts the pending query and clears the flag', async () => {
+  const queries = [];
+  const doc = fakeDialogDocument();
+  const window = loadFeature('src/scripts/app/features/cache-choice-dialog.js', {
+    document: doc,
+    _dossierNewTabFromSearch(input) { queries.push(input); return true; },
+  });
+
+  const dialog = doc.body.children[0];
+  assert.ok(dialog);
+  const choicePromise = window.PatentLensCacheChoice.ask('5 分钟前');
+  dialog.querySelector('.pl-cache-choice-close').dispatch('click');
+  assert.equal(await choicePromise, 'cancel');
+  assert.equal(dialog.classList.contains('hidden'), true);
+
+  window.__plCacheChoiceCancelled = true;
+  assert.equal(window._dossierNewTabFromSearch('US12345678'), false);
+  assert.deepEqual(queries, []);
+  assert.equal(window.__plCacheChoiceCancelled, false);
+
+  assert.equal(window._dossierNewTabFromSearch('US87654321'), true);
+  assert.deepEqual(queries, ['US87654321']);
+});
+
+test('translation popup tools enable dragging and resizing without touching legacy code', () => {
+  const window = loadFeature('src/scripts/app/features/translation-popup-tools.js');
+  const tools = window.PatentLensTranslationPopupTools;
+  assert.ok(tools);
+
+  const body = { style: {} };
+  const header = {
+    dataset: {},
+    style: {},
+    addEventListener(name) { this.listener = name; },
+  };
+  const popup = {
+    nodeType: 1,
+    id: 'generic-translation-popup',
+    dataset: {},
+    style: {},
+    offsetWidth: 320,
+    offsetHeight: 240,
+    firstElementChild: header,
+    querySelector: () => body,
+  };
+
+  tools.enhance(popup);
+  assert.equal(popup.style.resize, 'both');
+  assert.equal(popup.style.overflow, 'hidden');
+  assert.equal(popup.style.minWidth, '280px');
+  assert.equal(popup.style.maxHeight, '90vh');
+  assert.equal(body.style.maxHeight, 'none');
+  assert.equal(header.style.cursor, 'move');
+  assert.equal(header.listener, 'mousedown');
 });
 
 test('history alt action adds the opposite-mode query button without changing row click', () => {

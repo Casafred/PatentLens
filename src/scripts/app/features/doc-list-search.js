@@ -305,30 +305,108 @@
       // 渲染完成后重新对齐关键词与当前命中项，不主动滚动，避免打断用户
       refreshAfterRender(which);
       if (which === "doclist") syncDoclistSearchWidth();
+      if (which === "tl") {
+        syncTimelineSearchWidth();
+        // 卡片入场动画（tl-s-card-in）会临时改变 transform，
+        // 动画结束后再对齐一次，避免按动画中间的位移计算左边距。
+        scheduleTimelineWidthSync();
+      }
     }).observe(board, { childList: true, subtree: false });
   }
 
-  // 让文档列表搜索栏宽度与下方文档条带完全一致（含滚动条占用的宽度）
-  function syncDoclistSearchWidth() {
-    var bar = document.getElementById("doclist-doc-search-bar");
-    var board = document.getElementById("doclist-board");
-    if (!bar || !board) return;
-    var items = board.querySelector(".doclist-items");
-    var width = 0;
+  var timelineWidthTimer = null;
+
+  function scheduleTimelineWidthSync() {
+    if (timelineWidthTimer) clearTimeout(timelineWidthTimer);
+    timelineWidthTimer = setTimeout(function () {
+      timelineWidthTimer = null;
+      syncTimelineSearchWidth();
+    }, 450);
+  }
+
+  function contentBoxOf(el) {
+    if (!el) return null;
+    var rect = el.getBoundingClientRect();
+    var left = rect.left;
+    var right = rect.right;
     try {
-      width = items ? items.getBoundingClientRect().width : 0;
-    } catch (_) {
-      width = 0;
+      var style = window.getComputedStyle(el);
+      left += (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.paddingLeft) || 0);
+      right -= (parseFloat(style.borderRightWidth) || 0) + (parseFloat(style.paddingRight) || 0);
+    } catch (_) {}
+    if (right <= left) return null;
+    return { left: left, right: right };
+  }
+
+  function horizontalBounds(elements) {
+    if (!elements || !elements.length) return null;
+    var minLeft = Infinity;
+    var maxRight = -Infinity;
+    for (var i = 0; i < elements.length; i++) {
+      var rect = elements[i].getBoundingClientRect();
+      if (rect.width <= 0 && rect.height <= 0) continue;
+      if (rect.left < minLeft) minLeft = rect.left;
+      if (rect.right > maxRight) maxRight = rect.right;
     }
-    if (width > 0) {
-      bar.style.width = width + "px";
-      bar.style.marginLeft = "0";
-      bar.style.marginRight = "auto";
-    } else {
+    if (!isFinite(minLeft) || !isFinite(maxRight) || maxRight <= minLeft) return null;
+    return { left: minLeft, width: maxRight - minLeft };
+  }
+
+  // 将搜索栏精确对齐到下方条带/卡片的外沿：宽度取最左到最右的实际范围，
+  // 左边距取相对内容盒的偏移，因此右侧按钮末端必然与条带右端重合。
+  function alignBarToBounds(bar, content, bounds) {
+    var box = contentBoxOf(content);
+    if (!bar) return;
+    if (!box || !bounds || bounds.width <= 0) {
       bar.style.width = "";
       bar.style.marginLeft = "";
       bar.style.marginRight = "";
+      return;
     }
+    var left = bounds.left - box.left;
+    var maxWidth = box.right - box.left;
+    if (left < 0) left = 0;
+    var width = Math.min(bounds.width, maxWidth);
+    if (left + width > maxWidth) left = Math.max(0, maxWidth - width);
+    bar.style.width = width + "px";
+    bar.style.marginLeft = left + "px";
+    bar.style.marginRight = "auto";
+  }
+
+  // 时间轴：对齐到最后一行/第一行实际卡片框的外沿（不再依赖容器宽度）
+  function syncTimelineSearchWidth() {
+    var bar = document.getElementById("tl-doc-search-bar");
+    var content = document.getElementById("timeline-tab-content");
+    if (!bar || !content) return;
+    var container = document.querySelector("#tl-board .tl-s-container");
+    if (!container) {
+      alignBarToBounds(bar, content, null);
+      return;
+    }
+    var cards = container.querySelectorAll(".tl-s-card-wrap");
+    var bounds = horizontalBounds(cards);
+    if (!bounds) {
+      var rect = container.getBoundingClientRect();
+      bounds = rect.width > 0 ? { left: rect.left, width: rect.width } : null;
+    }
+    alignBarToBounds(bar, content, bounds);
+  }
+
+  // 文档列表：对齐到实际文档条带的外沿（含滚动条占用的宽度）
+  function syncDoclistSearchWidth() {
+    var bar = document.getElementById("doclist-doc-search-bar");
+    var content = document.getElementById("doclist-content");
+    var board = document.getElementById("doclist-board");
+    if (!bar || !content || !board) return;
+    var bounds = horizontalBounds(board.querySelectorAll(".doclist-item"));
+    if (!bounds) {
+      var items = board.querySelector(".doclist-items");
+      if (items) {
+        var rect = items.getBoundingClientRect();
+        if (rect.width > 0) bounds = { left: rect.left, width: rect.width };
+      }
+    }
+    alignBarToBounds(bar, content, bounds);
   }
 
   // ── 贴顶悬浮：根据顶部标签栏实际高度计算 sticky 偏移 ──────────────────────
@@ -364,10 +442,18 @@
   function observeStickyLayout() {
     window.addEventListener("resize", scheduleStickyOffset);
     window.addEventListener("resize", syncDoclistSearchWidth);
+    window.addEventListener("resize", syncTimelineSearchWidth);
     var doclistTabBtn = document.querySelector('.tab-btn[data-tab="doclist"]');
     if (doclistTabBtn) {
       doclistTabBtn.addEventListener("click", function () {
         setTimeout(syncDoclistSearchWidth, 0);
+      });
+    }
+    var timelineTabBtn = document.querySelector('.tab-btn[data-tab="timeline"]');
+    if (timelineTabBtn) {
+      timelineTabBtn.addEventListener("click", function () {
+        setTimeout(syncTimelineSearchWidth, 0);
+        scheduleTimelineWidthSync();
       });
     }
     var doclistTabContent = document.getElementById("tab-doclist");
@@ -377,6 +463,21 @@
           setTimeout(syncDoclistSearchWidth, 0);
         }
       }).observe(doclistTabContent, { attributes: true, attributeFilter: ["class"] });
+    }
+    var timelineTabContent = document.getElementById("tab-timeline");
+    if (timelineTabContent && typeof MutationObserver === "function") {
+      new MutationObserver(function () {
+        if (timelineTabContent.classList.contains("active")) {
+          setTimeout(syncTimelineSearchWidth, 0);
+          scheduleTimelineWidthSync();
+        }
+      }).observe(timelineTabContent, { attributes: true, attributeFilter: ["class"] });
+    }
+    var tlBoard = document.getElementById("tl-board");
+    if (tlBoard) {
+      tlBoard.addEventListener("animationend", function () {
+        scheduleTimelineWidthSync();
+      }, true);
     }
     var tabsWrapper = document.querySelector(".tabs-wrapper");
     if (tabsWrapper && typeof ResizeObserver === "function") {
@@ -396,6 +497,17 @@
         } catch (_) {}
       }
     }
+    // 查询结果区从隐藏变为可见时，标签栏高度会从 0 恢复；重新计算 sticky 偏移
+    ["result-section", "app"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el || typeof MutationObserver !== "function") return;
+      try {
+        new MutationObserver(scheduleStickyOffset).observe(el, {
+          attributes: true,
+          attributeFilter: ["class"],
+        });
+      } catch (_) {}
+    });
     scheduleStickyOffset();
   }
 
@@ -420,6 +532,8 @@
     observeBoard("doclist-board", "doclist");
     observeStickyLayout();
     syncDoclistSearchWidth();
+    syncTimelineSearchWidth();
+    scheduleTimelineWidthSync();
   }
 
   window.PatentLensDocSearch = {
