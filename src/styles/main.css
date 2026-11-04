@@ -3204,14 +3204,14 @@ body {
   height: 0;
 }
 
-/* 文字选择模式：OCR 文本框位于文字层上方，会拦截鼠标拖动，
-   开启时让它们不接收鼠标事件，交给文字层完成原生选择。 */
+/* 文字选择模式：只有存在文字层的页面，OCR 文本框才让位给文字选择；
+   扫描件没有文字层，OCR 框必须保持可点击、可框选。 */
 .reader-pdf-container.pdf-text-select-mode {
   user-select: text;
   -webkit-user-select: text;
 }
 
-.reader-pdf-container.pdf-text-select-mode .pdf-block-overlay {
+.reader-pdf-container.pdf-text-select-mode .pdf-page-wrapper.has-text-layer .pdf-block-overlay {
   pointer-events: none !important;
 }
 

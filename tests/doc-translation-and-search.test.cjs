@@ -346,6 +346,16 @@ test('translation popup tools enable dragging and resizing without touching lega
   assert.equal(header.listener, 'mousedown');
 });
 
+test('long selection menu handles selections above the legacy 2000 char cap', () => {
+  const window = loadFeature('src/scripts/app/features/long-selection-menu.js');
+  const menu = window.PatentLensLongSelectionMenu;
+  assert.ok(menu);
+  assert.equal(menu.isLargeSelection('short text'), false);
+  assert.equal(menu.isLargeSelection('x'.repeat(1999)), false);
+  assert.equal(menu.isLargeSelection('x'.repeat(2000)), true);
+  assert.equal(menu.isLargeSelection('x'.repeat(5000)), true);
+});
+
 test('history alt action adds the opposite-mode query button without changing row click', () => {
   let appended = null;
   const restored = [];
