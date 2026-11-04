@@ -443,6 +443,8 @@
     window.addEventListener("resize", scheduleStickyOffset);
     window.addEventListener("resize", syncDoclistSearchWidth);
     window.addEventListener("resize", syncTimelineSearchWidth);
+    // 页面整体滚动时也重新确认冻结偏移，防止标签栏在滚动过程中改变高度
+    window.addEventListener("scroll", scheduleStickyOffset, { passive: true });
     var doclistTabBtn = document.querySelector('.tab-btn[data-tab="doclist"]');
     if (doclistTabBtn) {
       doclistTabBtn.addEventListener("click", function () {
