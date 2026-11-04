@@ -112,8 +112,9 @@
     // 卡片实际宽度 165px（见 .tl-s-card-wrap）。左右留白必须大于半个卡片宽度，
     // 否则最左/最右卡片会溢出容器并被横向滚动裁切，也会让搜索栏无法与卡片外沿对齐。
     var CARD_WIDTH = 165;
-    var CARD_MARGIN = 12;
-    var COL_WIDTH = 185; // 卡片中心间距（165 宽 + 20 间隙），在 1152px 内容区可容纳 6 列
+    // 折叠角标（.tl-s-fold-badge）向右溢出 6px，留白需覆盖角标并再留一点余量
+    var CARD_MARGIN = 16;
+    var COL_WIDTH = 185; // 卡片中心间距（165 宽 + 20 间隙），在加宽后的内容区可容纳 6 列
     var ROW_HEIGHT = 320;
     var EDGE_PAD = CARD_WIDTH / 2 + CARD_MARGIN;
     var CURVE_R = 22;
