@@ -337,8 +337,10 @@ test('translation popup tools enable dragging and resizing without touching lega
   };
 
   tools.enhance(popup);
-  assert.equal(popup.style.resize, 'both');
+  // 使用自绘缩放手柄，关闭浏览器原生 resize，避免拖动时误改宽度
+  assert.equal(popup.style.resize, 'none');
   assert.equal(popup.style.overflow, 'hidden');
+  assert.match(popup.style.width, /px$/);
   assert.equal(popup.style.minWidth, '280px');
   assert.equal(popup.style.maxHeight, '90vh');
   assert.equal(body.style.maxHeight, 'none');

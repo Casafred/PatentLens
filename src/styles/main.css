@@ -5522,10 +5522,10 @@ body {
 /* ══════════════════════════════════════════
    Stable S-Shaped Timeline
    ══════════════════════════════════════════ */
-/* 时间轴比文档列表宽 20%，容纳更多列、减少上下排布长度 */
+/* 时间轴比文档列表宽 20% 以上，容纳更多列并给最右侧卡片的折叠角标留出余量 */
 #timeline-tab-content {
   width: 100%;
-  max-width: 1152px;
+  max-width: 1188px;
   margin-left: auto;
   margin-right: auto;
 }
