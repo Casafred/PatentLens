@@ -314,6 +314,23 @@ test('cache choice dialog cancel aborts the pending query and clears the flag', 
   assert.deepEqual(queries, ['US87654321']);
 });
 
+test('google translate text is routed through the local proxy with legacy fallback', async () => {
+  const calls = [];
+  const window = loadFeature('src/scripts/app/features/google-translate-proxy.js', {
+    googleTranslateText: async () => 'legacy-result',
+    fetch: async (url) => {
+      calls.push(url);
+      return { ok: true, json: async () => [[['本地译文']]] };
+    },
+  });
+
+  assert.equal(await window.googleTranslateText('hello world'), '本地译文');
+  assert.match(calls[0], /^\/api\/google-translate\?q=hello%20world$/);
+
+  window.fetch = async () => { throw new Error('blocked by CORS'); };
+  assert.equal(await window.googleTranslateText('fallback text'), 'legacy-result');
+});
+
 test('translation popup tools enable dragging and resizing without touching legacy code', () => {
   const window = loadFeature('src/scripts/app/features/translation-popup-tools.js');
   const tools = window.PatentLensTranslationPopupTools;

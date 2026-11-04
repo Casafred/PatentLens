@@ -2889,7 +2889,7 @@
           }
           try {
             var src = encodeURIComponent(text);
-            fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=' + src)
+            fetch('/api/google-translate?q=' + src)
               .then(function(r){ return r.json(); })
               .then(function(d){
                 var dst = '';
@@ -3550,7 +3550,7 @@
 
       async function googleTranslateText(text) {
         try {
-          var resp = await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=" + encodeURIComponent(text));
+          var resp = await fetch("/api/google-translate?q=" + encodeURIComponent(text));
           var data = await resp.json();
           if (data && data[0]) {
             return data[0].map(function(seg) { return seg[0]; }).join("");
