@@ -9,8 +9,8 @@
 (function () {
   "use strict";
 
-  var AUTO_HIDE_MS = 20000;
-  var DEDUPE_MS = 12000;
+  var AUTO_HIDE_MS = 5000;
+  var DEDUPE_MS = 8000;
   var _lastShownAt = Object.create(null);
   var _hideTimer = null;
 
@@ -113,12 +113,9 @@
         detailHtml +
         '<div style="margin-top:8px;">' +
           openHtml +
-          '<button type="button" data-role="close" style="margin-left:8px;padding:4px 10px;border-radius:6px;border:1px solid #d97706;background:#fff;color:#92400e;font-size:12px;cursor:pointer;">知道了</button>' +
         "</div>" +
       "</div>";
 
-    var closeBtn = banner.querySelector('[data-role="close"]');
-    if (closeBtn) closeBtn.addEventListener("click", removeBanner);
     var openBtn = banner.querySelector('[data-role="open"]');
     if (openBtn) openBtn.addEventListener("click", function () { openUrl(payload.url); });
 

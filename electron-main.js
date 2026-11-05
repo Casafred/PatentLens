@@ -3041,6 +3041,55 @@ function epoParseDocListHtml(html, office, docNumber, kindCode) {
   return { docs, title: "", docNumber, source: isEp ? "EPO Register" : "EPO Global Dossier", totalDocs: docs.length };
 }
 
+// 通过可见 BrowserWindow 获取 EPO Register 文档列表。
+// EPO 自动降级与「EPO Register 直走（测试模式）」共用这一条路径：
+// espacenet 搜索 → 详情页 Global Dossier 链接 → register.epo.org，
+// 复用 Chromium 网络栈与 Cloudflare cookie，避免 curl 与浏览器行为不一致。
+async function epoFetchDocListViaBrowser(office, docNumber) {
+  const urlInfo = epoBuildDocListUrl(office, docNumber, "A");
+  const browserResult = await epoFetchViaBrowser(urlInfo.url, {
+    wantPdf: false,
+    viaEspacenet: urlInfo.viaEspacenet,
+    office,
+    docNumber,
+  });
+  if (!browserResult.body) {
+    if (!browserResult.browserUrl) browserResult.browserUrl = urlInfo.url;
+    return browserResult;
+  }
+  let epoResult;
+  if (browserResult.docList && browserResult.docList.length > 0) {
+    epoResult = epoParseDocListFromDom(browserResult.docList, office, docNumber, "A");
+    console.log(`[EPO Browser] parsed ${epoResult.docs.length} docs from DOM extraction`);
+  } else {
+    epoResult = epoParseDocListHtml(browserResult.body, office, docNumber, "A");
+    console.log(`[EPO Browser] parsed ${epoResult.docs.length} docs from regex`);
+  }
+  // 缓存真实 APN（从解析结果中取第一个文档的 apn，用于后续 PDF URL 构造）
+  if (epoResult.docs && epoResult.docs.length > 0 && epoResult.docs[0].apn) {
+    const realApn = epoResult.docs[0].apn;
+    setCachedRealApn(office, docNumber, realApn);
+    console.log(`[EPO Browser] cached real APN for ${office}/${docNumber}: ${realApn}`);
+    // EP 用户输入可能是公开号（EP3762180），Page 上解析出的是申请号（EP19703079）。
+    // 回写 docNumber，让前端后续 doc-content / extract-text 使用真实申请号。
+    if (office.toUpperCase() === "EP") {
+      const realEpNum = String(realApn).match(/^EP(\d+)$/i);
+      if (realEpNum) {
+        const realDocNum = realEpNum[1];
+        // 把浏览器阶段缓存的 cookies / dossier URL 同步到真实申请号键下，
+        // 否则前端用真实申请号请求 PDF 时会缓存未命中，重新弹窗。
+        const cookies = getCachedEpoCookies(office, docNumber);
+        if (cookies) setCachedEpoCookies(office, realDocNum, cookies);
+        setCachedRealApn(office, realDocNum, realApn);
+        setCachedDossierUrl(office, realDocNum, `${EPO_REGISTER_BASE}/application?number=EP${realDocNum}&lng=en&tab=doclist`);
+        epoResult.docNumber = realDocNum;
+        console.log(`[EPO Browser] resolved EP application number: EP${epoResult.docNumber}`);
+      }
+    }
+  }
+  return epoResult;
+}
+
 // ── 数据源异常提醒 ──────────────────────────────────────────────────────────
 // 当 Google Patents / Global Dossier / EPO Register 等外部数据源出现网络或
 // 服务器错误时，主动通知渲染层弹出明确提示，避免用户误以为是本软件故障。
@@ -3256,43 +3305,26 @@ async function proxyGdApi(urlPath, res) {
       const _pdfUrlSource = epoPdfUrlParam ? "epoPdfUrl param" : (_cachedViewerUrl ? "cached viewer url" : "constructed");
       console.log(`[EPO Direct] doc-content PDF URL: ${_effectivePdfUrl} (${_pdfUrlSource})`);
 
-      let epoResult = null;
-      if (epoDirect) {
-        const _pdfCandidates = epoBuildPdfUrlCandidates(office, docNumber, docId, _effectivePdfUrl);
-        // 1) 先用当前默认 session 的最新 cookies 在主进程侧直接取 PDF。
-        // 这一步不创建窗口，也不会受 Chromium 内置 PDF 查看器的页面上下文限制，
-        // 是避免“一直卡在正在加载 PDF”的首选路径。
-        console.log(`[EPO Direct] trying PDF via live session cookies for ${office}/${docNumber}/${docId}`);
-        epoResult = await epoFetchPdfWithLiveSession(office, docNumber, _pdfCandidates, docId, {
-          maxTimeSec: 15, maxHops: 2, maxAttempts: 1,
-        });
-        if (epoResult && epoResult.body) {
-          console.log(`[EPO Direct] PDF succeeded via live session, size=${epoResult.body.length}`);
-        } else {
-          console.log(`[EPO Direct] live session PDF failed (${epoResult && epoResult.error}), falling back to browser window...`);
-          epoResult = null;
-        }
-        // 2) 主进程侧失败才 fallback 到 BrowserWindow（有超时、且静默模式不弹窗）
-        if (!epoResult) {
-          epoResult = await epoFetchViaBrowser(_urlInfo2.url, {
-            wantPdf: true,
-            pdfUrl: _effectivePdfUrl,
-            pdfUrlCandidates: _pdfCandidates,
-            viaEspacenet: _urlInfo2.viaEspacenet,
-            office,
-            docNumber,
-            docId,
-          });
-        }
+      const _pdfCandidates = epoBuildPdfUrlCandidates(office, docNumber, docId, _effectivePdfUrl);
+      // 自动降级与直走（测试）模式统一：先用当前 session 的 cookies 在主进程侧取 PDF，
+      // 失败后再用可见 BrowserWindow（与直走模式完全相同的路径）。
+      console.log(`[EPO] trying PDF via live session cookies for ${office}/${docNumber}/${docId}`);
+      let epoResult = await epoFetchPdfWithLiveSession(office, docNumber, _pdfCandidates, docId, {
+        maxTimeSec: 15, maxHops: 2, maxAttempts: 1,
+      });
+      if (epoResult && epoResult.body) {
+        console.log(`[EPO] PDF succeeded via live session, size=${epoResult.body.length}`);
       } else {
-        // 非 EPO 直走模式下也优先用 Chromium 网络栈（与用户浏览器一致的代理/CF）
-        const _pdfCandidates = epoBuildPdfUrlCandidates(office, docNumber, docId, _effectivePdfUrl);
-        epoResult = await epoFetchPdfWithLiveSession(office, docNumber, _pdfCandidates, docId, {
-          maxTimeSec: 15, maxHops: 2, maxAttempts: 2,
+        console.log(`[EPO] live session PDF failed (${epoResult && epoResult.error}), falling back to browser window...`);
+        epoResult = await epoFetchViaBrowser(_urlInfo2.url, {
+          wantPdf: true,
+          pdfUrl: _effectivePdfUrl,
+          pdfUrlCandidates: _pdfCandidates,
+          viaEspacenet: _urlInfo2.viaEspacenet,
+          office,
+          docNumber,
+          docId,
         });
-        if (!epoResult || !epoResult.body) {
-          epoResult = await epoFetchPdf(office, docNumber, docId);
-        }
       }
       epoResult = epoResult || {};
       if (epoResult.body) {
@@ -3352,57 +3384,9 @@ async function proxyGdApi(urlPath, res) {
         browserUrl: docContentBrowserUrl,
       }));
     } else if (isDocList) {
-      // EPO 直走模式：用可见 BrowserWindow 获取 HTML 后解析（绕过 CF JS challenge）
-      // 非 EP 局：先走 espacenet 详情页找 Global Dossier 链接，再跳转到 register.epo.org
-      // 非 EPO 直走模式：保留原 curl 路径
-      let epoResult;
-      if (epoDirect) {
-        const urlInfo = epoBuildDocListUrl(office, docNumber, "A");
-        const browserResult = await epoFetchViaBrowser(urlInfo.url, {
-          wantPdf: false,
-          viaEspacenet: urlInfo.viaEspacenet,
-          office,
-          docNumber,
-        });
-        if (browserResult.body) {
-          // 优先使用 DOM 提取的文档列表（更可靠，能处理各种链接格式），
-          // fallback 到正则解析 HTML
-          if (browserResult.docList && browserResult.docList.length > 0) {
-            epoResult = epoParseDocListFromDom(browserResult.docList, office, docNumber, "A");
-            console.log(`[EPO Browser] parsed ${epoResult.docs.length} docs from DOM extraction`);
-          } else {
-            epoResult = epoParseDocListHtml(browserResult.body, office, docNumber, "A");
-            console.log(`[EPO Browser] parsed ${epoResult.docs.length} docs from regex`);
-          }
-          // 缓存真实 APN（从解析结果中取第一个文档的 apn，用于后续 PDF URL 构造）
-          if (epoResult.docs && epoResult.docs.length > 0 && epoResult.docs[0].apn) {
-            const realApn = epoResult.docs[0].apn;
-            setCachedRealApn(office, docNumber, realApn);
-            console.log(`[EPO Browser] cached real APN for ${office}/${docNumber}: ${realApn}`);
-            // EP 用户输入可能是公开号（EP3762180），Page 上解析出的是申请号（EP19703079）。
-            // 回写 docNumber，让前端后续 doc-content / extract-text 使用真实申请号。
-            if (office.toUpperCase() === "EP") {
-              const realEpNum = String(realApn).match(/^EP(\d+)$/i);
-              if (realEpNum) {
-                const realDocNum = realEpNum[1];
-                // 把浏览器阶段缓存的 cookies / dossier URL 同步到真实申请号键下，
-                // 否则前端用真实申请号请求 PDF 时会缓存未命中，重新弹窗。
-                const cookies = getCachedEpoCookies(office, docNumber);
-                if (cookies) setCachedEpoCookies(office, realDocNum, cookies);
-                setCachedRealApn(office, realDocNum, realApn);
-                setCachedDossierUrl(office, realDocNum, `${EPO_REGISTER_BASE}/application?number=EP${realDocNum}&lng=en&tab=doclist`);
-                epoResult.docNumber = realDocNum;
-                console.log(`[EPO Browser] resolved EP application number: EP${epoResult.docNumber}`);
-              }
-            }
-          }
-        } else {
-          epoResult = browserResult; // 错误或 cloudflare 标记
-          if (!epoResult.browserUrl) epoResult.browserUrl = urlInfo.url;
-        }
-      } else {
-        epoResult = await epoFetchDocList(office, docNumber, "A");
-      }
+      // 自动降级与直走（测试）模式统一：都用可见 BrowserWindow 获取 HTML 后解析，
+      // 通过 espacenet → Global Dossier → register.epo.org，复用 Chromium 网络栈与 CF cookie。
+      const epoResult = await epoFetchDocListViaBrowser(office, docNumber);
       if (epoResult.docs) {
         // 缓存每篇文档的真实查看器链接（含 EP 公开号→申请号两种键），
         // 用户点击文档查看时后端可直接复用该链接后台获取 PDF，无需再次弹窗。
@@ -3436,9 +3420,7 @@ async function proxyGdApi(urlPath, res) {
         return;
       }
       const docListBrowserUrl = epoResult.browserUrl || (`https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist`);
-      if (epoDirect) {
-        notifyDataSourceIssue(alertSource, "unavailable", `GD: ${gdFailReason}; EPO: ${epoResult.error || "failed"}`, docListBrowserUrl);
-      }
+      notifyDataSourceIssue(alertSource, "unavailable", `GD: ${gdFailReason}; EPO: ${epoResult.error || "failed"}`, docListBrowserUrl);
       res.writeHead(502, { "Content-Type": "application/json", ...corsHeaders });
       res.end(JSON.stringify({
         error: `上游审查文档数据源暂时不可用（GD: ${gdFailReason}；EPO: ${epoResult.error || "failed"}）。这通常是 USPTO / EPO 服务器或网络问题，不是 PatentLens 故障，请稍后重试。`,
@@ -3447,58 +3429,23 @@ async function proxyGdApi(urlPath, res) {
         browserUrl: docListBrowserUrl,
       }));
     } else if (isFamily) {
-      // patent-family 路径：GD 失败时探测 EPO 状态。
-      // EPO Register 没有同族接口，但调用 epoFetchDocList 可探测 EPO 是否可用。
-      // 如果 EPO 可用，构造最小 familyData 让前端继续走 doc-list 流程。
-      const epoResult = await epoFetchDocList(office, docNumber, "A");
-      if (epoResult.docs) {
-        // epoFetchDocList 会把 EP 公开号解析成真实申请号，同族兜底也必须使用解析后的号码
-        const resolvedDocNumber = epoResult.docNumber || docNumber;
-        const familyData = {
-          corrAppNum: resolvedDocNumber,
-          list: [{
-            countryCode: office,
-            appNum: resolvedDocNumber,
-            docNum: { docNumber: resolvedDocNumber },
-            title: "",
-          }],
-          source: "EPO Register fallback (no family data)",
-          totalMembers: 1,
-        };
-        console.log(`[EPO Fallback] family GD failed, using EPO Register docNumber for ${office}/${resolvedDocNumber}`);
-        res.writeHead(200, { "Content-Type": "application/json", "X-Epo-Fallback": "1", ...corsHeaders });
-        res.end(JSON.stringify(familyData));
-        return;
-      }
-      if (epoResult.cloudflare) {
-        res.writeHead(503, { "Content-Type": "application/json", ...corsHeaders });
-        res.end(JSON.stringify({
-          error: "GD 同族不可用，且 EPO Register 需要人机验证。请在浏览器中打开 register.epo.org 完成验证后重试。",
-          cloudflare: true,
-          browserUrl: epoResult.browserUrl || (`https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist`),
-        }));
-        return;
-      }
-      if (epoResult.rateLimited) {
-        res.writeHead(503, { "Content-Type": "application/json", ...corsHeaders });
-        res.end(JSON.stringify({
-          error: `GD 同族不可用（HTTP ${gdResult?.statusCode || 500}），且 EPO Register 被限流：${epoResult.error}。请稍后重试或使用浏览器直接查询。`,
-          rateLimited: true,
-          browserUrl: epoResult.browserUrl,
-        }));
-        return;
-      }
-      const familyBrowserUrl = epoResult.browserUrl || (`https://register.epo.org/application?number=${office}${docNumber}&lng=en&tab=doclist`);
-      if (epoDirect) {
-        notifyDataSourceIssue(alertSource, "unavailable", `GD family: ${gdFailReason}; EPO: ${epoResult.error || "failed"}`, familyBrowserUrl);
-      }
-      res.writeHead(502, { "Content-Type": "application/json", ...corsHeaders });
-      res.end(JSON.stringify({
-        error: `上游同族数据源暂时不可用（GD: ${gdFailReason}；EPO: ${epoResult.error || "failed"}）。这通常是 USPTO / EPO 服务器或网络问题，不是 PatentLens 故障，请稍后重试。`,
-        sourceOutage: true,
-        cloudflare: true,
-        browserUrl: familyBrowserUrl,
-      }));
+      // 同族信息 EPO Register 不提供。自动降级与直走（测试）模式保持一致：
+      // 构造最小 familyData，让前端继续走统一的 EPO 文档列表查询路径，
+      // 不再用 curl 探测 EPO，避免与测试模式的行为分叉。
+      const familyData = {
+        corrAppNum: docNumber,
+        list: [{
+          countryCode: office,
+          appNum: docNumber,
+          docNum: { docNumber: docNumber },
+          title: "",
+        }],
+        source: "EPO Register fallback (no family data)",
+        totalMembers: 1,
+      };
+      console.log(`[EPO Fallback] family GD failed, using minimal familyData for ${office}/${docNumber}`);
+      res.writeHead(200, { "Content-Type": "application/json", "X-Epo-Fallback": "1", ...corsHeaders });
+      res.end(JSON.stringify(familyData));
     } else {
       notifyDataSourceIssue(alertSource, "unavailable", gdFailReason, GD_SITE_URL);
       corsHeaders["Content-Type"] = "application/json";
@@ -4551,17 +4498,17 @@ async function extractPdfText(req, res) {
           maxTimeSec: 20, maxHops: 2, maxAttempts: 2,
         });
         if (!epoResult || !epoResult.body) {
-          if (epoDirect) {
-            const cachedCookies = getCachedEpoCookies(epOffice, epDocNum);
-            if (cachedCookies) {
-              epoResult = await epoFetchPdfWithSession(epOffice, epDocNum, _pdfUrl, epDocId, {
-                maxTimeSec: 20, maxHops: 2, maxAttempts: 2,
-              });
-            } else {
-              epoResult = epoResult || { error: "no session cookies" };
-            }
-          } else {
+          // 与直走（测试）模式一致：优先使用浏览器阶段缓存的 session cookies。
+          const cachedCookies = getCachedEpoCookies(epOffice, epDocNum);
+          if (cachedCookies) {
+            epoResult = await epoFetchPdfWithSession(epOffice, epDocNum, _pdfUrl, epDocId, {
+              maxTimeSec: 20, maxHops: 2, maxAttempts: 2,
+            });
+          } else if (!epoDirect) {
+            // 自动降级场景下再保留 curl 兜底（测试模式仍与原先一致）。
             epoResult = await epoFetchPdf(epOffice, epDocNum, epDocId);
+          } else {
+            epoResult = epoResult || { error: "no session cookies" };
           }
         }
         if (epoResult.body) {
