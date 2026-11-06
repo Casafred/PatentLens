@@ -17,6 +17,23 @@
   var cache = Object.create(null); // key -> { response, loadedAt }
   var loadingKeys = Object.create(null);
 
+  // EPO Register / EPO Global Dossier 降级源不提供 Citation Data 模块，
+  // 这不是网络故障，不能弹网络错误提醒，只需在引用模块内说明去 GP 原文查看。
+  var EPO_FALLBACK_NOTE =
+    "当前审查文档通过 EPO Register 降级获取。EPO GD 不提供引用模块，因此没有引用数据。" +
+    "请转到「专利原文」查询该专利，在「引用」标签中查看引用情况。";
+
+  function isEpoFallbackData(data) {
+    if (!data) return false;
+    if (data.epoFallback) return true;
+    var sources = [data.dataSource, data.source, data.documents && data.documents.source];
+    for (var i = 0; i < sources.length; i++) {
+      var source = String(sources[i] || "");
+      if (/EPO/i.test(source) && /Register|Global\s*Dossier/i.test(source)) return true;
+    }
+    return false;
+  }
+
   function getContext() {
     var data = null;
     try {
@@ -70,6 +87,7 @@
       office: office,
       appNum: appNum,
       candidates: candidates,
+      epoFallback: isEpoFallbackData(data),
     };
   }
 
@@ -144,6 +162,11 @@
       setPlaceholder("请先查询审查文档，再加载 GD Citation Data。");
       return;
     }
+    if (ctx.epoFallback) {
+      setStatus("EPO 降级源无引用数据");
+      setPlaceholder(EPO_FALLBACK_NOTE);
+      return;
+    }
     var key = cacheKeyFor(ctx);
     var entry = cache[key];
     if (entry) {
@@ -167,6 +190,11 @@
     var ctx = getContext();
     if (!ctx) {
       setPlaceholder("请先查询审查文档，再加载 GD Citation Data。");
+      return;
+    }
+    if (ctx.epoFallback) {
+      setStatus("EPO 降级源无引用数据");
+      setPlaceholder(EPO_FALLBACK_NOTE);
       return;
     }
 
@@ -266,6 +294,8 @@
     refresh: function () { return ensureLoaded(true); },
     getContext: getContext,
     clearCache: function () { cache = Object.create(null); },
+    _epoFallbackNote: EPO_FALLBACK_NOTE,
+    _isEpoFallbackData: isEpoFallbackData,
   };
 
   if (document.readyState === "loading") {

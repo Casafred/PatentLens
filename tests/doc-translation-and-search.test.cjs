@@ -122,6 +122,10 @@ test('US GD fallback titles have Chinese translations for newly requested docume
     ['MES.GIB', 'Certification of Micro Entity (Gross Income Basis)', 'notification'],
     ['', 'Track One Request Granted', 'notification'],
     ['', 'Track One Request', 'applicant_request'],
+    ['', '(Electronic) Receipt', 'notification'],
+    ['', 'Description', 'patent_doc'],
+    ['', 'Requirement for Restriction/Election', 'office_action'],
+    ['', 'Advisory Action (PTOL-303)', 'office_action'],
   ];
 
   for (const [code, title, type] of cases) {
@@ -221,6 +225,25 @@ test('dossier citation tab builds GD candidates from the current dossier applica
   assert.equal(context.appNum, '16123456');
   assert.equal(context.candidates[0].type, 'application');
   assert.equal(context.candidates[0].docNumber, '16123456');
+  assert.equal(context.epoFallback, false);
+});
+
+test('dossier citation tab flags EPO fallback sources and explains why no citation module exists', () => {
+  const window = loadFeature('src/scripts/app/features/dossier-citation-tab.js', {
+    renderOverview() {},
+  });
+  window.currentData = {
+    office: 'US',
+    applicationNumber: '16123456',
+    raw: 'US16123456',
+    epoFallback: true,
+    dataSource: 'EPO Register',
+  };
+  const keyword = window.PatentLensDossierCitation;
+  assert.equal(keyword._isEpoFallbackData(window.currentData), true);
+  assert.equal(keyword.getContext().epoFallback, true);
+  assert.match(keyword._epoFallbackNote, /EPO GD 不提供引用模块/);
+  assert.match(keyword._epoFallbackNote, /专利原文/);
 });
 
 test('family member links prefer publication numbers and fall back to office + application number', () => {
@@ -245,6 +268,26 @@ test('family member links prefer publication numbers and fall back to office + a
     links.gdUrlForMember({ countryCode: 'US', appNum: '16123456', publicationNumber: 'US20220301610A1' }),
     /^https:\/\/globaldossier\.uspto\.gov\/#\/result\/publication\/US\/20220301610A1\/\d+$/
   );
+});
+
+test('GD citation renderer explains that EPO fallback has no citation module', () => {
+  const window = loadFeature('src/scripts/app/features/gd-citation-data.js', { renderPatentDetail() {} });
+  const citation = window.PatentLensGdCitationData;
+  let html = '';
+  const body = {
+    get innerHTML() { return html; },
+    set innerHTML(value) { html = value; },
+    closest() { return null; },
+    querySelectorAll() { return []; },
+  };
+  citation.renderCitationData(body, {
+    citationList: [],
+    nplCitationList: [],
+    noCitationModule: true,
+    note: 'EPO GD 不提供引用模块，请转到 GP 原文查询中查看引用情况。',
+  });
+  assert.match(html, /EPO GD 不提供引用模块/);
+  assert.match(html, /GP 原文/);
 });
 
 test('GD citation renderer adds per-column filters and fixed-layout table classes', () => {

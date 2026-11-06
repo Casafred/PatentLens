@@ -3135,6 +3135,7 @@ async function proxyGdApi(urlPath, res) {
   const isDocContent = urlPathNoQuery.includes("/doc-content/");
   const isDocList = urlPathNoQuery.includes("/doc-list/");
   const isFamily = urlPathNoQuery.includes("/patent-family/");
+  const isCitation = urlPathNoQuery.includes("/citation-classification/");
   const pathMatch = urlPathNoQuery.match(/\/svc\/(?:doclist|doccontent)\/([^/]+)\/([^/]+)(?:\/([^/]+)\/([^/]+)\/([^/]+))?/);
   const familyPathMatch = isFamily
     ? urlPathNoQuery.match(/\/svc\/family\/(?:application|publication|patent)\/([^/]+)\/([^/?]+)/)
@@ -3152,6 +3153,24 @@ async function proxyGdApi(urlPath, res) {
   const docId = pathMatch && pathMatch[3] ? decodeURIComponent(pathMatch[3]) : null;
   const supportsEpo = office && EPO_OFFICES.has(office.toUpperCase());
   const alertSource = epoDirect ? "epo" : (supportsEpo ? "gd_epo" : "gd");
+
+  // EPO 降级源（直走/测试模式）没有 GD Citation Data 模块。
+  // 直接返回空引用数据并标记 noCitationModule，禁止触发网络错误提醒，避免误导用户。
+  if (isCitation && epoDirect) {
+    corsHeaders["Content-Type"] = "application/json";
+    res.writeHead(200, {
+      ...corsHeaders,
+      "X-Epo-Fallback": "1",
+      "X-Epo-No-Citation": "1",
+    });
+    res.end(JSON.stringify({
+      citationList: [],
+      nplCitationList: [],
+      noCitationModule: true,
+      note: "EPO GD 不提供引用模块，请转到 GP 原文查询中查看引用情况。",
+    }));
+    return;
+  }
 
   if (isDocContent) {
     const cachedPdf = getSessionPdf(urlPathNoQuery);
