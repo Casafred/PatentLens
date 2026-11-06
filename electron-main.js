@@ -346,6 +346,36 @@ async function _gdReadTokenFromWindow(win) {
   }
 }
 
+function _isGdLoginUrl(url) {
+  try {
+    return /(^|\.)(auth\.uspto\.gov|uspto-gov\.okta\.com)$/i.test(new URL(String(url || "")).hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+// 只在用户前台使用应用时才允许自动显示 GD 登录窗口。
+// 应用最小化/后台静默时绝不弹窗，避免无操作时突然出现空白 Global Dossier 窗口。
+function _canAutoShowGdLogin() {
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    return mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused();
+  } catch (_) {
+    return false;
+  }
+}
+
+function _showGdAuthWindowIfNeeded(win) {
+  if (!win || win.isDestroyed() || win.isVisible()) return false;
+  if (!_canAutoShowGdLogin()) return false;
+  try {
+    win.show();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function _ensureGdAuthWindow() {
   if (_gdAuthWindow && !_gdAuthWindow.isDestroyed()) return _gdAuthWindow;
   try {
@@ -368,11 +398,12 @@ function _ensureGdAuthWindow() {
   win.on("closed", () => {
     if (_gdAuthWindow === win) _gdAuthWindow = null;
   });
-  // 一旦落到 Okta 登录页就展示给用户；登录成功后页面会回到 GD 并写入 token。
+  // 一旦落到 Okta/USPTO 登录页就展示给用户；登录成功后页面会回到 GD 并写入 token。
+  // 只有真正的登录页才显示，避免加载慢或被拦截时弹出空白 Global Dossier 白屏。
   win.webContents.on("did-finish-load", () => {
     try {
       if (win.isDestroyed()) return;
-      if (/auth\.uspto\.gov/i.test(win.webContents.getURL()) && !win.isVisible()) win.show();
+      if (_isGdLoginUrl(win.webContents.getURL())) _showGdAuthWindowIfNeeded(win);
     } catch (_) {}
   });
   win.loadURL(GD_SITE_URL).catch((e) => console.warn("[GD Auth] loadURL failed:", e.message));
@@ -431,13 +462,13 @@ async function getGdAccessToken(options) {
       }
       let url = "";
       try { url = win.webContents.getURL(); } catch (_) {}
-      if (/auth\.uspto\.gov/i.test(url)) {
-        if (!win.isVisible()) { try { win.show(); } catch (_) {} }
-        shownAt = now;
+      if (_isGdLoginUrl(url)) {
+        if (_showGdAuthWindowIfNeeded(win)) shownAt = now;
       } else if (!shownAt && now - start > 8000) {
-        // 不是登录页却一直没有 token（加载慢或被拦截），也展示窗口便于用户处理
-        try { if (!win.isVisible()) win.show(); } catch (_) {}
+        // 不再因为“加载慢/被拦截”就弹出窗口：此时页面往往还是空白 Global Dossier，
+        // 用户没有操作却突然弹白屏非常困扰。保持隐藏，让查询自动走 EPO 降级。
         shownAt = now;
+        console.log("[GD Auth] login page not detected, keeping GD window hidden:", url || "unknown");
       }
       // token 已过期：重新加载，让 Okta 用持久 session 静默续期
       if (info && info.token && info.expiresAtMs - now <= 60000 && now - lastReloadAt > 15000) {
