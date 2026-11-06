@@ -201,6 +201,10 @@ var PATENT_STATUS = {
       "electronic request for interview with examiner": "与审查员面谈的电子请求 (Electronic Request for Interview with Examiner)",
       "examiner initiated interview summary": "审查员发起的面谈摘要 (Examiner Initiated Interview Summary)",
       "advisory action": "建议性意见 (Advisory Action)",
+      "advisory action (ptol-303)": "建议性意见 (Advisory Action (PTOL-303))",
+      "requirement for restriction/election": "限制/选择要求 (Requirement for Restriction/Election)",
+      "(electronic) receipt": "电子回执 (Electronic Receipt)",
+      "electronic receipt": "电子回执 (Electronic Receipt)",
       "terminal disclaimer-filed (electronic)": "终端弃权声明-电子提交 (Terminal Disclaimer-Filed (Electronic))",
       "terminal disclaimer-electronic-approved": "终端弃权声明-电子批准 (Terminal Disclaimer-Electronic-Approved)",
       "epetition grant letter": "电子请愿批准信 (ePetition Grant Letter)",
@@ -756,6 +760,7 @@ var EPO_DESC_MAP = {
   "examination communication": "审查通信 (Examination Communication)",
   "search opinion": "检索意见 (Search Opinion)",
   "written opinion": "书面意见 (Written Opinion)",
+  "requirement for restriction/election": "限制/选择要求 (Requirement for Restriction/Election)",
   // ── 申请人答复类 ──
   "applicant arguments/remarks made in an amendment": "申请人意见陈述 (Applicant Arguments/Remarks Made in an Amendment)",
   "amendment/request for reconsideration-after non-final rejection": "非最终驳回后修改/复审请求 (Amendment/Request for Reconsideration-After Non-Final Rejection)",
@@ -799,6 +804,7 @@ var EPO_DESC_MAP = {
   // ── 专利文件类 ──
   "claims": "权利要求 (Claims)",
   "specification": "说明书 (Specification)",
+  "description": "说明书 (Description)",
   "drawings-only black and white line drawings": "黑白线条图 (Drawings - Black and White Line Drawings)",
   "drawings": "附图 (Drawings)",
   "abstract": "摘要 (Abstract)",
@@ -808,6 +814,8 @@ var EPO_DESC_MAP = {
   // ── 通知类 ──
   "electronic filing system acknowledgment receipt": "电子提交确认回执 (Electronic Filing System Acknowledgment Receipt)",
   "filing receipt": "申请受理回执 (Filing Receipt)",
+  "(electronic) receipt": "电子回执 (Electronic Receipt)",
+  "electronic receipt": "电子回执 (Electronic Receipt)",
   "notice of publication": "公开通知 (Notice of Publication)",
   "transmission of search report": "检索报告传送通知 (Communication re Transmission of Search Report)",
   "after final consideration program decision": "最终驳回后考虑计划决定 (After Final Consideration Program Decision)",
@@ -820,6 +828,7 @@ var EPO_DESC_MAP = {
   "electronic request for interview with examiner": "与审查员面谈的电子请求 (Electronic Request for Interview with Examiner)",
   "examiner initiated interview summary": "审查员发起的面谈摘要 (Examiner Initiated Interview Summary)",
   "advisory action": "建议性意见 (Advisory Action)",
+  "advisory action (ptol-303)": "建议性意见 (Advisory Action (PTOL-303))",
   "terminal disclaimer-filed (electronic)": "终端弃权声明-电子提交 (Terminal Disclaimer-Filed (Electronic))",
   "terminal disclaimer-electronic-approved": "终端弃权声明-电子批准 (Terminal Disclaimer-Electronic-Approved)",
   "epetition grant letter": "电子请愿批准信 (ePetition Grant Letter)",
@@ -867,7 +876,8 @@ function _classifyEpoDescType(key) {
   // 审查意见类
   if (["non-final rejection", "final rejection", "examiner's answer", "office action",
        "examination report", "examination communication", "search opinion",
-       "written opinion", "annex to intention to grant", "advisory action"].includes(key)) return "office_action";
+       "written opinion", "annex to intention to grant", "advisory action",
+       "advisory action (ptol-303)", "requirement for restriction/election"].includes(key)) return "office_action";
   // 申请人答复类
   if (["applicant arguments/remarks made in an amendment",
        "amendment/request for reconsideration-after non-final rejection",
@@ -892,7 +902,7 @@ function _classifyEpoDescType(key) {
        "european search report", "search report", "search strategy",
        "search information", "bibliographic data"].includes(key)) return "citation";
   // 专利文件类
-  if (["claims", "specification", "drawings-only black and white line drawings",
+  if (["claims", "specification", "description", "drawings-only black and white line drawings",
        "drawings", "abstract", "publication", "sequence listing",
        "english translation of the claims"].includes(key)) return "patent_doc";
   // 官方通知类
@@ -902,6 +912,7 @@ function _classifyEpoDescType(key) {
        "notice of abandonment", "abandonment",
        "notice of do/eo missing requirements mailed",
        "examiner initiated interview summary",
+       "(electronic) receipt", "electronic receipt",
        "track one request granted"].includes(key)) return "notification";
   // 异议/客户数据请求：归入通知栏，保证在看板中有对应列
   if (key === "opposition" || key === "client data request") return "notification";

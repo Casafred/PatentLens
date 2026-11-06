@@ -351,6 +351,13 @@
     var citationList = response && Array.isArray(response.citationList) ? response.citationList : [];
     var nplList = response && Array.isArray(response.nplCitationList) ? response.nplCitationList : [];
 
+    // EPO 降级源没有 Citation Data 模块：这是数据源能力差异，不是网络故障。
+    if (response && response.noCitationModule) {
+      body.innerHTML = '<div class="gd-citation-empty">'
+        + escapeHtml(response.note || "EPO GD 不提供引用模块，引用情况请以上方 GP 引用数据为准。") + "</div>";
+      return;
+    }
+
     if (!citationList.length && !nplList.length) {
       var emptyPanel = body.closest ? body.closest(".pd-tab-panel") : null;
       var emptyEl = emptyPanel ? emptyPanel.querySelector(".pd-empty") : null;
