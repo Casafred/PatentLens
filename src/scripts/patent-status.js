@@ -16,6 +16,7 @@ var PATENT_STATUS = {
       "CTFR": { name: "最终驳回 (Final Rejection)", type: "office_action", stage: "审查中" },
       "CTRS": { name: "限制性要求 (Restriction Requirement)", type: "office_action", stage: "审查中" },
       "CTAV": { name: "放弃意向通知 (Notice of Abandonment)", type: "notification", stage: "审查中" },
+      "CTAD": { name: "建议性意见 (Advisory Action (PTOL-303))", type: "office_action", stage: "审查中" },
       "CTED": { name: "撤回回复 (Response after Final - Withdrawn)", type: "response", stage: "审查中" },
       "CTEQ": { name: "其他回复 (Other Response)", type: "response", stage: "审查中" },
       "CTMS": { name: "其他文件 (Miscellaneous)", type: "misc", stage: "审查中" },
@@ -157,6 +158,7 @@ var PATENT_STATUS = {
       "communication regarding the transmission of the european search report": "检索报告传送通知 (Communication re Transmission of the European Search Report)",
       "communication re transmission of search report": "检索报告传送通知 (Communication re Transmission of Search Report)",
       "transmission of search report": "检索报告传送通知 (Communication re Transmission of Search Report)",
+      "after final consideration program request": "最终驳回后考虑计划请求 (After Final Consideration Program Request)",
       "after final consideration program decision": "最终驳回后考虑计划决定 (After Final Consideration Program Decision)",
       "amendment after final or under 37cfr 1.312": "最终驳回后修改或37CFR 1.312修改 (Amendment After Final or under 37CFR 1.312)",
       "applicant response to pre-exam formalities notice": "审查前形式审查通知答复 (Applicant Response to Pre-Exam Formalities Notice)",
@@ -200,6 +202,9 @@ var PATENT_STATUS = {
       "notice of do/eo missing requirements mailed": "指定局/选定局缺失要求通知 (Notice of DO/EO Missing Requirements Mailed)",
       "electronic request for interview with examiner": "与审查员面谈的电子请求 (Electronic Request for Interview with Examiner)",
       "examiner initiated interview summary": "审查员发起的面谈摘要 (Examiner Initiated Interview Summary)",
+      "examiner interview summary record": "审查员面谈记录 (Examiner Interview Summary Record (PTOL-413))",
+      "applicant summary of interview with examiner": "申请人与审查员面谈摘要 (Applicant Summary of Interview with Examiner)",
+      "internet communications authorization": "互联网通信授权 (Internet Communications Authorization)",
       "advisory action": "建议性意见 (Advisory Action)",
       "advisory action (ptol-303)": "建议性意见 (Advisory Action (PTOL-303))",
       "requirement for restriction/election": "限制/选择要求 (Requirement for Restriction/Election)",
@@ -818,6 +823,7 @@ var EPO_DESC_MAP = {
   "electronic receipt": "电子回执 (Electronic Receipt)",
   "notice of publication": "公开通知 (Notice of Publication)",
   "transmission of search report": "检索报告传送通知 (Communication re Transmission of Search Report)",
+  "after final consideration program request": "最终驳回后考虑计划请求 (After Final Consideration Program Request)",
   "after final consideration program decision": "最终驳回后考虑计划决定 (After Final Consideration Program Decision)",
   "applicant response to pre-exam formalities notice": "审查前形式审查通知答复 (Applicant Response to Pre-Exam Formalities Notice)",
   "pre-exam formalities notice": "审查前形式审查通知 (Pre-Exam Formalities Notice)",
@@ -827,6 +833,10 @@ var EPO_DESC_MAP = {
   "notice of do/eo missing requirements mailed": "指定局/选定局缺失要求通知 (Notice of DO/EO Missing Requirements Mailed)",
   "electronic request for interview with examiner": "与审查员面谈的电子请求 (Electronic Request for Interview with Examiner)",
   "examiner initiated interview summary": "审查员发起的面谈摘要 (Examiner Initiated Interview Summary)",
+  "examiner interview summary record": "审查员面谈记录 (Examiner Interview Summary Record (PTOL-413))",
+  "applicant summary of interview with examiner": "申请人与审查员面谈摘要 (Applicant Summary of Interview with Examiner)",
+  "internet communications authorization": "互联网通信授权 (Internet Communications Authorization)",
+  "egrant day-of notification": "电子授权当日通知 (eGrant day-of Notification)",
   "advisory action": "建议性意见 (Advisory Action)",
   "advisory action (ptol-303)": "建议性意见 (Advisory Action (PTOL-303))",
   "terminal disclaimer-filed (electronic)": "终端弃权声明-电子提交 (Terminal Disclaimer-Filed (Electronic))",
@@ -887,6 +897,7 @@ function _classifyEpoDescType(key) {
        "amendment after non-final", "amendment", "response", "reply", "observations",
        "remarks", "arguments", "request for reconsideration",
        "appeal brief", "reply brief",
+       "after final consideration program request",
        "applicant response to pre-exam formalities notice",
        "amended claims", "amended description"].includes(key)) return "response";
   // 申请人其他请求类
@@ -895,7 +906,8 @@ function _classifyEpoDescType(key) {
        "track one request"].includes(key)) return "applicant_request";
   // 授权通知类
   if (["notice of allowance", "intention to grant", "grant notification",
-       "issue notification", "issue information", "decision to grant", "grant of patent"].includes(key)) return "allowance";
+       "issue notification", "issue information", "decision to grant", "grant of patent",
+       "egrant day-of notification"].includes(key)) return "allowance";
   // 引用文献/IDS类（检索策略归入此类，与 classifyDocCode 和 EP codeMap 保持一致）
   if (["information disclosure", "foreign reference",
        "list of references", "cited by examiner", "references cited",
@@ -912,6 +924,9 @@ function _classifyEpoDescType(key) {
        "notice of abandonment", "abandonment",
        "notice of do/eo missing requirements mailed",
        "examiner initiated interview summary",
+       "examiner interview summary record",
+       "applicant summary of interview with examiner",
+       "internet communications authorization",
        "(electronic) receipt", "electronic receipt",
        "track one request granted"].includes(key)) return "notification";
   // 异议/客户数据请求：归入通知栏，保证在看板中有对应列
@@ -924,7 +939,8 @@ function _classifyEpoDescType(key) {
 function _classifyEpoDescStage(key) {
   if (["notice of allowance", "intention to grant", "grant notification",
        "issue notification", "issue information", "decision to grant", "grant of patent",
-       "issue fee", "annex to intention to grant"].includes(key)) return "授权";
+       "issue fee", "annex to intention to grant",
+       "egrant day-of notification"].includes(key)) return "授权";
   if (["appeal brief", "reply brief"].includes(key)) return "复审";
   if (["filing receipt", "electronic filing system acknowledgment receipt",
        "transmittal letter", "transmittal",
