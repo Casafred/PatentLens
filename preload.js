@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   triggerImmersiveTranslate: () => ipcRenderer.invoke("trigger-immersive-translate"),
   parseShareSpreadsheet: (bytes) => ipcRenderer.invoke("parse-share-spreadsheet", bytes),
   saveShareHtml: (html, filename) => ipcRenderer.invoke("save-share-html", html, filename),
+  loadPatent2Pic: () => ipcRenderer.invoke("patent2pic-load"),
+  savePatent2Pic: (values) => ipcRenderer.invoke("patent2pic-save", values),
   ocrSharePdf: (bytes) => ipcRenderer.invoke("ocr-share-pdf", bytes),
   onForceClose: (callback) => ipcRenderer.on("force-close-app", () => callback()),
   onDataSourceIssue: (callback) => ipcRenderer.on("data-source-issue", (_event, payload) => callback(payload)),

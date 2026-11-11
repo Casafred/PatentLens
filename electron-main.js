@@ -5021,6 +5021,33 @@ function createWindow(port) {
   });
   // 关闭前确认：若存在未导出的 PDF 标注，弹出原生确认框
   mainWindow.on("close", (event) => {
+    if (!mainWindow._patent2PicSaved) {
+      event.preventDefault();
+      if (mainWindow._patent2PicSaving) return;
+      mainWindow._patent2PicSaving = true;
+      const closingWindow = mainWindow;
+      let saveTimeout;
+      Promise.race([
+        closingWindow.webContents.executeJavaScript("window.savePatent2PicBeforeClose ? window.savePatent2PicBeforeClose() : Promise.resolve()"),
+        new Promise((_, reject) => { saveTimeout = setTimeout(() => reject(new Error("成图保存超时")), 15000); }),
+      ])
+        .then(() => {
+          clearTimeout(saveTimeout);
+          if (!closingWindow.isDestroyed()) {
+            closingWindow._patent2PicSaved = true;
+            closingWindow._patent2PicSaving = false;
+            closingWindow.close();
+          }
+        })
+        .catch(() => {
+          clearTimeout(saveTimeout);
+          if (closingWindow.isDestroyed()) return;
+          closingWindow._patent2PicSaving = false;
+          dialog.showMessageBoxSync(closingWindow, { type: "error", title: "成图项目尚未保存", message: "成图项目保存失败，请返回工作台重试，或导出 .p2p 备份后再关闭。" });
+        });
+      return;
+    }
+    mainWindow._patent2PicSaved = false;
     if (hasUnsavedAnnotations && !mainWindow._forceClose) {
       event.preventDefault();
       let detail = "如需保留标注，请先点击「导出标注后文档」。\n\n未保存标注详情：";
@@ -5816,6 +5843,7 @@ async function prepareImmersiveTranslate() {
 }
 
 app.whenReady().then(async () => {
+  require("./patent2pic-ipc.cjs").registerPatent2PicIPC({ ipcMain, userData: app.getPath("userData"), getPort: () => _serverPort });
   const ses = session.defaultSession;
   ses.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(true);

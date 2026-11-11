@@ -1,0 +1,19 @@
+#patent2pic-workbench { position:fixed; inset:0; z-index:100200; display:flex; flex-direction:column; background:#f5f7fa; color:#18243a; }
+body:has(#patent2pic-workbench:not([hidden])) #ai-settings-modal { z-index:100220; }
+#patent2pic-workbench[hidden] { display:none; }
+.p2p-host-toolbar { min-height:52px; padding:8px 18px; display:flex; align-items:center; gap:12px; background:#fff; border-bottom:1px solid #dce3ee; }
+.p2p-host-status { flex:1; font-size:12px; color:#607089; }
+.p2p-host-status.p2p-error { color:#c0392b; }
+.p2p-host-toolbar button,.p2p-dialog-actions button { padding:7px 12px; border:1px solid #cad4e2; border-radius:6px; background:#fff; color:#263b59; cursor:pointer; }
+.p2p-host-toolbar button:hover,.p2p-dialog-actions button:hover { background:#edf4ff; }
+#patent2pic-workbench iframe { flex:1; width:100%; min-height:0; border:0; }
+.p2p-claim-dialog { width:min(800px,90vw); max-height:85vh; border:1px solid #cbd5e1; border-radius:12px; padding:24px; color:#18243a; background:white; }
+.p2p-claim-dialog::backdrop { background:rgba(15,23,42,.45); }
+.p2p-claim-dialog h2 { margin:0 0 12px; font-size:20px; }
+.p2p-selection-note { color:#607089; font-size:13px; line-height:1.6; }
+.p2p-claim-list { max-height:48vh; overflow:auto; margin:16px 0; border:1px solid #e2e8f0; border-radius:8px; }
+.p2p-claim-list label { display:flex; align-items:flex-start; gap:12px; padding:14px; border-bottom:1px solid #edf1f6; cursor:pointer; font-size:13px; line-height:1.7; }
+.p2p-claim-list label:hover { background:#f4f8ff; }
+.p2p-claim-list input { margin-top:5px; }
+.p2p-dialog-actions { display:flex; justify-content:flex-end; gap:10px; }
+.p2p-dialog-actions .p2p-primary { background:#2563eb; color:white; border-color:#2563eb; }
