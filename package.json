@@ -15,7 +15,12 @@
     "build:electron": "electron-builder",
     "tauri": "tauri",
     "dev:tauri": "tauri dev",
-    "build:tauri": "tauri build"
+    "build:tauri": "tauri build",
+    "build:patent2pic": "npm --prefix packages/patent2pic-editor run build",
+    "postinstall": "npm --prefix packages/patent2pic-editor ci --no-audit --no-fund",
+    "prestart": "npm run build:patent2pic",
+    "predev": "npm run build:patent2pic",
+    "test:patent2pic-smoke": "electron tests/patent2pic-smoke-main.cjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
@@ -35,6 +40,8 @@
     },
     "files": [
       "electron-main.js",
+      "patent2pic-storage.cjs",
+      "patent2pic-ipc.cjs",
       "pdf-session-cache.js",
       "patent-parser.js",
       "preload.js",
@@ -67,7 +74,8 @@
           "scripts/web-app.js",
           "scripts/image-annotations.js",
           "scripts/agent/**",
-          "scripts/comparison/**"
+          "scripts/comparison/**",
+          "features/patent2pic/**"
         ]
       }
     ],
@@ -99,6 +107,7 @@
     "asarUnpack": [
       "src/PATENTLENSNEWLOGO.png",
       "fonts/**"
-    ]
+    ],
+    "beforePack": "./scripts/before-pack.cjs"
   }
 }
