@@ -137,6 +137,8 @@ const editorStore = useEditorStore()
 function handleClose(): void {
   editorStore.clearSelection()
   editorStore.activePanel = null
+  editorStore.layout.forceStylePanel = false
+  editorStore.persistLayout()
 }
 
 const hasSelection = computed(() => editorStore.selectedNodeIds.length > 0 || editorStore.selectedEdgeIds.length > 0)

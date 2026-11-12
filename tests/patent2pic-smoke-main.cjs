@@ -28,7 +28,9 @@ const result = {
 };
 const patent = { patent_number: 'US12345678B2', title: 'Integration smoke patent', language: 'en', data_source: 'Smoke fixture',
   claims: [{ num: '7', text: 'A device comprising a housing and a motor connected to the housing.', type: 'independent' },
-    { num: '19', text: 'A method comprising receiving a signal and driving the motor.', type: 'independent' }] };
+    { num: '19', text: 'A method comprising receiving a signal and driving the motor.', type: 'independent' },
+    { num: '20', text: 'The method of claim 19, wherein the signal is digital.', type: 'dependent' },
+    { num: '21', text: 'The method of claim 20, wherein the motor stops.', type: 'dependent' }] };
 
 function startServer() {
   return new Promise(resolve => {
@@ -106,7 +108,18 @@ app.whenReady().then(async () => {
   });
   await startServer();
   await openWindow();
+  for (const width of [1280, 800]) {
+    win.setSize(width, 950);
+    await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    assert.equal(await evaluate("document.querySelector('#patent-input').getBoundingClientRect().width > 300 && document.querySelector('#patent-input').getBoundingClientRect().height === document.querySelector('#search-btn').getBoundingClientRect().height"), true, 'balanced input and query at ' + width);
+    fs.writeFileSync(path.join(artifacts, 'home-' + width + '.png'), (await win.webContents.capturePage()).toPNG());
+  }
+  win.setSize(1660, 1100);
   await evaluate(`window._currentPatentData = ${JSON.stringify(patent)}; renderPatentDetail(window._currentPatentData);`);
+  assert.equal(await evaluate("document.querySelector('#patent2pic-entry').parentElement === document.body && !!document.querySelector('#patent2pic-entry img')"), true, 'logo floating entry outside search');
+  assert.equal(await evaluate(`(() => { const root=document.querySelector('#patent-detail-content'); for(let i=0;i<3;i++){root.querySelector('.pd-claim-dependent-count').click();root.querySelector('.pd-claim-collapse-btn').click();root.querySelector('.pd-claim-expand-btn').click();root.querySelector('.pd-claim-expand-btn').click();} return root.querySelector('.pd-claim-dependent-count').textContent.includes('2 项'); })()`), true, 'dependent count survives individual and expand-all toggles');
+  await evaluate(`window._patentPopupData=${JSON.stringify(patent)}; document.querySelector('#ppv-content').innerHTML=renderPatentPopupContent(window._patentPopupData);`);
+  assert.equal(await evaluate(`(() => { const root=document.querySelector('#ppv-content'); for(let i=0;i<3;i++){root.querySelector('.pd-claim-dependent-count').click();root.querySelector('.pd-claim-collapse-btn').click();} return root.querySelector('.pd-claim-dependent-count').textContent.includes('2 项'); })()`), true, 'popup count survives toggles');
   await until("!!document.querySelector('#patent-detail-content .p2p-open-button')", 'claim action injected');
   await evaluate("document.querySelector('#patent-detail-content .p2p-open-button').click()");
   assert.equal(await evaluate("document.querySelector('dialog.p2p-claim-dialog input:checked').value"), '0');
@@ -128,6 +141,28 @@ app.whenReady().then(async () => {
   assert.equal(file.claims[0].source.publicationNumber, patent.patent_number);
   assert.equal(file.claims[0].source.originalText, patent.claims[0].text);
   assert.ok(file.versions[0].serializedGraph.cells.length >= 3);
+  await until("!!document.querySelector('#patent-detail-content [data-claim-index=\"0\"] .p2p-claim-record')", 'inline saved graph badge');
+  await until("!!document.querySelector('#ppv-content [data-claim-index=\"0\"] .p2p-claim-record')", 'popup saved graph badge');
+  assert.equal(await evaluate('Patent2PicWorkbench.getRecords().length'), 1);
+  // Actual left mouse gesture in blank canvas space must pan the graph.
+  const pan = await evaluate(`(() => { const f=document.querySelector('#patent2pic-workbench iframe'), r=f.getBoundingClientRect(), c=f.contentDocument.querySelector('.canvas-viewport').getBoundingClientRect(); return {x:Math.round(r.x+c.x+80),y:Math.round(r.y+c.y+40)}; })()`);
+  const beforePan = await inEditor("return d.querySelector('.x6-graph-svg-viewport').getAttribute('transform')");
+  win.webContents.sendInputEvent({ type:'mouseDown', button:'left', clickCount:1, x:pan.x, y:pan.y });
+  win.webContents.sendInputEvent({ type:'mouseMove', button:'left', movementX:90, movementY:60, x:pan.x+90, y:pan.y+60 });
+  win.webContents.sendInputEvent({ type:'mouseUp', button:'left', clickCount:1, x:pan.x+90, y:pan.y+60 });
+  await new Promise(resolve => setTimeout(resolve, 200));
+  assert.notEqual(await inEditor("return d.querySelector('.x6-graph-svg-viewport').getAttribute('transform')"), beforePan, 'left drag pans canvas');
+  await inEditor("d.querySelector('.workspace-edge-toggle').click()");
+  await until(editorCondition("!!d.querySelector('.workspace-drawer')"), 'persistent left edge opens project manager');
+  await inEditor("d.querySelector('.workspace-edge-toggle').click()");
+  // Open the pinned review layout, then close its style panel.
+  await inEditor("Array.from(d.querySelectorAll('.canvas-toolbar button')).find(b=>b.textContent.trim()==='布局').click()");
+  await until(editorCondition("Array.from(d.querySelectorAll('.el-dropdown-menu__item')).some(e=>e.textContent.includes('审阅'))"), 'layout menu');
+  await inEditor("Array.from(d.querySelectorAll('.el-dropdown-menu__item')).find(e=>e.textContent.includes('审阅')).click()");
+  await until(editorCondition("!!d.querySelector('.style-panel')"), 'pinned style panel');
+  await inEditor("d.querySelector('.style-panel .close-btn').click()");
+  await until(editorCondition("!d.querySelector('.style-panel')"), 'style panel closes even when pinned');
+  await inEditor("Array.from(d.querySelectorAll('.canvas-toolbar button')).find(b=>b.textContent.trim()==='适配').click()");
 
   // Edit using the actual graph's double-click handler and Vue form.
   await inEditor("d.querySelector('.x6-node[data-cell-id=\"n1\"]').dispatchEvent(new w.MouseEvent('dblclick', { bubbles:true, view:w }));");
@@ -212,6 +247,40 @@ app.whenReady().then(async () => {
   assert.equal(files.length, beforeImport + project.files.length, 'import creates new project without overwriting');
   const persisted = await evaluate('electronAPI.loadPatent2Pic()');
   assert.ok(!JSON.stringify(persisted).includes('local-custom-only') && !JSON.stringify(persisted).includes('local-smoke-only'), 'workspace never copies provider keys');
+  await evaluate('Patent2PicWorkbench.close()');
+  await evaluate(`document.querySelector('[data-p2p-history="graphs"]').click()`);
+  assert.ok(await evaluate("document.querySelectorAll('#p2p-history-list .p2p-record-card').length > 1"));
+  await evaluate(`window._currentPatentData=${JSON.stringify(patent)}; renderPatentDetail(window._currentPatentData); document.querySelector('#history-sidebar').classList.remove('collapsed'); document.querySelector('#patent-detail-section').classList.remove('hidden'); document.querySelector('#app').classList.remove('home-mode'); switchPatentTab('claims');`);
+  await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  win.webContents.invalidate(); await new Promise(resolve => setTimeout(resolve, 450));
+  fs.writeFileSync(path.join(artifacts, 'history-and-claims.png'), (await win.webContents.capturePage()).toPNG());
+  await evaluate('window.__historyTarget=Patent2PicWorkbench.getRecords()[0]; void 0');
+  await evaluate("document.querySelector('#p2p-history-list .p2p-record-open').click()");
+  await until('Patent2PicWorkbench.isOpen()', 'history deep link opens editor');
+  await until(`electronAPI.loadPatent2Pic().then(r => { const meta=JSON.parse(r.values['patent2pic-workspace']); const data=JSON.parse(r.values['patent2pic-project-'+meta.activeProjectId]); return meta.activeProjectId===window.__historyTarget.projectId && data.activeFileId===window.__historyTarget.fileId; })`, 'history link restores target project and file');
+  await until(editorCondition("d.querySelectorAll('.x6-node').length === 2"), 'history link restores actual graph');
+  await evaluate('Patent2PicWorkbench.close()');
+  await evaluate(`window._currentPatentData=${JSON.stringify(patent)}; renderPatentDetail(window._currentPatentData);`);
+  await until("!!document.querySelector('#patent-detail-content [data-claim-index=\"0\"] .p2p-claim-record')", 'persisted badge after rerender');
+  await evaluate("document.querySelector('#patent-detail-content [data-claim-index=\"0\"] .p2p-claim-record').click()");
+  await until('Patent2PicWorkbench.isOpen()', 'inline deep link');
+  await until(editorCondition("d.querySelectorAll('.x6-node').length === 2"), 'inline link restores actual graph');
+  const beforeClear = await evaluate('Patent2PicWorkbench.getRecords().length');
+  await evaluate("document.querySelector('#ai-settings-btn').click(); document.querySelector('[data-settings-tab=\"cache\"]').click();");
+  await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  win.webContents.invalidate(); await new Promise(resolve => setTimeout(resolve, 450));
+  fs.writeFileSync(path.join(artifacts, 'cache-manager.png'), (await win.webContents.capturePage()).toPNG());
+  await evaluate("window.__removeConfirm=window.confirm; window.confirm=()=>true; document.querySelector('#p2p-cache-list .p2p-record-delete').click(); window.confirm=window.__removeConfirm; void 0");
+  await until('Patent2PicWorkbench.getRecords().length === '+ (beforeClear - 1), 'cache UI single-task deletion');
+  assert.equal(await evaluate('Patent2PicWorkbench.getRecords().length'), beforeClear-1, 'single task cache removal');
+  await launch();
+  await evaluate("window.__savedConfirm=window.confirm; window.confirm=()=>false; document.querySelector('#p2p-cache-clear').click(); window.confirm=window.__savedConfirm; void 0");
+  assert.ok(await evaluate('Patent2PicWorkbench.getRecords().length > 0'), 'cancel cache clear preserves records');
+  await evaluate("window.confirm=()=>true; document.querySelector('#cache-clear-btn').click(); window.confirm=window.__savedConfirm; void 0");
+  await until('Patent2PicWorkbench.getRecords().length === 0', 'unified cache clear finishes');
+  assert.equal(await evaluate('Patent2PicWorkbench.getRecords().length'), 0);
+  await new Promise(resolve => setTimeout(resolve, 6000));
+  assert.deepEqual(await evaluate('electronAPI.loadPatent2Pic().then(r=>r.values)'), {}, 'cleared cache is not resurrected by old editor');
   assert.deepEqual(errors, []);
   fs.writeFileSync(path.join(artifacts, 'result.json'), JSON.stringify({ ok: true, aiRequests: requests.length, downloads: downloads.map(file => path.basename(file)), persistedFiles: files.length }, null, 2));
   console.log('Patent2Pic Electron smoke passed: generated, edited, exported, redrawn, resumed across ports and batch processed.');

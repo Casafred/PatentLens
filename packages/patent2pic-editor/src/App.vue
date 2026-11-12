@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import TitleBar from './components/layout/TitleBar.vue'
 import AppLayout from './components/layout/AppLayout.vue'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useHostIntegration } from '@/composables/useHostIntegration'
+import { useAIStore } from '@/stores/ai'
 
 defineProps<{ recovered: boolean }>()
 const workspace = useWorkspaceStore()
 const integration = useHostIntegration()
+const ai = useAIStore()
 const saveError = ref('')
 const saving = ref(false)
 let interval: ReturnType<typeof setInterval> | undefined
@@ -20,6 +22,7 @@ async function save(): Promise<void> {
   try { await integration.save(); saveError.value = '' }
   catch (error) { saveError.value = error instanceof Error ? error.message : '项目保存失败' }
 }
+watch(() => ai.isExtracting, (running) => { if (!running) void save() }, { flush: 'post' })
 onMounted(async () => {
   window.addEventListener('patent2pic-save-state', onSaveState)
   workspace.initWorkspace()

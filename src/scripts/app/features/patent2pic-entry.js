@@ -49,7 +49,9 @@
     var settings = document.getElementById('ai-settings-btn');
     if (settings && !document.getElementById('patent2pic-entry')) {
       var entry = document.createElement('button'); entry.id = 'patent2pic-entry'; entry.className = 'btn-secondary'; entry.textContent = '成图工作台';
-      entry.addEventListener('click', function () { window.Patent2PicWorkbench.open().catch(report); }); settings.parentNode.insertBefore(entry, settings);
+      entry.title = 'Patent2Pic · 权利要求成图工作台'; entry.setAttribute('aria-label', entry.title);
+      var logo = document.createElement('img'); logo.src = 'styles/patent2pic-logo.png'; logo.alt = 'Patent2Pic'; entry.replaceChildren(logo);
+      entry.addEventListener('click', function () { window.Patent2PicWorkbench.open().catch(report); }); document.body.appendChild(entry);
     }
     new MutationObserver(enhance).observe(document.body, { subtree: true, childList: true }); enhance();
   }

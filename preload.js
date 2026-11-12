@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveShareHtml: (html, filename) => ipcRenderer.invoke("save-share-html", html, filename),
   loadPatent2Pic: () => ipcRenderer.invoke("patent2pic-load"),
   savePatent2Pic: (values) => ipcRenderer.invoke("patent2pic-save", values),
+  clearPatent2Pic: () => ipcRenderer.invoke("patent2pic-clear"),
   ocrSharePdf: (bytes) => ipcRenderer.invoke("ocr-share-pdf", bytes),
   onForceClose: (callback) => ipcRenderer.on("force-close-app", () => callback()),
   onDataSourceIssue: (callback) => ipcRenderer.on("data-source-issue", (_event, payload) => callback(payload)),

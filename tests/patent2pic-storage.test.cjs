@@ -29,6 +29,16 @@ test('corrupt workspace is preserved and reported instead of silently replaced',
 test('storage rejects credentials, arbitrary keys and invalid payloads', () => {
   for (const value of [null, [], { '../../file': 'data' }, { 'patent2pic-ai-config': 'credentials' }, { 'patent2pic-project-1': {} }]) assert.throws(() => validateValues(value));
 });
+test('clear removes project data from both primary and recovery backup', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'patentlens-p2p-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const store = createPatent2PicStore(directory);
+  store.save({ 'patent2pic-project-1': 'old graph' }); store.save({ 'patent2pic-project-1': 'new graph' });
+  store.clear(); assert.deepEqual({ ...store.load().values }, {});
+  assert.equal(fs.existsSync(path.join(directory, 'workspace.json.bak')), false);
+  fs.writeFileSync(path.join(directory, 'workspace.json'), 'corrupt');
+  store.clear(); assert.deepEqual({ ...store.load().values }, {}, 'explicit clear can reset corrupt storage');
+});
 test('IPC is restricted to the actual local main frame and port', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'patentlens-p2p-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

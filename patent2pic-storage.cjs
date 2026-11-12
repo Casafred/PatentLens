@@ -31,7 +31,7 @@ function createPatent2PicStore(directory) {
       catch { throw new Error('成图工作区无法读取。原文件已保留，请从导出的 .p2p 项目恢复。', { cause: primaryError }); }
     }
   }
-  function save(values) {
+  function save(values, preserveBackup = true) {
     const clean = validateValues(values);
     fs.mkdirSync(directory, { recursive: true });
     const temporary = path.join(directory, `workspace-${crypto.randomUUID()}.tmp`);
@@ -41,7 +41,7 @@ function createPatent2PicStore(directory) {
         fs.writeFileSync(descriptor, JSON.stringify({ version: 1, values: clean }), 'utf8');
         fs.fsyncSync(descriptor);
       } finally { fs.closeSync(descriptor); }
-      if (fs.existsSync(file)) {
+      if (preserveBackup && fs.existsSync(file)) {
         // A corrupt primary must not replace a healthy recovery backup.
         try { read(file); fs.copyFileSync(file, backup); }
         catch (error) { if (!fs.existsSync(backup)) throw error; }
@@ -50,6 +50,12 @@ function createPatent2PicStore(directory) {
       return { ok: true };
     } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
   }
-  return { load, save };
+  function clear() {
+    // Persist the empty primary first, then erase the old backup as well.
+    save({}, false);
+    if (fs.existsSync(backup)) fs.unlinkSync(backup);
+    return { ok: true };
+  }
+  return { load, save, clear };
 }
 module.exports = { createPatent2PicStore, validateValues };

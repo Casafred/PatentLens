@@ -60,6 +60,8 @@ app.whenReady().then(async () => {
     })) };
   });
   const port = await startServer();
+  require('../patent2pic-ipc.cjs').registerPatent2PicIPC({ ipcMain,
+    userData: fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'patentlens-shell-p2p-')), getPort: () => port });
   session.defaultSession.webRequest.onBeforeRequest(
     { urls: ['https://cdnjs.cloudflare.com/*'] },
     (_details, callback) => callback({ cancel: true }),

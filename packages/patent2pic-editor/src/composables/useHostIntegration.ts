@@ -67,6 +67,17 @@ export function useHostIntegration() {
     await save()
     received.add(request.requestId)
   }
-  function connect(): void { getHost().ready({ launch, save, isBusy: () => ai.isExtracting }) }
+  async function openRecord(target: { projectId: string; fileId: string; versionId?: string; claimId?: string }): Promise<void> {
+    if (ai.isExtracting) throw new Error('请先等待生成完成或终止当前任务')
+    const file = workspace.getProjectFiles(target.projectId)?.find(item => item.id === target.fileId)
+    if (!file) throw new Error('该成图记录已被删除')
+    await save()
+    workspace.switchProject(target.projectId)
+    graph.activateFile(target.fileId)
+    if (target.versionId && file.versions.some(version => version.id === target.versionId)) graph.setActiveVersion(file.id, target.versionId)
+    if (target.claimId) claim.setActiveClaim(target.claimId)
+    await save()
+  }
+  function connect(): void { getHost().ready({ launch, save, openRecord, isBusy: () => ai.isExtracting }) }
   return { save, connect }
 }
