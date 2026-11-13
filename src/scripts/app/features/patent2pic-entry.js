@@ -85,13 +85,85 @@
       button.addEventListener('click', function () { choose(item[0]); }); actions.prepend(button);
     });
   }
+  var ENTRY_POSITION_KEY = 'patentlens_patent2pic_entry_position';
+  function readStoredPosition() {
+    try {
+      var value = JSON.parse(window.localStorage.getItem(ENTRY_POSITION_KEY) || 'null');
+      return value && isFinite(value.left) && isFinite(value.top) ? value : null;
+    } catch (error) { return null; }
+  }
+  function savePosition(position) {
+    try { window.localStorage.setItem(ENTRY_POSITION_KEY, JSON.stringify(position)); } catch (error) {}
+  }
+  function clampPosition(position, entry) {
+    var width = entry.offsetWidth || 54, height = entry.offsetHeight || 54, margin = 6;
+    return {
+      left: Math.min(Math.max(margin, position.left), Math.max(margin, window.innerWidth - width - margin)),
+      top: Math.min(Math.max(margin, position.top), Math.max(margin, window.innerHeight - height - margin))
+    };
+  }
+  function applyPosition(entry, position) {
+    entry.style.right = 'auto'; entry.style.bottom = 'auto';
+    entry.style.left = position.left + 'px'; entry.style.top = position.top + 'px';
+  }
+  function makeDraggable(entry) {
+    var drag = null, lastDragEnd = 0;
+    entry.addEventListener('pointerdown', function (event) {
+      if (event.button !== 0) return;
+      var rect = entry.getBoundingClientRect();
+      drag = { id: event.pointerId, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, moved: false };
+      entry.style.transition = 'none';
+      try { entry.setPointerCapture(event.pointerId); } catch (error) {}
+    });
+    entry.addEventListener('pointermove', function (event) {
+      if (!drag || event.pointerId !== drag.id) return;
+      var dx = event.clientX - drag.startX, dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+      drag.moved = true;
+      applyPosition(entry, clampPosition({ left: drag.left + dx, top: drag.top + dy }, entry));
+    });
+    function endDrag(event) {
+      if (!drag) return;
+      var moved = drag.moved;
+      drag = null;
+      entry.style.transition = '';
+      try { entry.releasePointerCapture(event.pointerId); } catch (error) {}
+      if (moved) {
+        lastDragEnd = Date.now();
+        var left = parseFloat(entry.style.left), top = parseFloat(entry.style.top);
+        if (!isFinite(left) || !isFinite(top)) {
+          var rect = entry.getBoundingClientRect();
+          left = rect.left; top = rect.top;
+        }
+        savePosition(clampPosition({ left: left, top: top }, entry));
+      }
+    }
+    entry.addEventListener('pointerup', endDrag);
+    entry.addEventListener('pointercancel', endDrag);
+    // 拖动结束后的 click 不应打开工作台
+    entry.addEventListener('click', function (event) {
+      if (Date.now() - lastDragEnd < 300) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    }, true);
+  }
   function init() {
     var settings = document.getElementById('ai-settings-btn');
     if (settings && !document.getElementById('patent2pic-entry')) {
       var entry = document.createElement('button'); entry.id = 'patent2pic-entry'; entry.className = 'btn-secondary'; entry.textContent = '成图工作台';
-      entry.title = 'Patent2Pic · 权利要求成图工作台'; entry.setAttribute('aria-label', entry.title);
-      var logo = document.createElement('img'); logo.src = 'styles/patent2pic-logo.png'; logo.alt = 'Patent2Pic'; entry.replaceChildren(logo);
-      entry.addEventListener('click', function () { window.Patent2PicWorkbench.open().catch(report); }); document.body.appendChild(entry);
+      entry.title = 'Patent2Pic · 权利要求成图工作台（可拖动）'; entry.setAttribute('aria-label', entry.title);
+      var logo = document.createElement('img'); logo.src = 'styles/patent2pic-logo.png'; logo.alt = 'Patent2Pic'; logo.draggable = false; entry.replaceChildren(logo);
+      makeDraggable(entry);
+      entry.addEventListener('click', function () { window.Patent2PicWorkbench.open().catch(report); });
+      document.body.appendChild(entry);
+      var saved = readStoredPosition();
+      if (saved) applyPosition(entry, clampPosition(saved, entry));
+      window.addEventListener('resize', function () {
+        if (!entry.style.left) return;
+        var rect = entry.getBoundingClientRect();
+        applyPosition(entry, clampPosition({ left: rect.left, top: rect.top }, entry));
+      });
     }
     new MutationObserver(enhance).observe(document.body, { subtree: true, childList: true }); enhance();
   }

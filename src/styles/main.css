@@ -2097,6 +2097,12 @@ body {
   display: none;
 }
 
+/* 设置中的悬浮球入口开关 */
+body.pl-hide-ai-float #analysis-chat-float-ball,
+body.pl-hide-p2p-float #patent2pic-entry {
+  display: none !important;
+}
+
 /* ── Analysis Chat Panel (fixed floating) ── */
 .analysis-chat-panel {
   position: fixed;
@@ -6547,8 +6553,8 @@ body {
   z-index: 500;
   display: flex;
   flex-direction: row;
-  height: 65vh;
-  max-height: 520px;
+  height: 80vh;
+  max-height: 760px;
   transition: width 0.3s ease;
   overflow: hidden;
   border-radius: 0 var(--radius) var(--radius) 0;

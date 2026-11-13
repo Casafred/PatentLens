@@ -169,7 +169,7 @@ watch(renderKey, (newKey, oldKey) => { trackCanvasRender((async () => {
 
   const graph = graphEngine.getGraph()
   if (!graph) return
-  graph.clearCells()
+  graphEngine.clearGraph()
   playback.clearFrames()
 
   const version = graphStore.activeVersion
