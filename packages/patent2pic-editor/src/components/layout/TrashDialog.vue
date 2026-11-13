@@ -136,8 +136,8 @@ async function handleClear(): Promise<void> {
 }
 
 .trash-kind.project {
-  background: rgba(24, 144, 255, 0.14);
-  color: #1890ff;
+  background: rgba(34, 197, 94, 0.14);
+  color: #22c55e;
 }
 
 .trash-kind.file {

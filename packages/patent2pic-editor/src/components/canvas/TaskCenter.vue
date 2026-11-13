@@ -206,7 +206,7 @@ function statusText(task: ParallelTask): string {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--color-primary, #1890ff);
+  background: var(--color-primary, #22c55e);
   color: #fff;
   font-size: 11px;
 }

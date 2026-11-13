@@ -1,11 +1,12 @@
 import type { EdgeData } from '@/types/graph'
+import { wrapLabelText } from '@/utils/label-text'
 import { getDefaultEdgeStyle, arrowTypeToMarker } from './style-registry'
 
 function getEdgeLabelText(data: EdgeData, isChinese: boolean): string {
   if (isChinese) {
-    return data.chineseText || data.originalText
+    return wrapLabelText(data.chineseText || data.originalText)
   }
-  return `${data.originalText}\n${data.chineseText}`
+  return wrapLabelText(`${data.originalText}\n${data.chineseText}`)
 }
 
 export function buildEdge(data: EdgeData, isChinese: boolean = false): Record<string, unknown> {

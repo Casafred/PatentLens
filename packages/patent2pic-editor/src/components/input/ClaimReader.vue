@@ -158,7 +158,7 @@ interface RenderedSegment {
 }
 
 const HIGHLIGHT_PALETTE: HighlightColor[] = [
-  { bg: '#e6f7ff', border: '#1890ff' },
+  { bg: '#ecfdf5', border: '#22c55e' },
   { bg: '#fff7e6', border: '#fa8c16' },
   { bg: '#f6ffed', border: '#52c41a' },
   { bg: '#fff1f0', border: '#f5222d' },

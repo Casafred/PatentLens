@@ -180,8 +180,8 @@ function handleProgressClick(e: MouseEvent): void {
 }
 
 .badge-structure {
-  background: #e6f7ff;
-  color: #1890ff;
+  background: #ecfdf5;
+  color: #22c55e;
 }
 
 .badge-process {
@@ -234,7 +234,7 @@ function handleProgressClick(e: MouseEvent): void {
 
 .ctrl-btn:hover:not(:disabled) {
   background: #f3f4f6;
-  color: #1890ff;
+  color: #22c55e;
 }
 
 .ctrl-btn:disabled {
@@ -248,7 +248,7 @@ function handleProgressClick(e: MouseEvent): void {
 }
 
 .play-btn {
-  background: #1890ff !important;
+  background: #22c55e !important;
   color: white !important;
   width: 38px;
   height: 38px;
@@ -256,7 +256,7 @@ function handleProgressClick(e: MouseEvent): void {
 }
 
 .play-btn:hover:not(:disabled) {
-  background: #40a9ff !important;
+  background: #4ade80 !important;
   transform: scale(1.05);
 }
 
@@ -282,7 +282,7 @@ function handleProgressClick(e: MouseEvent): void {
   left: 0;
   top: 0;
   height: 100%;
-  background: linear-gradient(90deg, #1890ff, #40a9ff);
+  background: linear-gradient(90deg, #22c55e, #4ade80);
   border-radius: 3px;
   transition: width 0.3s ease;
 }
@@ -302,20 +302,20 @@ function handleProgressClick(e: MouseEvent): void {
 }
 
 .progress-dot:hover {
-  border-color: #1890ff;
+  border-color: #22c55e;
   transform: translate(-50%, -50%) scale(1.2);
 }
 
 .progress-dot.passed {
-  border-color: #1890ff;
-  background: #1890ff;
+  border-color: #22c55e;
+  background: #22c55e;
 }
 
 .progress-dot.active {
-  border-color: #1890ff;
-  background: #1890ff;
+  border-color: #22c55e;
+  background: #22c55e;
   transform: translate(-50%, -50%) scale(1.3);
-  box-shadow: 0 0 0 4px rgba(24, 144, 255, 0.2);
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
 }
 
 .speed-control {
@@ -335,16 +335,16 @@ function handleProgressClick(e: MouseEvent): void {
 }
 
 .speed-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
+  border-color: #22c55e;
+  color: #22c55e;
 }
 
 .narration-bar {
   margin-top: 8px;
   padding: 8px 16px;
-  background: rgba(24, 144, 255, 0.06);
+  background: rgba(34, 197, 94, 0.06);
   border-radius: 8px;
-  border-left: 3px solid #1890ff;
+  border-left: 3px solid #22c55e;
   pointer-events: auto;
 }
 
