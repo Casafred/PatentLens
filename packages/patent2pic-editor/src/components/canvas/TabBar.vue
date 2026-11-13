@@ -144,7 +144,7 @@ function closeFileToTrash(id: string): void {
   line-height: 1;
   padding: 2px 4px;
   border-radius: 6px;
-  background: var(--color-primary, #1890ff);
+  background: var(--color-primary, #22c55e);
   color: #fff;
   flex-shrink: 0;
 }

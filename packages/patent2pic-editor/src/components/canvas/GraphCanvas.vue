@@ -72,6 +72,7 @@ import { useEditorStore } from '@/stores/editor'
 import { useGraphStore } from '@/stores/graph'
 import { getDefaultNodeStyle, getDefaultEdgeStyle } from '@/services/graph/style-registry'
 import { calculateNodeSize, buildNode } from '@/services/graph/node-builder'
+import { wrapLabelText } from '@/utils/label-text'
 import CellEditDialog from '../common/CellEditDialog.vue'
 import GraphLegend from './GraphLegend.vue'
 import PlaybackControls from './PlaybackControls.vue'
@@ -307,10 +308,10 @@ async function handleMenuAction(action: string): Promise<void> {
 function getLabelText(data: { originalText: string; chineseText: string }): string {
   const isChinese = graphStore.activeFile?.isChinese ?? false
   if (isChinese) {
-    return data.chineseText || data.originalText
+    return wrapLabelText(data.chineseText || data.originalText)
   }
-  if (!data.chineseText) return data.originalText
-  return `${data.originalText}\n${data.chineseText}`
+  if (!data.chineseText) return wrapLabelText(data.originalText)
+  return wrapLabelText(`${data.originalText}\n${data.chineseText}`)
 }
 
 function handleEditSave(data: { originalText: string; chineseText: string; nodeType?: NodeType; relationType?: RelationType }): void {

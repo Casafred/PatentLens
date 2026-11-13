@@ -449,10 +449,12 @@ interface GapRegion {
 
 class EdgeViewWithGap extends EdgeView {
   private static labelsLayer: SVGElement | null = null
+  private static graph: Graph | null = null
   private static reorganizeScheduled: boolean = false
 
-  static setLabelsLayer(layer: SVGElement): void {
+  static setLabelsLayer(layer: SVGElement, graph?: Graph | null): void {
     EdgeViewWithGap.labelsLayer = layer
+    EdgeViewWithGap.graph = graph || null
   }
 
   static getLabelsLayer(): SVGElement | null {
@@ -472,10 +474,16 @@ class EdgeViewWithGap extends EdgeView {
     })
   }
 
+  private static labelKey(edgeId: string, el: SVGElement): string {
+    return edgeId + '|' + (el.getAttribute('data-index') || '0')
+  }
+
   /**
    * Move all edge labels to a shared labels layer so they render
-   * above ALL edge lines, regardless of each edge's zIndex.
-   * This fixes the issue where one edge's line covers another edge's label.
+   * above ALL non-label elements (edges and nodes), regardless of zIndex.
+   *
+   * X6 在每次 `setLabels` 时都会重建标签节点；这里按「边 + 标签序号」
+   * 去重，只保留边容器里的最新节点，避免旧节点没被清理而出现影分身。
    */
   static reorganizeAllLabels(): void {
     const layer = EdgeViewWithGap.labelsLayer
@@ -484,52 +492,31 @@ class EdgeViewWithGap extends EdgeView {
     const viewport = layer.parentNode as SVGElement | null
     if (!viewport) return
 
-    // Collect all edge label elements from BOTH:
-    // 1. Edge containers (newly rendered labels that haven't been moved yet)
-    // 2. The labels layer itself (labels from previous reorganization)
-    const allEdgeContainers = viewport.querySelectorAll('.x6-edge')
-    const labelMap = new Map<string, SVGElement>() // edgeId -> label element
+    const graph = EdgeViewWithGap.graph
+    const labels = new Map<string, SVGElement>()
 
-    // Collect from edge containers first (these are the latest versions)
-    allEdgeContainers.forEach(edgeContainer => {
-      const labels = edgeContainer.querySelectorAll(':scope > .x6-edge-label')
-      labels.forEach(label => {
+    // 边容器中的标签永远是最新渲染结果，优先保留
+    viewport.querySelectorAll('.x6-edge').forEach(edgeContainer => {
+      const edgeId = (edgeContainer as SVGElement).getAttribute('data-cell-id') || ''
+      edgeContainer.querySelectorAll('.x6-edge-label').forEach(label => {
         const el = label as SVGElement
-        const edgeId = (edgeContainer as SVGElement).getAttribute('data-cell-id') || ''
         el.setAttribute('data-edge-id', edgeId)
-        labelMap.set(edgeId + '-' + labelMap.size, el)
+        labels.set(EdgeViewWithGap.labelKey(edgeId, el), el)
       })
     })
 
-    // Also collect from the labels layer (previously moved labels)
-    const existingInLayer = layer.querySelectorAll('.x6-edge-label')
-    existingInLayer.forEach(existing => {
-      const el = existing as SVGElement
+    // 已经搬进共享图层的标签：同一「边 + 序号」已有新节点时丢弃旧节点
+    layer.querySelectorAll('.x6-edge-label').forEach(label => {
+      const el = label as SVGElement
       const edgeId = el.getAttribute('data-edge-id') || ''
-      // Only keep if we don't already have a newer version from the edge container
-      const alreadyHave = Array.from(labelMap.values()).some(
-        l => l.getAttribute('data-edge-id') === edgeId
-      )
-      if (!alreadyHave) {
-        labelMap.set(edgeId + '-' + labelMap.size, el)
-      }
+      if (edgeId && graph && !graph.getCellById(edgeId)) return
+      const key = EdgeViewWithGap.labelKey(edgeId, el)
+      if (!labels.has(key)) labels.set(key, el)
     })
 
-    // Clear the labels layer
-    layer.innerHTML = ''
-
-    // Append all labels
-    labelMap.forEach(label => {
-      layer.appendChild(label)
-    })
-
-    // Ensure the labels layer is positioned after edges but before nodes
-    const firstNode = viewport.querySelector('.x6-node')
-    if (firstNode && layer.nextSibling !== firstNode) {
-      viewport.insertBefore(layer, firstNode)
-    } else if (!firstNode) {
-      viewport.appendChild(layer)
-    }
+    layer.replaceChildren(...Array.from(labels.values()))
+    // 图层始终位于所有节点/连线之后，保证标签文字在任何非标签要素之上
+    viewport.appendChild(layer)
   }
 
   confirmUpdate(flag: number, options: KeyValue = {}): number {

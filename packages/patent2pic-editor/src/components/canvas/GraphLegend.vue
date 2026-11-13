@@ -98,8 +98,8 @@
           <div class="section-title">{{ isMethod ? '子流程框' : '限定框' }}</div>
           <div class="legend-items">
             <div class="legend-item">
-              <span class="group-sample" :style="isMethod ? { borderColor: '#1890FF', background: '#f0f5ff' } : {}"></span>
-              <span class="legend-label">{{ isMethod ? '子流程框（蓝色虚线边框）' : '组合/限定框（橙色虚线边框）' }}</span>
+              <span class="group-sample" :style="isMethod ? { borderColor: '#22c55e', background: '#ecfdf5' } : {}"></span>
+              <span class="legend-label">{{ isMethod ? '子流程框（绿色虚线边框）' : '组合/限定框（橙色虚线边框）' }}</span>
             </div>
           </div>
         </div>
@@ -142,13 +142,13 @@ const isMethod = computed(() => claimType.value === 'method')
 const isMixed = computed(() => claimType.value === 'mixed')
 
 const structureNodeTypes = [
-  { label: '部件', fill: '#e8f4fd', stroke: '#1890FF', shape: 'rect' as const },
+  { label: '部件', fill: '#ecfdf5', stroke: '#22c55e', shape: 'rect' as const },
   { label: '子系统', fill: '#fff7e6', stroke: '#fa8c16', shape: 'rect' as const },
   { label: '特征', fill: '#f6ffed', stroke: '#52c41a', shape: 'rect' as const },
 ]
 
 const methodNodeTypes = [
-  { label: '步骤 (step)', fill: '#e8f4fd', stroke: '#1890FF', shape: 'rect' as const },
+  { label: '步骤 (step)', fill: '#ecfdf5', stroke: '#22c55e', shape: 'rect' as const },
   { label: '判断 (decision)', fill: '#f3e8ff', stroke: '#722ed1', shape: 'diamond' as const },
   { label: '条件 (condition)', fill: '#fff7e6', stroke: '#fa8c16', shape: 'hexagon' as const },
 ]
@@ -165,7 +165,7 @@ const nodeTypes = computed(() =>
 )
 
 const structureRelationTypes = [
-  { label: '位置关系', stroke: '#1890FF', dasharray: '', arrowType: 'solid-triangle' },
+  { label: '位置关系', stroke: '#22c55e', dasharray: '', arrowType: 'solid-triangle' },
   { label: '动作关系', stroke: '#52c41a', dasharray: '', arrowType: 'solid-triangle' },
   { label: '包含关系', stroke: '#fa8c16', dasharray: '5 5', arrowType: 'hollow-triangle' },
   { label: '逻辑关系', stroke: '#722ed1', dasharray: '2 4 2 4 5 4', arrowType: 'diamond' },
@@ -173,7 +173,7 @@ const structureRelationTypes = [
 ]
 
 const methodRelationTypes = [
-  { label: '先后顺序', stroke: '#1890FF', dasharray: '', arrowType: 'solid-triangle' },
+  { label: '先后顺序', stroke: '#22c55e', dasharray: '', arrowType: 'solid-triangle' },
   { label: '是 (branch_true)', stroke: '#52c41a', dasharray: '', arrowType: 'solid-triangle' },
   { label: '否 (branch_false)', stroke: '#e63946', dasharray: '6 3', arrowType: 'solid-triangle' },
   { label: '触发关系', stroke: '#fa8c16', dasharray: '6 3 2 3', arrowType: 'hollow-triangle' },
@@ -184,7 +184,7 @@ const methodRelationTypes = [
 
 const mixedRelationTypes = [
   ...structureRelationTypes,
-  { label: '先后顺序', stroke: '#1890FF', dasharray: '', arrowType: 'solid-triangle' },
+  { label: '先后顺序', stroke: '#22c55e', dasharray: '', arrowType: 'solid-triangle' },
   { label: '是 (branch_true)', stroke: '#52c41a', dasharray: '', arrowType: 'solid-triangle' },
   { label: '否 (branch_false)', stroke: '#e63946', dasharray: '6 3', arrowType: 'solid-triangle' },
   { label: '触发关系', stroke: '#fa8c16', dasharray: '6 3 2 3', arrowType: 'hollow-triangle' },

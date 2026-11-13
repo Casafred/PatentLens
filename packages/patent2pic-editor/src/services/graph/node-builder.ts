@@ -1,4 +1,5 @@
 import type { NodeData } from '@/types/graph'
+import { wrapLabelText } from '@/utils/label-text'
 import { getDefaultNodeStyle } from './style-registry'
 
 let _measureCanvas: HTMLCanvasElement | null = null
@@ -29,6 +30,7 @@ export function calculateNodeSize(
   } else {
     labelText = chineseText ? `${originalText}\n${chineseText}` : originalText
   }
+  labelText = wrapLabelText(labelText)
 
   const lines = labelText.split('\n')
   let maxWidth = 0
@@ -52,10 +54,10 @@ export function calculateNodeSize(
 
 function getLabelText(data: NodeData, isChinese: boolean): string {
   if (isChinese) {
-    return data.chineseText || data.originalText
+    return wrapLabelText(data.chineseText || data.originalText)
   }
-  if (!data.chineseText) return data.originalText
-  return `${data.originalText}\n${data.chineseText}`
+  if (!data.chineseText) return wrapLabelText(data.originalText)
+  return wrapLabelText(`${data.originalText}\n${data.chineseText}`)
 }
 
 export function buildNode(data: NodeData, isChinese: boolean = false): Record<string, unknown> {

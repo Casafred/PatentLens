@@ -733,11 +733,11 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
 
 .project-node.active .tree-label,
 .project-node.active .project-icon {
-  color: var(--color-primary, #1890ff);
+  color: var(--color-primary, #22c55e);
 }
 
 .project-icon {
-  color: var(--color-primary, #1890ff);
+  color: var(--color-primary, #22c55e);
   flex-shrink: 0;
 }
 
@@ -748,7 +748,7 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
 }
 
 .file-node.active {
-  background: var(--color-primary, #1890ff);
+  background: var(--color-primary, #22c55e);
 }
 
 .file-node.active .tree-label {
@@ -803,7 +803,7 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
 }
 
 .header-btn:hover {
-  background: var(--color-primary, #1890ff);
+  background: var(--color-primary, #22c55e);
   color: #fff;
 }
 
@@ -842,7 +842,7 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
 }
 
 .search-project {
-  color: var(--color-primary, #1890ff);
+  color: var(--color-primary, #22c55e);
   flex-shrink: 0;
 }
 
@@ -886,8 +886,8 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
   line-height: 1;
   padding: 2px 4px;
   border-radius: 6px;
-  background: rgba(24, 144, 255, 0.14);
-  color: var(--color-primary, #1890ff);
+  background: rgba(34, 197, 94, 0.14);
+  color: var(--color-primary, #22c55e);
   cursor: pointer;
 }
 
@@ -919,7 +919,7 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
 
 .snapshot-restore {
   font-size: 11px;
-  color: var(--color-primary, #1890ff);
+  color: var(--color-primary, #22c55e);
 }
 
 /* 回收站入口 */
@@ -954,7 +954,7 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 8px;
-  background: var(--color-primary, #1890ff);
+  background: var(--color-primary, #22c55e);
   color: #fff;
 }
 
@@ -982,7 +982,7 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
 }
 
 .version-item.active {
-  background: rgba(24, 144, 255, 0.12);
+  background: rgba(34, 197, 94, 0.12);
 }
 
 .version-dot {
@@ -996,7 +996,7 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
 }
 
 .version-item.active .version-dot {
-  background: var(--color-primary, #1890ff);
+  background: var(--color-primary, #22c55e);
 }
 
 .version-label {
@@ -1009,7 +1009,7 @@ async function handleDeleteVersion(file: CanvasFile, version: CanvasVersion): Pr
 }
 
 .version-item.active .version-label {
-  color: var(--color-primary, #1890ff);
+  color: var(--color-primary, #22c55e);
   font-weight: 500;
 }
 

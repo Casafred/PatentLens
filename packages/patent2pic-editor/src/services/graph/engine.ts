@@ -187,7 +187,7 @@ export class GraphEngine {
       highlighting: {
         magnetAdsorbed: {
           name: 'stroke',
-          args: { attrs: { fill: '#1890FF', stroke: '#1890FF' } },
+          args: { attrs: { fill: '#22c55e', stroke: '#22c55e' } },
         },
       },
     })
@@ -284,9 +284,9 @@ export class GraphEngine {
   }
 
   /**
-   * Create a shared SVG group for edge labels, positioned after all edges
-   * but before nodes. This ensures all edge labels render above all edge
-   * lines, fixing the issue where one edge's line covers another edge's label.
+   * Create a shared SVG group for edge labels, positioned after all cells.
+   * This keeps every label above edges and nodes while labels themselves
+   * remain ordered among the same layer.
    */
   private setupLabelsLayer(): void {
     if (!this.graph) return
@@ -296,19 +296,85 @@ export class GraphEngine {
 
     const labelsLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     labelsLayer.setAttribute('class', 'edge-labels-layer')
-    // Insert before the first node container, or at the end if no nodes
-    const firstNode = viewport.querySelector('.x6-node')
-    if (firstNode) {
-      viewport.insertBefore(labelsLayer, firstNode)
-    } else {
-      viewport.appendChild(labelsLayer)
-    }
-    EdgeViewWithGap.setLabelsLayer(labelsLayer)
+    // 放到最后：标签文字必须显示在所有非标签要素（含节点、连线）之上
+    viewport.appendChild(labelsLayer)
+    EdgeViewWithGap.setLabelsLayer(labelsLayer, this.graph)
+    this.bindLabelsLayerInteraction(labelsLayer)
 
     // When edges are removed, reorganize labels to clean up
     this.graph.on('edge:removed', () => {
       EdgeViewWithGap.scheduleLabelsReorganize()
     })
+  }
+
+  /**
+   * 标签被搬到共享图层后不再位于边的 DOM 容器内，X6 的默认拖拽不会生效，
+   * 这里直接接管标签拖动，并保证拖动时只更新同一个模型标签。
+   */
+  private bindLabelsLayerInteraction(layer: SVGElement): void {
+    const graph = this.graph
+    if (!graph) return
+
+    layer.addEventListener('mousedown', (event: MouseEvent) => {
+      const target = event.target as Element | null
+      const labelEl = target && typeof (target as Element).closest === 'function'
+        ? (target as Element).closest('.x6-edge-label') as SVGElement | null
+        : null
+      if (!labelEl) return
+
+      const edgeId = labelEl.getAttribute('data-edge-id') || ''
+      const edge = graph.getCellById(edgeId)
+      if (!edge || !edge.isEdge()) return
+
+      const view = graph.findViewByCell(edge) as unknown as {
+        getLabelPosition?: (x: number, y: number, angle: number, args?: unknown) => Record<string, unknown>
+        getLabelPositionAngle?: (index: number) => number
+        getLabelPositionArgs?: (index: number) => unknown
+        getDefaultLabelPositionArgs?: () => unknown
+        mergeLabelPositionArgs?: (a: unknown, b: unknown) => unknown
+      } | null
+      if (!view || typeof view.getLabelPosition !== 'function') return
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      const index = Number(labelEl.getAttribute('data-index') || 0)
+      const edgeData = (edge.getData() as Record<string, unknown>) || {}
+      const detached = !!edgeData.labelDetached
+      const angle = typeof view.getLabelPositionAngle === 'function' ? view.getLabelPositionAngle(index) : 0
+      const args = typeof view.mergeLabelPositionArgs === 'function'
+        ? view.mergeLabelPositionArgs(view.getLabelPositionArgs?.(index), view.getDefaultLabelPositionArgs?.())
+        : undefined
+
+      let moved = false
+      graph.startBatch('label-drag')
+
+      const onMove = (moveEvent: MouseEvent): void => {
+        const local = graph.clientToLocal(moveEvent.clientX, moveEvent.clientY)
+        const position: any = view.getLabelPosition!(local.x, local.y, angle, args)
+        if (!detached) position.offset = { x: 0, y: 0 }
+        const origin = edge.getLabelAt(index)
+        if (!origin) return
+        edge.setLabelAt(index, { ...origin, position })
+        EdgeViewWithGap.scheduleLabelsReorganize()
+        moved = true
+      }
+
+      const onUp = (upEvent: MouseEvent): void => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+        graph.stopBatch('label-drag')
+        EdgeViewWithGap.reorganizeAllLabels()
+        if (!moved) {
+          const local = graph.clientToLocal(upEvent.clientX, upEvent.clientY)
+          ;(graph as unknown as { trigger: (name: string, args: Record<string, unknown>) => void })
+            .trigger('edge:label:click', { e: upEvent, x: local.x, y: local.y, cell: edge, edge })
+        }
+      }
+
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    }, true)
   }
 
   getGraph(): Graph | null {
@@ -798,10 +864,10 @@ export class GraphEngine {
         ? (group.label.chinese || group.label.original)
         : `${group.label.original}\n${group.label.chinese}`
 
-      // 方法类组合框使用蓝色样式，结构类使用橙色样式
-      const groupStroke = (isMethod || isMixed) ? '#1890FF' : '#fa8c16'
-      const groupFill = (isMethod || isMixed) ? '#f0f5ff' : '#fafafa'
-      const groupFontColor = (isMethod || isMixed) ? '#1890FF' : '#fa8c16'
+      // 方法类组合框使用主题绿色，结构类使用橙色样式
+      const groupStroke = (isMethod || isMixed) ? '#22c55e' : '#fa8c16'
+      const groupFill = (isMethod || isMixed) ? '#ecfdf5' : '#fafafa'
+      const groupFontColor = (isMethod || isMixed) ? '#22c55e' : '#fa8c16'
 
       this.graph.addNode({
         id: group.id,
@@ -2466,7 +2532,7 @@ export class GraphEngine {
           strokeWidth = isHighlighted ? original.strokeWidth : 1
         } else if (isHighlighted) {
           opacity = 1
-          stroke = '#1890FF'
+          stroke = '#22c55e'
           strokeWidth = 3
         } else if (isInCurrentOrEarlierFrame) {
           opacity = 0.3
@@ -2539,7 +2605,7 @@ export class GraphEngine {
           strokeWidth = isEdgeVisibleInFrame ? original.strokeWidth : 1
         } else if (isHighlighted) {
           opacity = 1
-          stroke = '#1890FF'
+          stroke = '#22c55e'
           strokeWidth = 4
         } else if (isEdgeInEarlierFrame) {
           opacity = 0.25

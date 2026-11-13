@@ -1,20 +1,20 @@
 :root {
-  --color-primary: #1890FF;
-  --color-primary-light: #40a9ff;
-  --color-primary-dark: #096dd9;
-  --color-primary-bg: #e6f7ff;
+  --color-primary: #22c55e;
+  --color-primary-light: #4ade80;
+  --color-primary-dark: #16a34a;
+  --color-primary-bg: #ecfdf5;
 
   --color-success: #52c41a;
   --color-warning: #faad14;
   --color-danger: #ff4d4f;
 
-  --relation-position: #1890FF;
+  --relation-position: #22c55e;
   --relation-action: #52c41a;
   --relation-containment: #fa8c16;
   --relation-logical: #722ed1;
 
-  --node-component-fill: #e8f4fd;
-  --node-component-stroke: #1890FF;
+  --node-component-fill: #ecfdf5;
+  --node-component-stroke: #22c55e;
   --node-subsystem-fill: #fff7e6;
   --node-subsystem-stroke: #fa8c16;
   --node-feature-fill: #f6ffed;
