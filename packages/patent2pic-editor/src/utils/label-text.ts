@@ -1,9 +1,9 @@
 /**
- * 画布文字换行：按视觉宽度把一行限制在约 10 个汉字以内。
+ * 画布文字换行：按视觉宽度把一行限制在约 15 个汉字以内。
  * 中日韩字符按 1 个单位计，拉丁字符按 0.55 个单位计，
- * 这样中文每行 10 字、英文约 18 个字符，避免节点/线条标签被拉得过长。
+ * 这样中文每行 15 字、英文约 27 个字符，避免节点/线条标签被拉得过长。
  */
-const MAX_LINE_UNITS = 10
+const MAX_LINE_UNITS = 15
 
 function isWideChar(char: string): boolean {
   return /[\u1100-\u11ff\u2e80-\u9fff\ua960-\ua97f\uac00-\ud7af\uf900-\ufaff\ufe10-\ufe1f\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/.test(char)

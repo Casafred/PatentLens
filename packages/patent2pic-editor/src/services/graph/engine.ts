@@ -18,6 +18,7 @@ import { timingStart, timingEnd } from '@/utils/timing'
 
 export class GraphEngine {
   private graph: Graph | null = null
+  private renderToken = 0
   private initialGraphJSON: Record<string, unknown> | null = null
   private frames: ExtractFrame[] = []
   private currentFrameIndex = -1
@@ -381,8 +382,24 @@ export class GraphEngine {
     return this.graph
   }
 
+  /**
+   * 清空画布并作废正在进行的异步构建，避免旧画布的节点/箭头在清空后重新出现。
+   */
+  clearGraph(): void {
+    this.renderToken++
+    this.initialGraphJSON = null
+    this.graph?.clearCells()
+    EdgeViewWithGap.scheduleLabelsReorganize()
+  }
+
   async batchBuild(result: ExtractResult, layoutOptions?: ElkLayoutOptions, isChinese: boolean = false): Promise<void> {
     if (!this.graph) return
+
+    // 每次重建持有一个令牌；切换画布/清空后旧构建在异步布局返回时必须放弃，
+    // 否则旧画布的节点和箭头会串进新画布，且清空后还会被重新加回来。
+    const token = ++this.renderToken
+    const batchName = `build-${token}`
+    this.initialGraphJSON = null
 
     const claimType = result.claimType || 'structure'
     const isMethod = claimType === 'method'
@@ -390,7 +407,7 @@ export class GraphEngine {
     const timingKey = `    │  图谱 batchBuild (${claimType})`
     timingStart(timingKey)
 
-    this.graph.startBatch('build')
+    this.graph.startBatch(batchName)
 
     this.graph.clearCells()
 
@@ -515,6 +532,11 @@ export class GraphEngine {
       : layoutOptions
     const positions = await applyElkLayout(nodeDataList, edgeDataList, methodLayoutOptions)
     timingEnd(`    │    布局计算 (ELK)`)
+    if (token !== this.renderToken) {
+      this.graph.stopBatch(batchName)
+      timingEnd(timingKey)
+      return
+    }
     for (const nodeData of nodeDataList) {
       const pos = positions.get(nodeData.id)
       if (pos) {
@@ -823,7 +845,7 @@ export class GraphEngine {
       }
     }
 
-    this.graph.stopBatch('build')
+    this.graph.stopBatch(batchName)
 
     this.initialGraphJSON = this.graph.toJSON()
 
@@ -2382,6 +2404,7 @@ export class GraphEngine {
   }
 
   fromJSON(json: Record<string, unknown>): void {
+    this.renderToken++
     this.graph?.fromJSON(json)
   }
 

@@ -41,10 +41,7 @@ async function handleFileClose(id: string): Promise<void> {
 
   // 最后一个文件：清空到空状态而非关闭，保证输入始终有归属文件
   if (graphStore.files.length <= 1) {
-    const graph = graphEngine.getGraph()
-    if (graph) {
-      graph.clearCells()
-    }
+    graphEngine.clearGraph()
     graphStore.clearActiveFileGraph()
     return
   }

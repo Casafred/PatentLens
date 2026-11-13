@@ -259,10 +259,7 @@ async function handleLoadProject(): Promise<void> {
 }
 
 function handleClearCanvas(): void {
-  const graph = engine.getGraph()
-  if (graph) {
-    graph.clearCells()
-  }
+  engine.clearGraph()
   graphStore.clearActiveFileGraph()
 }
 

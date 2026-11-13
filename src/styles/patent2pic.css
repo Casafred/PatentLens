@@ -26,8 +26,9 @@ body:has(#patent2pic-workbench:not([hidden])) #ai-settings-modal { z-index:10022
 .p2p-dialog-actions { display:flex; justify-content:flex-end; gap:10px; }
 .p2p-dialog-actions .p2p-primary { background:#16a34a; color:white; border-color:#16a34a; }
 .p2p-dialog-actions .p2p-primary:hover { background:#15803d; border-color:#15803d; }
-#patent2pic-entry { position:fixed; right:22px; bottom:170px; z-index:90010; width:54px; height:54px; padding:6px; border:1px solid var(--border); border-radius:50%; background:#fff; box-shadow:0 4px 18px #10263a26; cursor:pointer; transition:transform .15s; }
+#patent2pic-entry { position:fixed; right:22px; bottom:170px; z-index:90010; width:54px; height:54px; padding:6px; border:1px solid var(--border); border-radius:50%; background:#fff; box-shadow:0 4px 18px #10263a26; cursor:grab; touch-action:none; user-select:none; transition:transform .15s; }
 #patent2pic-entry:hover { transform:scale(1.08); }
+#patent2pic-entry:active { cursor:grabbing; }
 #patent2pic-entry img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
 body:has(#patent2pic-workbench:not([hidden])) #patent2pic-entry { display:none; }
 .p2p-search-toolbar { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:12px; flex-wrap:wrap; }
