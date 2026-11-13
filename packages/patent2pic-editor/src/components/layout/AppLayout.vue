@@ -1,5 +1,6 @@
 <template>
   <div class="app-layout">
+    <button class="workspace-edge-toggle" :class="{ open: editorStore.layout.drawerOpen }" :aria-expanded="editorStore.layout.drawerOpen" aria-label="打开项目与任务文件夹" title="项目与任务文件夹" @click="editorStore.toggleWorkspaceDrawer()">{{ editorStore.layout.drawerOpen ? '‹' : '›' }}</button>
     <!-- 工作区抽屉：覆盖式浮层，不挤占画布宽度 -->
     <transition name="drawer-fade">
       <div
@@ -30,24 +31,6 @@
       <CanvasToolbar />
       <TabBar :inert="aiStore.isExtracting" />
       <div class="canvas-area">
-        <div
-          class="drawer-tab"
-          :class="{ open: editorStore.layout.drawerOpen }"
-          role="button"
-          tabindex="0"
-          aria-label="工作区"
-          title="工作区（项目 / 画布文件 / 版本）"
-          @click="editorStore.toggleWorkspaceDrawer()"
-        >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3l1.5 2h5A1.5 1.5 0 0 1 14 5.5v7A1.5 1.5 0 0 1 12.5 14h-9A1.5 1.5 0 0 1 2 12.5v-9Z"
-              stroke="currentColor"
-              stroke-width="1.3"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </div>
         <GraphCanvas ref="graphCanvasRef" />
         <TaskCenter />
       </div>
@@ -217,6 +200,8 @@ watch(renderKey, (newKey, oldKey) => { trackCanvasRender((async () => {
   overflow: hidden;
   position: relative;
 }
+.workspace-edge-toggle { position:absolute; top:48%; left:-9px; z-index:50; width:34px; height:64px; padding-left:10px; border:1px solid var(--border-color); border-radius:0 12px 12px 0; color:var(--color-primary); background:var(--bg-secondary); cursor:pointer; font-size:28px; box-shadow:2px 0 8px #0001; transition:left .15s; }
+.workspace-edge-toggle:hover,.workspace-edge-toggle:focus-visible { left:0; }
 
 /* 工作区抽屉：覆盖式浮层，画布保持完整宽度 */
 .workspace-drawer {
@@ -253,34 +238,6 @@ watch(renderKey, (newKey, oldKey) => { trackCanvasRender((async () => {
 .drawer-slide-enter-from,
 .drawer-slide-leave-to {
   transform: translateX(-100%);
-}
-
-/* 画布左缘的工作区入口：不占用布局宽度 */
-.drawer-tab {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 46px;
-  border: 1px solid var(--border-color);
-  border-left: none;
-  border-radius: 0 8px 8px 0;
-  background: var(--bg-primary, #fff);
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, opacity 0.15s;
-}
-
-.drawer-tab:hover,
-.drawer-tab.open {
-  background: var(--color-primary, #1890ff);
-  border-color: var(--color-primary, #1890ff);
-  color: #fff;
 }
 
 .left-panel {

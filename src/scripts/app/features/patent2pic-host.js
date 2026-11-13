@@ -1,7 +1,14 @@
 /* Same-origin editor integration; the only configuration authority is window.AI. */
 (function () {
   'use strict';
-  var controller, loading, overlay, frame, status, closing = false;
+  var controller, loading, overlay, frame, status, closing = false, maintenance = false, cacheMutation = false;
+  var cachedValues = {}, records = [];
+  function updateRecords(values) {
+    cachedValues = values;
+    records = window.Patent2PicRecords.index(values);
+    window.dispatchEvent(new CustomEvent('patent2pic-records-changed'));
+  }
+  async function refreshRecords() { var result = await bridge().loadPatent2Pic(); updateRecords(result.values); return records; }
   function bridge() {
     if (!window.electronAPI || !window.electronAPI.loadPatent2Pic) throw new Error('请使用 PatentLens 桌面版打开成图工作台');
     return window.electronAPI;
@@ -52,6 +59,7 @@
     overlay.append(toolbar, frame); document.body.appendChild(overlay);
   }
   async function open(request) {
+    if (cacheMutation) throw new Error('正在清理成图缓存，请稍后重试');
     bridge();
     if (!loading) {
       loading = new Promise(function (resolve, reject) {
@@ -65,6 +73,30 @@
     if (request) await editor.launch(request);
     showStatus('项目自动保存到本机');
   }
+  async function openRecord(target) {
+    await open(); await controller.openRecord(target);
+    document.getElementById('ai-settings-modal').classList.add('hidden');
+  }
+  async function clearCache(target) {
+    if (cacheMutation) throw new Error('正在清理，请稍后重试');
+    if (controller && controller.isBusy()) throw new Error('请先终止或等待当前生成任务完成，再清理成图缓存');
+    cacheMutation = true;
+    try {
+      if (controller) await controller.save();
+      if (target) await refreshRecords();
+      maintenance = true;
+      // Dispose all in-memory state/timers before deletion, preventing autosave resurrection.
+      if (overlay) overlay.remove();
+      controller = loading = overlay = frame = status = null;
+      if (target) {
+        var values = window.Patent2PicRecords.removeFile(cachedValues, target);
+        await bridge().savePatent2Pic(values);
+        // Rewrite once so the recovery backup also excludes the removed graph.
+        await bridge().savePatent2Pic(values);
+      } else await bridge().clearPatent2Pic();
+      await refreshRecords();
+    } finally { maintenance = cacheMutation = false; }
+  }
   window.Patent2PicHost = {
     getAIConfig: getAIConfig,
     streamChat: function (provider, params, signal) {
@@ -73,11 +105,15 @@
       return window.Patent2PicAI.streamChat(snapshot, provider, params, signal);
     },
     openAISettings: openAISettings,
-    loadStorage: function () { return bridge().loadPatent2Pic(); },
-    saveStorage: function (values) { return bridge().savePatent2Pic(values); },
+    loadStorage: async function () { var result = await bridge().loadPatent2Pic(); updateRecords(result.values); return result; },
+    saveStorage: async function (values) { if (maintenance) throw new Error('正在清理成图缓存'); var result = await bridge().savePatent2Pic(values); updateRecords(values); return result; },
     ready: function () {},
   };
-  window.Patent2PicWorkbench = { open: open, close: close, isOpen: function () { return !!overlay && !overlay.hidden; } };
+  window.Patent2PicWorkbench = { open: open, close: close, openRecord: openRecord, clearCache: clearCache,
+    getRecords: function () { return records.slice(); }, refreshRecords: refreshRecords,
+    getCacheBytes: function () { return new TextEncoder().encode(JSON.stringify(cachedValues)).length; },
+    isOpen: function () { return !!overlay && !overlay.hidden; } };
+  if (window.electronAPI && window.electronAPI.loadPatent2Pic) refreshRecords().catch(function (error) { console.warn('成图记录读取失败', error.message); });
   // Save to the main process before normal application close. The existing
   // Electron close flow awaits this hook (also covers dirty canvas snapshots).
   window.savePatent2PicBeforeClose = async function () { if (controller) await controller.save(); };

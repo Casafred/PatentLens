@@ -37,7 +37,7 @@ export class GraphEngine {
         type: 'dot',
         args: { color: '#ddd', thickness: 1 },
       },
-      panning: { enabled: true, eventTypes: ['rightMouseDown', 'mouseWheel'] },
+      panning: { enabled: true, eventTypes: ['leftMouseDown'] },
       mousewheel: { enabled: true, zoomAtMousePosition: true, modifiers: null, minScale: 0.1, maxScale: 3 },
       connecting: {
         router: { name: 'perpendicularManhattan', args: { padding: 20, step: 10 } },
@@ -245,7 +245,7 @@ export class GraphEngine {
       enabled: true,
       rubberband: true,
       showNodeSelectionBox: true,
-      modifiers: [],
+      modifiers: ['shift'],
       filter(this: Graph, cell) {
         if (cell.isNode()) {
           const data = cell.getData()

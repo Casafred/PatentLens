@@ -12,5 +12,6 @@ function registerPatent2PicIPC({ ipcMain, userData, getPort }) {
   }
   ipcMain.handle('patent2pic-load', event => { authorize(event); return store.load(); });
   ipcMain.handle('patent2pic-save', (event, values) => { authorize(event); return store.save(values); });
+  ipcMain.handle('patent2pic-clear', event => { authorize(event); return store.clear(); });
 }
 module.exports = { registerPatent2PicIPC };

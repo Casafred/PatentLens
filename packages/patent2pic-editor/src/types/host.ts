@@ -23,6 +23,7 @@ export interface EditorController {
   launch(request: LaunchRequest): Promise<void>
   save(): Promise<void>
   isBusy(): boolean
+  openRecord(target: { projectId: string; fileId: string; versionId?: string; claimId?: string }): Promise<void>
 }
 export interface PatentLensHost {
   getAIConfig(): HostAIConfig

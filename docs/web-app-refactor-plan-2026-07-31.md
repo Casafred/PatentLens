@@ -1,5 +1,7 @@
 # web-app.js 拆解前盘点与低风险执行计划
 
+2026-11-12：迁出权项分组展开完整切片（toggleClaimGroup、toggleAllClaimGroups、updateExpandAllBtn）到 app/features/claim-groups.js。基线为 44619e0；保留全局调用名、分组 class、展开全部状态和事件入口，用 DOM 中实际从属条目数量修复重复折叠丢失数字。专用 Electron 测试覆盖单组和全部反复展开/折叠、详情与弹窗；其余回归沿用 verify:refactor 和 Electron 冒烟。
+
 > 盘点基线：`main@e990b50769e042672772fd2ccc1d54a12095eaa9`  
 > 盘点日期：2026-07-31  
 > 当前架构：Electron-only；`src-tauri/` 不在本计划范围内
