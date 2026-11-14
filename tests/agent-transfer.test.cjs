@@ -13,7 +13,7 @@ function loadModules() {
     setItem: (k, v) => store.set(k, String(v)),
     removeItem: (k) => store.delete(k),
   };
-  const context = vm.createContext({ localStorage, console, Math, JSON, Date, String, Number, Array, Object, Set, Map });
+  const context = vm.createContext({ localStorage, console, Math, JSON, Date, String, Number, Array, Object, Set, Map, URL });
   context.window = context; // 模块底部通过 window 导出
   const files = [
     'transfer-templates.js',
@@ -189,4 +189,38 @@ test('文件交接：文件名清洗与 PDF URL 构造（GD 链路）', () => {
   assert.equal(TransferFileDock.buildDocPdfUrl({ office: 'DE' }, doc), null);
   // ticketId 格式
   assert.match(TransferFileDock.newTicketId(), /^TK-\d{14}-[a-z0-9]{6}$/);
+});
+
+test('文件交接：附图载荷描述、扩展名识别与非法地址拦截', () => {
+  const { TransferFileDock } = loadModules();
+  // 扩展名从 URL 路径识别，默认 png
+  assert.equal(TransferFileDock.imageExtFromUrl('https://patentimages.storage.googleapis.com/x/US1-A.jpeg'), '.jpg');
+  assert.equal(TransferFileDock.imageExtFromUrl('https://example.com/no-ext'), '.png');
+  assert.equal(TransferFileDock.imageExtFromUrl('https://example.com/a.TIFF'), '.tiff');
+
+  const data = { patent_number: 'US14412875B2', drawings: [
+    'https://patentimages.storage.googleapis.com/x/US14412875B2-00001.png',
+    'https://patentimages.storage.googleapis.com/x/US14412875B2-00002.jpg',
+    'ftp://bad-scheme.png',
+  ] };
+  const payloads = TransferFileDock.describeImagePayloads(data);
+  assert.equal(payloads.length, 3);
+  assert.equal(payloads[0].status, 'pending');
+  assert.equal(payloads[0].fileName, 'US14412875B2_图1.png');
+  assert.equal(payloads[1].fileName, 'US14412875B2_图2.jpg');
+  assert.equal(payloads[0].docName, '说明书附图 图1');
+  // 非 http(s) 地址标记为不可用
+  assert.equal(payloads[2].status, 'unsupported');
+  assert.equal(payloads[2].url, '');
+
+  // 无附图时返回空数组
+  assert.deepEqual(TransferFileDock.describeImagePayloads({ patent_number: 'X' }), []);
+});
+
+test('上下文采集：附图块提示指向文件交接区', () => {
+  const { TransferContext } = loadModules();
+  const block = TransferContext.buildDrawingsBlock({
+    drawings: ['https://example.com/fig1.png'],
+  });
+  assert.ok(block.note.includes('附图文件交接'));
 });

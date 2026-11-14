@@ -296,7 +296,7 @@ var TransferContext = (function () {
     }).join("\n");
     var block = makeBlock("drawings", "说明书附图清单（" + drawings.length + " 张，含图片链接）", "专利原文·附图", text);
     if (drawings.length) {
-      block.note = "图片无法随文本粘贴，可在 Agent 中打开链接，或回到软件使用图片查看器";
+      block.note = "图片无法随文本粘贴；可在面板下方「附图文件交接」准备图片后直接拖入 Agent，或在 Agent 中打开链接";
     } else {
       block.note = "无附图数据";
     }

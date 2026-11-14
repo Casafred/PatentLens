@@ -130,6 +130,51 @@ var TransferFileDock = (function () {
     });
   }
 
+  // ── 说明书附图（外部图片 URL）──
+  function imageExtFromUrl(url) {
+    try {
+      var pathname = new URL(url, "https://example.com").pathname.toLowerCase();
+      var m = /\.(png|jpe?g|gif|webp|tiff?|bmp)$/.exec(pathname);
+      if (m) return "." + m[1].replace("jpeg", "jpg").replace("tif", "tiff");
+    } catch (e) { /* ignore */ }
+    return ".png";
+  }
+
+  function buildImageFileName(data, index, url) {
+    var pn = (data && (data.patent_number || data.raw || data.applicationNumber)) || "PATENT";
+    return sanitizeFileName(pn + "_图" + (index + 1) + imageExtFromUrl(url));
+  }
+
+  // 把附图 URL 数组转为图片载荷描述（不落盘，仅描述）
+  function describeImagePayloads(data) {
+    var drawings = (data && data.drawings) || [];
+    return drawings.map(function (url, i) {
+      var ok = /^https?:\/\//.test(url);
+      return {
+        kind: "image",
+        index: i,
+        url: ok ? url : "",
+        fileName: buildImageFileName(data, i, url),
+        docName: "说明书附图 图" + (i + 1),
+        status: ok ? "pending" : "unsupported",
+        filePath: null,
+        error: ok ? "" : "附图地址不可用",
+      };
+    });
+  }
+
+  function exportImage(ticketId, payload) {
+    var bridge = api();
+    if (!bridge || typeof bridge.transferExportImage !== "function") {
+      return Promise.resolve({ ok: false, error: "当前环境不支持文件交接" });
+    }
+    return bridge.transferExportImage({
+      ticketId: ticketId,
+      url: payload.url,
+      fileName: payload.fileName,
+    });
+  }
+
   return {
     newTicketId: newTicketId,
     sanitizeFileName: sanitizeFileName,
@@ -140,6 +185,10 @@ var TransferFileDock = (function () {
     startDrag: startDrag,
     showItem: showItem,
     saveTextFile: saveTextFile,
+    imageExtFromUrl: imageExtFromUrl,
+    buildImageFileName: buildImageFileName,
+    describeImagePayloads: describeImagePayloads,
+    exportImage: exportImage,
   };
 })();
 
