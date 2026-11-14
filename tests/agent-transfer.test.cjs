@@ -214,7 +214,7 @@ test('文件交接：附图载荷描述、扩展名识别与非法地址拦截',
   assert.equal(payloads[2].url, '');
 
   // 无附图时返回空数组
-  assert.deepEqual(TransferFileDock.describeImagePayloads({ patent_number: 'X' }), []);
+  assert.equal(TransferFileDock.describeImagePayloads({ patent_number: 'X' }).length, 0);
 });
 
 test('上下文采集：附图块提示指向文件交接区', () => {

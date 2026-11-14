@@ -135,7 +135,10 @@ var TransferFileDock = (function () {
     try {
       var pathname = new URL(url, "https://example.com").pathname.toLowerCase();
       var m = /\.(png|jpe?g|gif|webp|tiff?|bmp)$/.exec(pathname);
-      if (m) return "." + m[1].replace("jpeg", "jpg").replace("tif", "tiff");
+      if (m) {
+        var canonical = { jpeg: "jpg", tif: "tiff" };
+        return "." + (canonical[m[1]] || m[1]);
+      }
     } catch (e) { /* ignore */ }
     return ".png";
   }
