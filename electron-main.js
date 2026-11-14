@@ -6069,6 +6069,187 @@ app.whenReady().then(async () => {
     }
   });
 
+  // ── Agent 转移模式：文件交接 IPC（PDF/文本落盘、原生拖出、文件夹定位）──
+  function getHandoffRoot() {
+    return path.join(app.getPath("temp"), "PatentLensHandoff");
+  }
+
+  function assertInsideHandoff(targetPath) {
+    const root = path.resolve(getHandoffRoot());
+    const resolved = path.resolve(targetPath);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      throw new Error("handoff path escape detected");
+    }
+    return resolved;
+  }
+
+  function assertSafeTicketId(ticketId) {
+    if (!/^TK-[A-Za-z0-9-]+$/.test(String(ticketId || ""))) {
+      throw new Error("invalid ticket id");
+    }
+    return String(ticketId);
+  }
+
+  function assertSafeFileName(fileName) {
+    const name = String(fileName || "");
+    if (!name || name.includes("/") || name.includes("\\") || name.includes("..") || name.length > 160) {
+      throw new Error("invalid file name");
+    }
+    return name;
+  }
+
+  // 缓存未命中时，通过本机 HTTP 服务回源（复用既有 GD 代理与缓存写入逻辑）
+  function fetchFromOwnServer(reqUrl) {
+    return new Promise((resolve, reject) => {
+      if (!_serverPort) { reject(new Error("本地服务未就绪")); return; }
+      const req = http.get(`http://127.0.0.1:${_serverPort}${reqUrl}`, (resp) => {
+        if (resp.statusCode !== 200) {
+          resp.resume();
+          reject(new Error("文档下载失败 HTTP " + resp.statusCode));
+          return;
+        }
+        const chunks = [];
+        resp.on("data", (c) => chunks.push(c));
+        resp.on("end", () => resolve(Buffer.concat(chunks)));
+      });
+      req.on("error", reject);
+      req.setTimeout(120000, () => req.destroy(new Error("文档下载超时")));
+    });
+  }
+
+  ipcMain.handle("transfer:export-pdf", async (_event, payload) => {
+    try {
+      const ticketId = assertSafeTicketId(payload && payload.ticketId);
+      const fileName = assertSafeFileName(payload && payload.fileName);
+      const reqUrl = String((payload && payload.url) || "");
+      if (!reqUrl.startsWith("/api/")) return { ok: false, error: "仅支持本地 /api/ 文档地址" };
+
+      const urlPath = reqUrl.split("?")[0];
+      let buffer = getSessionPdf(urlPath);
+      if (!buffer) {
+        buffer = await fetchFromOwnServer(reqUrl);
+      }
+      if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+        return { ok: false, error: "PDF 内容为空" };
+      }
+
+      const dir = assertInsideHandoff(path.join(getHandoffRoot(), ticketId));
+      fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, fileName);
+      fs.writeFileSync(filePath, buffer);
+      return { ok: true, filePath, size: buffer.length };
+    } catch (e) {
+      console.error("[Transfer] export-pdf failed:", e.message);
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle("transfer:save-text", async (_event, payload) => {
+    try {
+      const ticketId = assertSafeTicketId(payload && payload.ticketId);
+      const fileName = assertSafeFileName(payload && payload.fileName);
+      const dir = assertInsideHandoff(path.join(getHandoffRoot(), ticketId));
+      fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, fileName);
+      fs.writeFileSync(filePath, String((payload && payload.content) || ""), "utf8");
+      return { ok: true, filePath };
+    } catch (e) {
+      console.error("[Transfer] save-text failed:", e.message);
+      return { ok: false, error: e.message };
+    }
+  });
+
+  // 代理感知的外部图片抓取（仅接受 image/* 响应），用于说明书附图交接
+  function fetchExternalImage(imageUrl, redirectsLeft) {
+    return new Promise((resolve, reject) => {
+      if (redirectsLeft == null) redirectsLeft = 5;
+      let parsed;
+      try { parsed = new URL(imageUrl); } catch (e) { return reject(new Error("图片地址无效")); }
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        return reject(new Error("仅支持 http/https 图片地址"));
+      }
+      const mod = parsed.protocol === "https:" ? https : http;
+      const options = { headers: { "User-Agent": "PatentLens-Handoff/1.0" } };
+      const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+      if (proxyUrl && parsed.protocol === "https:") {
+        try {
+          const proxyUrlObj = new URL(proxyUrl);
+          const tunnel = require("tunnel");
+          options.agent = tunnel.httpsOverHttp({
+            proxy: { host: proxyUrlObj.hostname, port: proxyUrlObj.port || 80 },
+          });
+        } catch (e) { /* 代理不可用时直连 */ }
+      }
+      mod.get(imageUrl, options, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
+          res.resume();
+          return resolve(fetchExternalImage(new URL(res.headers.location, imageUrl).href, redirectsLeft - 1));
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error("图片下载失败 HTTP " + res.statusCode));
+        }
+        const contentType = String(res.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+        if (contentType && !contentType.startsWith("image/")) {
+          res.resume();
+          return reject(new Error("目标资源不是图片（" + contentType + "）"));
+        }
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => resolve({ buffer: Buffer.concat(chunks), contentType: contentType || "image/png" }));
+        res.on("error", reject);
+      }).on("error", reject);
+    });
+  }
+
+  const HANDOFF_IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".tif", ".tiff", ".bmp"]);
+
+  ipcMain.handle("transfer:export-image", async (_event, payload) => {
+    try {
+      const ticketId = assertSafeTicketId(payload && payload.ticketId);
+      const fileName = assertSafeFileName(payload && payload.fileName);
+      const ext = path.extname(fileName).toLowerCase();
+      if (!HANDOFF_IMAGE_EXT.has(ext)) return { ok: false, error: "不支持的图片格式" };
+      const imageUrl = String((payload && payload.url) || "");
+      if (!/^https?:\/\//.test(imageUrl)) return { ok: false, error: "仅支持 http/https 图片地址" };
+
+      const { buffer } = await fetchExternalImage(imageUrl);
+      if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+        return { ok: false, error: "图片内容为空" };
+      }
+      const dir = assertInsideHandoff(path.join(getHandoffRoot(), ticketId));
+      fs.mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, fileName);
+      fs.writeFileSync(filePath, buffer);
+      return { ok: true, filePath, size: buffer.length };
+    } catch (e) {
+      console.error("[Transfer] export-image failed:", e.message);
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.on("transfer:start-drag", (event, payload) => {
+    try {
+      const filePath = assertInsideHandoff(payload && payload.filePath);
+      if (!fs.existsSync(filePath)) return;
+      event.sender.startDrag({
+        file: filePath,
+        icon: path.join(__dirname, "src", "icon.png"),
+      });
+    } catch (e) {
+      console.error("[Transfer] start-drag failed:", e.message);
+    }
+  });
+
+  ipcMain.on("transfer:show-item", (event, payload) => {
+    try {
+      const filePath = assertInsideHandoff(payload && payload.filePath);
+      if (fs.existsSync(filePath)) shell.showItemInFolder(filePath);
+    } catch (e) {
+      console.error("[Transfer] show-item failed:", e.message);
+    }
+  });
+
   // IPC: 抓取图片 URL 并返回 DataURL（绕过渲染进程 CORS 限制）
   ipcMain.handle("fetch-image-as-dataurl", async (_event, url) => {
     try {

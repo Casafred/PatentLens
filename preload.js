@@ -42,4 +42,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   forceRefocus: () => ipcRenderer.send("force-refocus"),
   resetFocusKick: () => ipcRenderer.send("reset-focus-kick"),
   sendToMain: (data) => ipcRenderer.send("popout-to-main", data),
+  // Agent 转移模式：文件交接
+  transferExportPdf: (payload) => ipcRenderer.invoke("transfer:export-pdf", payload),
+  transferExportImage: (payload) => ipcRenderer.invoke("transfer:export-image", payload),
+  transferSaveText: (payload) => ipcRenderer.invoke("transfer:save-text", payload),
+  transferStartDrag: (payload) => ipcRenderer.send("transfer:start-drag", payload),
+  transferShowItem: (payload) => ipcRenderer.send("transfer:show-item", payload),
 });
