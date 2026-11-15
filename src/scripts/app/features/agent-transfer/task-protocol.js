@@ -18,7 +18,7 @@
     return Array.from(new Uint8Array(digest)).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
   }
   async function create(options) {
-    if (!['claim-graph', 'family-comparison', 'claim-support', 'review-report', 'share-processing', 'graph-redraw', 'report'].includes(options.taskType)) throw new Error('不支持的交接任务类型');
+    if (!['claim-graph', 'family-comparison', 'claim-support', 'review-report', 'share-processing', 'graph-redraw', 'report', 'document-ocr', 'document-translation', 'document-qa'].includes(options.taskType)) throw new Error('不支持的交接任务类型');
     var input = clone(options.input);
     var task = { kind: 'patentlens-agent-task', schemaVersion: 1, taskId: 'agent-' + globalThis.crypto.randomUUID(), taskType: options.taskType,
       label: String(options.label), createdAt: Date.now(), sourceHash: await hash(input), input: input,

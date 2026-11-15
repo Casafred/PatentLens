@@ -224,3 +224,39 @@ test('上下文采集：附图块提示指向文件交接区', () => {
   });
   assert.ok(block.note.includes('附图文件交接'));
 });
+
+test('原文交接按入口读取详情和弹窗，审查概要不会覆盖原文缓存', () => {
+  const ctx = loadModules();
+  ctx.currentData = { office: 'US', patent_number: 'US999A', title: '审查概要' };
+  ctx._currentPatentData = fixtureFulltext();
+  ctx._patentPopupData = { ...fixtureFulltext(), patent_number: 'EP222B1', title: '其他弹窗' };
+  assert.equal(ctx.TransferContext.getCurrentData(), ctx.currentData);
+  assert.equal(ctx.TransferContext.getFulltextData('detail').patent_number, 'US14412875B2');
+  assert.equal(ctx.TransferContext.getFulltextData('popup').patent_number, 'EP222B1');
+  const blocks = ctx.TransferContext.readFulltextBlocks('detail');
+  for (const key of ['abstract', 'claims-independent', 'claims-dependent', 'description', 'drawings']) {
+    assert.equal(blocks.find(b => b.key === key).available, true, key);
+  }
+  assert.ok(!blocks[0].text.includes('EP222B1'));
+});
+
+test('原文交接只补齐同文献的内存和磁盘缓存，不修改缓存与当前数据', () => {
+  const ctx = loadModules();
+  const cached = fixtureFulltext();
+  ctx._currentPatentData = { patent_number: cached.patent_number, title: '当前标题', claims: [], description: '' };
+  ctx._pdActivePatent = cached.patent_number;
+  ctx._pdPatentCache = { [cached.patent_number]: cached };
+  ctx.GPCache = { get: () => ({ ...cached, abstract: '磁盘摘要' }) };
+  const data = ctx.TransferContext.getFulltextData('detail');
+  assert.equal(data.title, '当前标题');
+  assert.equal(data.claims.length, 3);
+  assert.equal(data.drawings.length, 2);
+  assert.equal(data.description, cached.description);
+  assert.equal(ctx._currentPatentData.claims.length, 0);
+  assert.equal(cached.title, 'Test Apparatus');
+
+  ctx._pdActivePatent = 'US333A';
+  assert.equal(ctx.TransferContext.getFulltextData('detail'), null);
+  ctx._patentPopupData = null;
+  assert.equal(ctx.TransferContext.getFulltextData('popup'), null);
+});

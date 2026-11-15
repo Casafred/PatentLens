@@ -1164,17 +1164,17 @@
             <!-- Reading Preferences Tab -->
             <div id="settings-tab-reading" class="settings-tab-content">
               <div class="form-group" style="background:var(--bg-secondary);padding:12px;border-radius:8px;border-left:3px solid #22c55e;">
-                <label style="display:block;font-weight:600;margin-bottom:8px;">悬浮球入口</label>
+                <label style="display:block;font-weight:600;margin-bottom:8px;">悬浮工具栏入口</label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px;">
                   <input type="checkbox" id="toggle-ai-float-ball" checked>
-                  显示智能助手悬浮球
+                  显示智能助手入口
                 </label>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                   <input type="checkbox" id="toggle-patent2pic-float-ball" checked>
-                  显示成图工作台悬浮球（可拖动改变位置）
+                  显示生图工作台入口
                 </label>
                 <small style="color:var(--text-secondary);margin-top:6px;display:block;margin-left:24px">
-                  关闭后对应悬浮球不再显示。成图工作台悬浮球可直接拖动，位置会自动记住。
+                  入口统一放在可拖动的竖排工具栏中，鼠标靠近时展开。拖动顶部手柄可移动，位置会自动记住。
                 </small>
               </div>
               <div class="form-group" style="background:var(--bg-secondary);padding:12px;border-radius:8px;border-left:3px solid #22c55e;">
@@ -1389,6 +1389,7 @@
   <script src="scripts/app/features/timeline-popup-stability.js?v=260808b"></script>
   <script src="scripts/app/features/timeline-key-nodes.js?v=261104a"></script>
   <script src="scripts/app/features/gt-translation-fixes.js?v=260814a"></script>
+  <script src="scripts/app/features/google-translate-lifecycle.js?v=261115d"></script>
   <script src="scripts/app/features/google-translate-proxy.js?v=261104a"></script>
   <script src="scripts/app/features/patent-detail-tab-state.js?v=260908a"></script>
   <script src="scripts/app/share/share-field-merge.js?v=260803c"></script>
@@ -1440,16 +1441,18 @@
   <script src="scripts/app/features/long-selection-menu.js?v=261103c"></script>
   <script src="scripts/app/features/ocr-auto-scan.js?v=261030a"></script>
   <script src="scripts/app/features/agent-transfer/transfer-templates.js?v=261114a"></script>
-  <script src="scripts/app/features/agent-transfer/transfer-context.js?v=261114a"></script>
+  <script src="scripts/app/features/agent-transfer/transfer-context.js?v=261115c"></script>
   <script src="scripts/app/features/agent-transfer/transfer-packager.js?v=261114a"></script>
   <script src="scripts/app/features/agent-transfer/transfer-file-dock.js?v=261114a"></script>
-  <script src="scripts/app/features/agent-transfer/transfer-panel.js?v=261114a"></script>
-  <script src="scripts/app/features/agent-transfer/transfer-entry.js?v=261114a"></script>
-  <script src="scripts/app/features/agent-transfer/task-protocol.js?v=261115a"></script>
-  <script src="scripts/app/features/agent-transfer/task-panel.js?v=261115a"></script>
-  <script src="scripts/app/features/agent-transfer/source-references.js?v=261115b"></script>
-  <script src="scripts/app/features/agent-transfer/task-workspace.js?v=261115b"></script>
-  <script src="scripts/app/features/agent-transfer/report-handoff.js?v=261115b"></script>
+  <script src="scripts/app/features/agent-transfer/transfer-panel.js?v=261115c"></script>
+  <script src="scripts/app/features/agent-transfer/transfer-entry.js?v=261115c"></script>
+  <script src="scripts/app/features/agent-transfer/task-protocol.js?v=261115d"></script>
+  <script src="scripts/app/features/agent-transfer/task-panel.js?v=261115e"></script>
+  <script src="scripts/app/features/agent-transfer/source-references.js?v=261115c"></script>
+  <script src="scripts/app/features/agent-transfer/task-workspace.js?v=261115c"></script>
+  <script src="scripts/app/features/agent-transfer/report-handoff.js?v=261115c"></script>
+  <script src="scripts/app/features/agent-transfer/reader-handoff.js?v=261115d"></script>
+  <link rel="stylesheet" href="styles/reader-agent.css?v=261115d">
   <script src="scripts/comparison/comparison-utils.js?v=260717d"></script>
   <script src="scripts/app/features/family-scope.js?v=261115a"></script>
   <script src="scripts/app/features/family-scope-styles.js?v=261115a"></script>
@@ -1474,6 +1477,8 @@
   <script src="scripts/agent/tools/comparison-tools.js?v=260717d"></script>
   <script src="scripts/agent/agent.js?v=260717d"></script>
   <script src="scripts/agent/ui/agent-panel.js?v=260717d"></script>
+  <link rel="stylesheet" href="styles/floating-tools.css?v=261115d">
+  <script src="scripts/app/features/floating-tools.js?v=261115d"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       PatentLensAgent.init();

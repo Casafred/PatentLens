@@ -39,7 +39,7 @@
       if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); dismiss(); }
       if (e.key === 'Tab') { var controls = Array.from(box.querySelectorAll('button')), first = controls[0], last = controls[controls.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); } }
     }
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:18000;background:#0007;display:grid;place-items:center;padding:24px';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:100080;background:#0007;display:grid;place-items:center;padding:24px';
     var box = document.createElement('section'); box.style.cssText = 'background:var(--bg-primary,white);color:var(--text-primary,#123);padding:24px;max-width:850px;width:90%;max-height:85vh;overflow:auto;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere';
     var close = document.createElement('button'); close.textContent = '关闭原文'; close.onclick = dismiss; box.appendChild(close);
     var locate = locator && locator(source);

@@ -75,6 +75,14 @@ test('review includes full OCR and missing material manifest; accepting preserve
   kb.extractions[1].text += 'changed';
   await assert.rejects(api.routes['review-report'].accept(task, payload), /变化/);
 });
+
+test('review defaults to loaded documents when the selection set is empty', async () => {
+  const { api, c } = adapters();
+  c._kanbanSelected.clear();
+  const task = await api.createReview('');
+  assert.deepEqual(Array.from(task.input.documents, d => d.idx), [1, 2]);
+  assert.ok(task.input.sources.length);
+});
 test('share returns append pending editable drafts, preserve accepted manual fields and reject changed source', async () => {
   const { api, project } = adapters(), task = await api.createShare(['p1'], 'summary', '');
   const payload = { report: '总体', items: [{ patentId: 'p1', content: '技术解读草稿' }], evidence: [{ sourceId: task.input.sources[0].id, quote: '处理器' }] };

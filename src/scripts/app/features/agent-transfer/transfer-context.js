@@ -328,15 +328,39 @@ var TransferContext = (function () {
   // ───────────────────────── 全局包装层（读取 web-app.js 状态） ─────────────────────────
   function getCurrentData() {
     try {
-      if (typeof window !== "undefined" && window._patentPopupData) return window._patentPopupData;
-    } catch (e) { /* ignore */ }
-    try {
       if (typeof currentData !== "undefined") return currentData;
     } catch (e) { /* ignore */ }
-    try {
-      if (typeof window !== "undefined" && window._currentPatentData) return window._currentPatentData;
-    } catch (e) { /* ignore */ }
     return null;
+  }
+
+  // 原文与案卷分别维护状态；只补齐同一文献号的缓存，绝不混入其他页的数据。
+  function getFulltextData(scope) {
+    var popup = scope === "popup";
+    var data = popup ? window._patentPopupData : window._currentPatentData;
+    var pn = "";
+    try {
+      pn = popup
+        ? (typeof _ppvActivePatent !== "undefined" && _ppvActivePatent)
+        : (typeof _pdActivePatent !== "undefined" && _pdActivePatent);
+    } catch (e) { /* state may not be initialized */ }
+    pn = pn || (data && (data.patent_number || data.patentNumber)) || "";
+    if (!pn) return null;
+    var normalize = function (value) { return safeStr(value).replace(/\s/g, "").toUpperCase(); };
+    var result = {};
+    var merge = function (candidate) {
+      if (!candidate || normalize(candidate.patent_number || candidate.patentNumber) !== normalize(pn)) return;
+      Object.keys(candidate).forEach(function (key) {
+        var value = candidate[key];
+        if (value != null && value !== "" && (!Array.isArray(value) || value.length)) result[key] = value;
+      });
+    };
+    try { if (typeof GPCache !== "undefined") merge(GPCache.get(pn)); } catch (e) { /* cache unavailable */ }
+    try {
+      if (popup && typeof _patentPopupCache !== "undefined") merge(_patentPopupCache[pn] && _patentPopupCache[pn].data);
+      if (!popup && typeof _pdPatentCache !== "undefined") merge(_pdPatentCache[pn]);
+    } catch (e) { /* memory cache unavailable */ }
+    merge(data);
+    return Object.keys(result).length ? result : null;
   }
 
   function getKanban() {
@@ -358,8 +382,8 @@ var TransferContext = (function () {
     return buildDossierBlocks(data, kb.documents, kb.extractions, selectedIdxs);
   }
 
-  function readFulltextBlocks() {
-    return buildFulltextBlocks(getCurrentData());
+  function readFulltextBlocks(scope) {
+    return buildFulltextBlocks(getFulltextData(scope));
   }
 
   return {
@@ -388,6 +412,7 @@ var TransferContext = (function () {
     readDossierBlocks: readDossierBlocks,
     readFulltextBlocks: readFulltextBlocks,
     getCurrentData: getCurrentData,
+    getFulltextData: getFulltextData,
     getKanban: getKanban,
   };
 })();

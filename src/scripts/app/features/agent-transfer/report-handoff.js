@@ -86,7 +86,7 @@
     return { patentNumber: number(data) || String(data && data.applicationNumber || ''), documents: manifest, sources: sources };
   }
   async function createReview(instructions) {
-    var kb = root.TransferContext.getKanban(), selected = typeof _kanbanSelected !== 'undefined' ? Array.from(_kanbanSelected) : kb.documents.map(function (d) { return d.idx; });
+    var kb = root.TransferContext.getKanban(), selected = typeof _kanbanSelected !== 'undefined' && _kanbanSelected.size ? Array.from(_kanbanSelected) : kb.documents.map(function (d) { return d.idx; });
     var input = reviewInput(selected);
     return protocol.create({ taskType: 'review-report', label: (input.patentNumber || '案卷') + ' · 审查与答复分析', input: input, target: {},
       instructions: '按日期梳理审查意见—申请人答复—修改—授权的链条，分析争议焦点、权项变化、引用文献和仍待确认的问题。没有OCR全文的文档只列为材料缺口。不得把推测当事实；每个关键结论提供 sourceId 和原文 quote。输出 {"report":"中文 Markdown 报告，使用 ### 分节","evidence":[{"sourceId":"输入编号","quote":"逐字引文","explanation":"关联结论"}]}。分包报告明确本包覆盖范围，合并不推断未读材料。\n补充要求：' + instructions });
@@ -212,7 +212,7 @@
           patents.forEach(function (p) { var label = document.createElement('label'), check = document.createElement('input'); check.type = 'checkbox'; check.checked = true; check.onchange = function () { ids = check.checked ? ids.concat(p.id) : ids.filter(function (id) { return id !== p.id; }); }; label.appendChild(check); label.appendChild(document.createTextNode(p.patentNumber + ' ')); config.appendChild(label); });
         }
         if (type !== 'claim-support') config.appendChild(instruction);
-        dialog.insertBefore(config, dialog.querySelector('.agent-task-step'));
+        dialog.querySelector('[data-step="prepare"]').prepend(config);
       }
     }, route));
   }
@@ -223,7 +223,6 @@
   }
   function ensure() {
     ['detail', 'popup'].forEach(function (scope) { var parent = document.querySelector(scope === 'popup' ? '#ppv-content' : '#patent-detail-content'); button(parent && parent.querySelector('.claim-support-toolbar'), 'claim-support', scope, '交给 Agent / 导入'); });
-    document.querySelectorAll('.tl-header-actions,.doclist-header-actions,.kanban-header-actions').forEach(function (host) { button(host, 'review-report', '', 'Agent 审查分析 / 导入'); });
     button(document.querySelector('.share-workspace-header-actions'), 'share-processing', '', 'Agent 加工 / 导入');
     var container = document.getElementById('kanban-analysis-content');
     if (container && !container.querySelector('.agent-return-report')) {
