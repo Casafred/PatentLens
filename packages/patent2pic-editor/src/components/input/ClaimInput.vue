@@ -1,5 +1,6 @@
 <template>
   <div class="claim-input">
+    <el-button class="claim-agent-handoff" size="small" :disabled="aiStore.isExtracting" @click="handleAgentHandoff">交给 Agent 生图 / 导入结果</el-button>
     <template v-if="!claimStore.isInputCollapsed">
       <div class="section-header">
         <h3>权利要求输入</h3>
@@ -180,6 +181,7 @@ import { useGraphStore } from '@/stores/graph'
 import { usePlaybackStore } from '@/stores/playback'
 import { useAIExtract } from '@/composables/useAIExtract'
 import { useParallelExtract } from '@/composables/useParallelExtract'
+import { useAgentHandoff } from '@/composables/useAgentHandoff'
 import { parseClaims, getClaimPreview, newClaimSessionId } from '@/services/claim/parser'
 
 const claimStore = useClaimStore()
@@ -188,6 +190,12 @@ const graphStore = useGraphStore()
 const playback = usePlaybackStore()
 const { extractActiveClaim, error: extractError, abort } = useAIExtract()
 const parallelExtract = useParallelExtract()
+const agentHandoff = useAgentHandoff()
+
+function handleAgentHandoff(): void {
+  if (claimStore.rawText.trim() && !claimStore.claims.length) handleTextInput()
+  agentHandoff.open()
+}
 
 const hasGraphData = computed(() => {
   const version = graphStore.activeVersion
