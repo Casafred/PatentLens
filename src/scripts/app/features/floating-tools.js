@@ -1,7 +1,7 @@
 /* One movable dock owns the desktop shortcuts. Existing panels retain their state. */
 (function (root) {
   'use strict';
-  var key = 'patentlens-tools-position-v1', dock, wheel, timer, drag, moved = false;
+  var key = 'patentlens-tools-position-v1', dock, wheel, timer, drag, moved = false, keyboard = false;
   function assistant() {
     AgentUI.togglePanel();
     var panel = document.querySelector('.agent-panel'), report = document.getElementById('pl-tools-report-chat');
@@ -48,7 +48,7 @@
     wheel.inert = !value; wheel.setAttribute('aria-hidden', String(!value));
     dock.querySelector('[data-drag]').setAttribute('aria-expanded', String(value));
   }
-  function later() { clearTimeout(timer); timer = setTimeout(function () { if (!dock.contains(document.activeElement)) expand(false); }, 350); }
+  function later() { clearTimeout(timer); timer = setTimeout(function () { if (!keyboard || !dock.contains(document.activeElement)) expand(false); }, 350); }
   function init() {
     dock = document.createElement('aside'); dock.id = 'pl-floating-tools'; dock.className = 'notranslate'; dock.setAttribute('aria-label', '悬浮工具栏');
     dock.innerHTML = '<button type="button" data-drag aria-label="拖动工具栏；点击展开工具" aria-expanded="false" title="拖动移动 · 点击展开"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="7" r="1.5"/><circle cx="15" cy="7" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17" r="1.5"/><circle cx="15" cy="17" r="1.5"/></svg></button><div class="pl-tools-mini"></div><div class="pl-tools-wheel" aria-label="展开的工具" aria-hidden="true"></div><span class="pl-tools-status" role="status"></span>';
@@ -93,11 +93,13 @@
     });
     function finish() { if (!drag) return; drag = null; position(parseFloat(dock.style.left), parseFloat(dock.style.top), true); setTimeout(function () { moved = false; }, 0); }
     root.addEventListener('pointerup', finish); root.addEventListener('pointercancel', finish);
-    document.addEventListener('pointerdown', function (event) { if (!dock.contains(event.target)) expand(false); });
+    document.addEventListener('keydown', function (event) { if (event.key === 'Tab' || event.key.startsWith('Arrow')) keyboard = true; });
+    document.addEventListener('pointerdown', function (event) { keyboard = false; if (!dock.contains(event.target)) expand(false); });
     document.addEventListener('pointermove', function (event) {
       if (drag || event.pointerType === 'touch') return;
       var r = dock.getBoundingClientRect();
       if (event.clientX >= r.left - 18 && event.clientX <= r.right + 18 && event.clientY >= r.top - 18 && event.clientY <= r.bottom + 18) expand(true);
+      else if (!dock.contains(event.target)) later();
     });
     root.addEventListener('resize', function () { position(parseFloat(dock.style.left), parseFloat(dock.style.top)); });
   }

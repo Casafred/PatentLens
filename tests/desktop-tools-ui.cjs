@@ -19,6 +19,8 @@ module.exports = async function ({ win, evaluate, until, output }) {
   const visible = () => evaluate(`(()=>{const buttons=[...document.querySelectorAll('.pl-tools-wheel button')];return buttons.every(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})})()`);
   assert.equal(await visible(), true, 'all wheel buttons are in viewport and clickable');
   await capture('tools-wheel-dark');
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: 1000, y: 900 });
+  await until(() => evaluate("!document.querySelector('#pl-floating-tools').classList.contains('expanded')"), 'wheel collapses after leaving proximity');
   const handle = await bounds('#pl-floating-tools [data-drag]');
   await evaluate("window._dockEvents=[];['pointerdown','pointermove','pointerup','pointercancel'].forEach(type=>document.addEventListener(type,e=>_dockEvents.push([type,e.target.closest('button')?.getAttribute('data-drag'),e.target.id,e.clientX,e.clientY,e.buttons]),true));void 0");
   win.webContents.sendInputEvent({ type: 'mouseMove', ...handle });
