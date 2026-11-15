@@ -50,3 +50,40 @@ export function validateAgentGraph(payload: Record<string, unknown>, claimText: 
   }
   return result
 }
+
+/** Redraws may preserve manual material or add explicitly labelled schematic proposals. */
+export function validateAgentRedraw(payload: Record<string, unknown>, claimText: string, base: ExtractResult, instructions: string): ExtractResult {
+  const candidate = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>
+  const nodes = candidate.nodes as Record<string, unknown>[]
+  const edges = candidate.edges as Record<string, unknown>[]
+  if (!Array.isArray(nodes) || !Array.isArray(edges)) throw new Error('重构结果必须返回完整 nodes / edges')
+  const proposals = Array.isArray(payload.proposals) ? payload.proposals as { id: string; reason: string }[] : []
+  const norm = (text: unknown) => String(text || '').normalize('NFKC').replace(/\s+/g, '')
+  const source = norm(claimText)
+  const extra: string[] = [], notes: string[] = []
+  for (const item of [...nodes, ...edges]) {
+    const old = [...base.nodes, ...base.edges].find(old => old.id === item.id)
+    const isNode = nodes.includes(item)
+    const evidence = String(item.sourceSentence || '')
+    const backed = !!norm(item.originalText) && source.includes(norm(item.originalText)) && (!isNode || (!!norm(evidence) && source.includes(norm(evidence))))
+    const preserved = old && item.originalText === old.originalText && (!isNode || evidence === ('sourceSentence' in old ? old.sourceSentence : ''))
+    if (backed) continue
+    if (preserved) { if (old.chineseText.startsWith('【示意】')) item.chineseText = '【示意】' + String(item.chineseText || item.originalText).replace(/^【示意】/, ''); if (isNode && !evidence.trim()) item.sourceSentence = '交接时已有手工节点'; extra.push(String(item.originalText), String(item.sourceSentence || '')); continue }
+    const proposal = proposals.find(p => p.id === item.id && typeof p.reason === 'string' && p.reason.trim())
+    if (!proposal) throw new Error(`「${item.chineseText || item.id}」不在原权项中；请提供 proposals 的 id / reason 明确标记示意新增`)
+    item.chineseText = '【示意】' + String(item.chineseText || item.originalText || '').replace(/^【示意】/, '')
+    if (isNode) item.sourceSentence = '用户修改要求：' + instructions
+    extra.push(String(item.originalText), String(item.sourceSentence || ''))
+    notes.push(`示意修改 ${item.id}：${proposal.reason}`)
+  }
+  // Translation must still cover the actual claim; validate it separately from the permitted diagram vocabulary.
+  const pairs = candidate.sentencePairs
+  candidate.sentencePairs = []
+  const result = validateAgentGraph(candidate, claimText + '\n' + extra.join('\n'))
+  if (Array.isArray(pairs) && pairs.length) {
+    if (pairs.some(p => typeof p.original !== 'string' || typeof p.translation !== 'string') || norm(pairs.map(p => p.original).join('')) !== source) throw new Error('原译文对照未完整覆盖原权项')
+    result.sentencePairs = pairs
+  } else result.sentencePairs = base.sentencePairs
+  result.changes = [...(Array.isArray(payload.changes) ? payload.changes.filter((x): x is string => typeof x === 'string') : []), ...notes]
+  return result
+}

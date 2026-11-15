@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   transferExportImage: (payload) => ipcRenderer.invoke("transfer:export-image", payload),
   transferSaveText: (payload) => ipcRenderer.invoke("transfer:save-text", payload),
   agentHandoffCopyText: (text) => ipcRenderer.invoke("agent-handoff:copy-text", text),
+  agentHandoffLoad: () => ipcRenderer.invoke("agent-handoff:load"),
+  agentHandoffSave: (raw) => ipcRenderer.invoke("agent-handoff:save", raw),
   transferStartDrag: (payload) => ipcRenderer.send("transfer:start-drag", payload),
   transferShowItem: (payload) => ipcRenderer.send("transfer:show-item", payload),
 });

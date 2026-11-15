@@ -99,6 +99,7 @@ async function exportFormat(format) {
 
 app.whenReady().then(async () => {
   registerPatent2PicIPC({ ipcMain, userData: path.join(artifacts, 'persistent-data'), getPort: () => port });
+  require('../agent-handoff-ipc.cjs').registerAgentHandoffIPC({ ipcMain, clipboard: require('electron').clipboard, userData: path.join(artifacts, 'agent-tasks'), getPort: () => port });
   session.defaultSession.webRequest.onBeforeRequest({ urls: ['https://cdnjs.cloudflare.com/*'] }, (_details, callback) => callback({ cancel: true }));
   session.defaultSession.on('will-download', (_event, item) => {
     const destination = path.join(artifacts, item.getFilename()); item.setSavePath(destination);

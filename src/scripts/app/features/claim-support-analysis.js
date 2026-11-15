@@ -36,18 +36,19 @@ var ClaimSupportAnalysis = (function () {
     if (!cached || !cached.claims) return;
     (data.claims || []).forEach(function (claim) {
       var entry = cached.claims[claimCacheKey(claim)];
-      if (entry && entry.claimText === String(claim.text || "") && entry.result) state.results[key(scope, claim)] = entry.result;
+      if (entry && entry.claimText === String(claim.text || "") && (cached.description === undefined || cached.description === String(data.description || "")) && entry.result) state.results[key(scope, claim)] = entry.result;
       else delete state.results[key(scope, claim)];
     });
   }
   function persistResult(scope, claim, result) {
     var data = patentData(scope) || {}, cacheKey = cacheKeyForData(data);
-    if (!cacheKey) return;
     var saved = data._claimSupportAnalysis || { version: 1, claims: {} };
+    if (saved.description !== undefined && saved.description !== String(data.description || "")) saved.claims = {};
+    saved.description = String(data.description || "");
     saved.claims[claimCacheKey(claim)] = { claimText: String(claim.text || ""), result: result, savedAt: Date.now() };
     saved.updatedAt = Date.now();
     data._claimSupportAnalysis = saved;
-    try { GPCache.set(cacheKey, data); } catch (error) { console.warn("[ClaimSupport] failed to cache analysis:", error); }
+    if (cacheKey) try { GPCache.set(cacheKey, data); } catch (error) { console.warn("[ClaimSupport] failed to cache analysis:", error); }
   }
   function isIndependentClaim(claim, index) {
     if (!claim) return false;
@@ -102,17 +103,18 @@ var ClaimSupportAnalysis = (function () {
     var features = Array.isArray(raw && raw.features) ? raw.features : [];
     if (!features.length) throw new Error("AI 未识别出可核查的技术特征");
     var claimSource = normalizeForMatch(claimText);
-    var verifiedFeatures = features.slice(0, 20).filter(function (feature) {
+    if (features.length > 300) throw new Error('技术特征超过 300 项，请分批分析');
+    var verifiedFeatures = features.filter(function (feature) {
       var text = normalizeForMatch(feature && feature.claimText);
       return text && claimSource.indexOf(text) !== -1;
     });
     if (!verifiedFeatures.length) throw new Error("AI 返回的技术特征无法在当前权利要求原文中验证");
     return { features: verifiedFeatures.map(function (feature, index) {
       var evidence = (Array.isArray(feature.evidence) ? feature.evidence : []).map(function (item) {
-        var id = normalizeId(item.paragraph); if (!paraMap[id]) return null;
+        var id = normalizeId(item.paragraph); if (!paraMap[id] || !normalizeForMatch(item.quote) || !normalizeForMatch(paraMap[id].text).includes(normalizeForMatch(item.quote))) return null;
         return { paragraph: paraMap[id], quote: String(item.quote || ""), quoteZh: String(item.quoteZh || item.quote || ""), explanation: String(item.explanation || ""), explanationZh: String(item.explanationZh || item.explanation || "") };
-      }).filter(Boolean).slice(0, 4);
-      return { id: String(feature.id || "F" + (index + 1)), claimText: String(feature.claimText || ""), claimTextZh: String(feature.claimTextZh || feature.claimText || ""), label: String(feature.label || "技术特征"), status: validStatuses[feature.status] ? feature.status : (evidence.length ? "partial" : "missing"), evidence: evidence };
+      }).filter(Boolean);
+      return { id: String(feature.id || "F" + (index + 1)), claimText: String(feature.claimText || ""), claimTextZh: String(feature.claimTextZh || feature.claimText || ""), label: String(feature.label || "技术特征"), status: evidence.length ? (validStatuses[feature.status] ? feature.status : 'partial') : 'missing', evidence: evidence };
     }), summary: String(raw.summary || "AI 已按技术特征定位说明书证据，请结合原文人工核查。"), summaryZh: String(raw.summaryZh || raw.summary || "AI 已按技术特征定位说明书证据，请结合原文人工核查。") };
   }
 
@@ -290,6 +292,9 @@ var ClaimSupportAnalysis = (function () {
 
   var observer = typeof MutationObserver === "function" ? new MutationObserver(enhance) : null;
   function init() { if (observer) observer.observe(document.body, { childList: true, subtree: true }); enhance(); }
-  return { init: init, paragraphs: paragraphs, validateResult: validateResult, extractJson: extractJson, sourceText: sourceText, isIndependentClaim: isIndependentClaim, allIndependentIndexes: allIndependentIndexes, persistResult: persistResult, restoreCachedResults: restoreCachedResults, cachedResult: function (scope, claim) { return state.results[key(scope, claim)]; } };
+  return { init: init, paragraphs: paragraphs, validateResult: validateResult, extractJson: extractJson, sourceText: sourceText, prompt: prompt, selectedIndexes: selectedIndexes, isIndependentClaim: isIndependentClaim, allIndependentIndexes: allIndependentIndexes, persistResult: persistResult, restoreCachedResults: restoreCachedResults, cachedResult: function (scope, claim) { return state.results[key(scope, claim)]; },
+    accept: function (scope, index, result) { var data = patentData(scope); if (!data || !data.claims[index]) throw new Error('请先打开原专利'); state.results[key(scope, data.claims[index])] = result; persistResult(scope, data.claims[index], result); open(scope, index); },
+    locate: function (scope, paragraph) { activateDescription(scope); setTimeout(function () { jump(scope, paragraph); }, 80); }
+  };
 })();
 if (typeof document !== "undefined") { if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ClaimSupportAnalysis.init); else ClaimSupportAnalysis.init(); }

@@ -2,7 +2,7 @@
 var ComparisonHandoff = (function () {
   'use strict';
   var store, timer;
-  function getStore() { return store || (store = AgentHandoffProtocol.createStore(localStorage, 'patentlens-agent-comparison-tasks')); }
+  function getStore() { return typeof AgentTaskWorkspace !== 'undefined' ? AgentTaskWorkspace.getStore() : store || (store = AgentHandoffProtocol.createStore(localStorage, 'patentlens-agent-comparison-tasks')); }
   function snapshot(item) {
     return { id: item.id, label: item.label, source: item.source || '', patentNumber: item.patentNumber || '', claimNumber: item.claimNumber || '',
       originalText: item.originalText || '', originalLang: item.originalLang || '', isSelected: true };
@@ -48,8 +48,9 @@ var ComparisonHandoff = (function () {
     ComparisonUI.render();
     return '已生成统一特征树并保存到比对历史。' + (checked.issues.length ? '\n有 ' + checked.issues.length + ' 项映射需核对，可在树中查看证据和待核对标记。' : '');
   }
-  function open(initialRaw, initialError) {
-    AgentHandoffPanel.open({ title: 'Agent 同族权利要求比对', taskType: 'family-comparison', store: getStore(), createTask: createTask, apply: apply,
+  async function open(initialRaw, initialError) {
+    if (typeof AgentTaskWorkspace !== 'undefined') await AgentTaskWorkspace.ready;
+    AgentHandoffPanel.open({ title: 'Agent 同族权利要求比对', taskType: 'family-comparison', store: getStore(), createTask: createTask, apply: apply, accept: apply,
       initialRaw: typeof initialRaw === 'string' ? initialRaw : '',
       initialError: initialError || '',
       description: '将选中权项与引用上下文交给外部 Agent，返回后生成统一特征树和采用矩阵。无需配置模型 API。' });
@@ -63,6 +64,7 @@ var ComparisonHandoff = (function () {
     button.textContent = '交给 Agent / 导入结果'; button.addEventListener('click', open); actions.prepend(button);
   }
   function install() {
+    if (typeof AgentTaskWorkspace !== 'undefined') AgentTaskWorkspace.register('family-comparison', { apply: apply, accept: apply });
     ensure();
     var section = document.getElementById('comparison-section');
     if (section) {

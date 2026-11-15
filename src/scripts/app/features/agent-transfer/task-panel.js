@@ -33,23 +33,64 @@
     document.body.appendChild(overlay);
     var dialog = overlay.querySelector('section'), select = dialog.querySelector('select'), textarea = dialog.querySelector('.agent-task-result');
     var status = dialog.querySelector('.agent-task-status'), input = dialog.querySelector('.agent-task-file');
-    var busy = false, currentId = '', lastError = '';
+    var busy = false, currentId = options.taskId || '', lastError = '';
+    var extra = document.createElement('div');
+    extra.innerHTML = '<label class="agent-task-step">材料范围</label><select class="agent-task-parts" aria-label="材料分包"></select><details class="agent-task-history"><summary>结果版本 / 编辑 / 采用 / 原文证据</summary><select class="agent-task-revisions" aria-label="结果版本"></select><pre class="agent-task-report" style="white-space:pre-wrap;max-height:300px;overflow:auto"></pre><div class="agent-task-evidence"></div><textarea class="agent-task-edit" aria-label="编辑结果 JSON"></textarea><div class="agent-task-actions"><button data-action="revise">保存修订版本</button><button data-action="accept">采用选中版本</button><button data-action="rebind">绑定当前画布（迁移后）</button></div><div class="agent-task-acceptance"></div></details><div class="agent-task-actions" style="margin-top:16px"><button data-action="bundle-export">导出全部任务包</button><button data-action="bundle-import">导入任务包</button><input class="agent-bundle-file" type="file" accept=".json" hidden></div>';
+    dialog.insertBefore(extra, dialog.querySelector('.agent-task-drop'));
+    var parts = extra.querySelector('.agent-task-parts'), revisions = extra.querySelector('.agent-task-revisions'), edit = extra.querySelector('.agent-task-edit');
+    var advanced = document.createElement('details'), advancedTitle = document.createElement('summary'); advancedTitle.textContent = '修订结构化结果（高级）'; advanced.appendChild(advancedTitle);
+    edit.parentNode.insertBefore(advanced, edit); advanced.append(edit, extra.querySelector('[data-action="revise"]'));
+    extra.querySelector('[data-action="accept"]').className = 'agent-task-primary';
+    var backup = document.createElement('details'); backup.innerHTML = '<summary>采用前的原分析备份</summary><select class="agent-task-backups" aria-label="原分析备份"></select><pre style="white-space:pre-wrap;max-height:200px;overflow:auto"></pre><button data-action="backup">下载选中备份</button>'; extra.appendChild(backup);
+    function showBackup() { var task = current(), item = task && (task.previousAnalyses || [])[Number(backup.querySelector('select').value)]; backup.querySelector('pre').textContent = item ? item.report : ''; }
+    backup.querySelector('select').addEventListener('change', showBackup);
+    function prompt(task) { return root.AgentHandoffProtocol.prompt(task, parts.value); }
     dialog.insertBefore(status, dialog.querySelector('.agent-task-description'));
     dialog.querySelector('h2').textContent = options.title;
     dialog.querySelector('.agent-task-description').textContent = options.description;
+    if (options.configure) options.configure(dialog);
     function message(text, error) { status.textContent = text; status.className = 'agent-task-status ' + (error ? 'error' : 'success'); dialog.scrollTop = 0; }
-    function rows() { return options.store.list().filter(function (task) { return task.taskType === options.taskType; }); }
+    function rows() { return options.store.list().filter(function (task) { return !options.taskType || task.taskType === options.taskType; }); }
     function current() { return rows().find(function (task) { return task.taskId === select.value; }); }
+    function readable(task, revision) {
+      var p = revision.payload, lines = [p.report || p.summary || ''];
+      if (Array.isArray(p.items)) p.items.forEach(function (item) { var source = (task.input.patents || []).find(function (patent) { return patent.id === item.patentId; }); lines.push('\n' + (source ? source.patentNumber : item.patentId) + '\n' + item.content); });
+      if (Array.isArray(p.claims)) p.claims.forEach(function (claim) { if (!claim.result) return; lines.push('\n权利要求 ' + claim.number + '\n' + (claim.result.summaryZh || claim.result.summary || '')); (claim.result.features || []).forEach(function (feature, i) { lines.push((i + 1) + '. ' + (feature.claimTextZh || feature.claimText) + ' · ' + ({ strong: '明确对应', partial: '部分对应', missing: '待核查' }[feature.status] || '待核查')); (feature.evidence || []).forEach(function (e) { lines.push('[' + e.paragraph + '] ' + (e.quoteZh || e.quote)); }); }); });
+      if (Array.isArray(p.changes)) lines.push(p.changes.join('\n'));
+      return lines.filter(Boolean).join('\n') || revision.outcome || '';
+    }
+    function showRevision() {
+      var task = current(), revision = task && (task.revisions || []).find(function (row) { return row.hash === revisions.value; });
+      edit.value = revision ? JSON.stringify(revision.payload, null, 2) : '';
+      extra.querySelector('.agent-task-report').textContent = revision ? readable(task, revision) : '尚无完整回流版本';
+      extra.querySelector('.agent-task-acceptance').textContent = revision ? (revision.acceptance || []).map(function (entry) { return new Date(entry.at).toLocaleString() + ' · ' + entry.note; }).join('\n') : '';
+      var evidence = extra.querySelector('.agent-task-evidence'); evidence.replaceChildren();
+      if (revision && root.AgentSourceReferences) (revision.payload.evidence || []).forEach(function (item) {
+        var source = (task.input.sources || []).find(function (s) { return s.id === item.sourceId; }); if (!source) return;
+        var button = document.createElement('button'); button.textContent = source.id + ' · ' + item.quote.slice(0, 50); button.onclick = function () { root.AgentSourceReferences.view(source, item.quote); }; evidence.appendChild(button);
+      });
+    }
     function refresh(id) {
       var tasks = rows(); select.replaceChildren();
-      tasks.forEach(function (task) { var option = document.createElement('option'); option.value = task.taskId; option.textContent = (task.status === 'returned' ? '已回流 · ' : '待回流 · ') + task.label + ' · ' + new Date(task.createdAt).toLocaleString(); select.appendChild(option); });
+      tasks.forEach(function (task) { var option = document.createElement('option'); option.value = task.taskId; option.textContent = (task.status === 'accepted' ? '已采用 · ' : task.status === 'returned' ? '已回流 · ' : '待回流 · ') + task.label + ' · ' + new Date(task.createdAt).toLocaleString(); select.appendChild(option); });
       if (id && tasks.some(function (t) { return t.taskId === id; })) select.value = id;
       currentId = select.value;
-      var task = current(); dialog.querySelector('.agent-task-prompt').value = task ? root.AgentHandoffProtocol.prompt(task) : '请先新建交接任务。';
+      var task = current(), previousPart = parts.value, previousRevision = revisions.value; parts.replaceChildren();
+      [{ id: '', label: '完整材料（单次返回）' }].concat(task && task.parts && task.parts.length > 1 && options.merge ? task.parts : []).forEach(function (part) { var option = document.createElement('option'); option.value = part.id; option.textContent = part.label || (part.id + ' · ' + part.sourceIds.length + ' 段原文' + (task.partialResults && task.partialResults[part.id] ? ' · 已返回' : '')); parts.appendChild(option); });
+      if (Array.from(parts.options).some(function (o) { return o.value === previousPart; })) parts.value = previousPart;
+      revisions.replaceChildren();
+      (task && task.revisions || []).forEach(function (revision, i) { var option = document.createElement('option'); option.value = revision.hash; option.textContent = '版本 ' + (i + 1) + ' · ' + new Date(revision.createdAt).toLocaleString() + ((revision.acceptance || []).length ? ' · 已采用' : ' · 待审核'); revisions.appendChild(option); });
+      revisions.value = (task && task.revisions || []).some(function (r) { return r.hash === previousRevision; }) ? previousRevision : ((task && task.revisions || []).slice(-1)[0] || {}).hash || '';
+      showRevision();
+      backup.hidden = !(task && task.previousAnalyses && task.previousAnalyses.length); backup.querySelector('select').replaceChildren();
+      (task && task.previousAnalyses || []).forEach(function (item, i) { var option = document.createElement('option'); option.value = i; option.textContent = new Date(item.savedAt).toLocaleString(); backup.querySelector('select').appendChild(option); }); showBackup();
+      dialog.querySelector('.agent-task-prompt').value = task ? prompt(task) : '请先新建交接任务。';
       dialog.querySelector('[data-action="create"]').disabled = !options.createTask;
+      extra.querySelector('[data-action="rebind"]').hidden = !options.rebind;
     }
     function close() { if (busy) return; overlay.remove(); document.removeEventListener('keydown', keydown, true); if (previous && previous.isConnected) previous.focus(); }
     function keydown(e) {
+      if (document.querySelector('.agent-source-overlay')) return;
       if (e.key === 'Escape') { e.stopImmediatePropagation(); close(); }
       if (e.key === 'Tab') {
         var controls = Array.from(dialog.querySelectorAll('button:not(:disabled),select,textarea,summary')).filter(function (el) { return el.getClientRects().length; });
@@ -61,7 +102,7 @@
     async function run(action) {
       if (busy) return;
       busy = true; dialog.querySelectorAll('button').forEach(function (b) { b.disabled = true; }); select.disabled = true;
-      try { await action(); }
+      try { await action(); if (root.AgentTaskWorkspace && options.store === root.AgentTaskWorkspace.getStore()) await root.AgentTaskWorkspace.flush(); }
       catch (error) { lastError = error.message; message(lastError, true); }
       finally {
         busy = false; dialog.querySelectorAll('button').forEach(function (b) { b.disabled = false; }); select.disabled = false;
@@ -71,13 +112,14 @@
     async function receive(raw) {
       textarea.value = raw;
       var received = await options.store.receive(raw, async function (task, payload, resultHash) {
-        if (task.taskType !== options.taskType) throw new Error('该结果属于其他功能，请到对应工作台导入');
+        if (options.taskType && task.taskType !== options.taskType) throw new Error('该结果属于其他功能，请到对应工作台导入');
         return options.apply(task, payload, resultHash);
-      }, currentId);
+      }, currentId, options.merge);
       currentId = received.task.taskId; lastError = '';
       message(received.outcome || '结果已导入，可关闭面板查看。');
-      var view = document.createElement('button'); view.type = 'button'; view.textContent = '查看生成结果'; view.style.marginLeft = '12px';
-      view.addEventListener('click', close); status.appendChild(view);
+      var view = document.createElement('button'); view.type = 'button'; view.textContent = options.reviewFirst ? '查看结果并采用' : '查看生成结果'; view.style.marginLeft = '12px';
+      view.addEventListener('click', function () { if (options.reviewFirst) { extra.querySelector('.agent-task-history').open = true; extra.scrollIntoView({ block: 'center', behavior: 'smooth' }); } else close(); }); status.appendChild(view);
+      if (options.reviewFirst) extra.querySelector('.agent-task-history').open = true;
     }
     async function file(file) {
       if (!file) return;
@@ -88,21 +130,34 @@
       var button = event.target.closest('[data-action]'); if (!button) return;
       var action = button.dataset.action;
       if (action === 'file') { input.click(); return; }
+      if (action === 'bundle-import') { extra.querySelector('.agent-bundle-file').click(); return; }
       void run(async function () {
         var task = current();
         if (action === 'create') { task = await options.createTask(); options.store.put(task); currentId = task.taskId; textarea.value = ''; message('任务已准备好。复制指令或下载材料，发送到外部 Agent。'); }
+        else if (action === 'bundle-export') { if (!root.AgentTaskWorkspace) throw new Error('请在主工作台导出任务包'); download(root.AgentTaskWorkspace.exportBundle(), 'patentlens-agent-workspace.json'); }
         else if (action === 'import') await receive(textarea.value);
         else if (action === 'raw') { if (!textarea.value.trim()) throw new Error('还没有原始回答'); download(textarea.value, 'patentlens-agent-answer.txt'); }
         else {
           if (!task) throw new Error('请先新建或选择交接任务');
-          if (action === 'copy') { await copy(root.AgentHandoffProtocol.prompt(task)); message('已复制完整任务，请粘贴到外部 Agent。'); }
-          if (action === 'download') download(root.AgentHandoffProtocol.prompt(task), task.taskId + '-task.txt');
-          if (action === 'repair') { await copy('请修正上一份结果并返回完整结果信封，保留正确内容。软件提示：' + (lastError || task.lastAttempt && task.lastAttempt.error || '请依据原文复核结构与证据') + '\n\n' + root.AgentHandoffProtocol.prompt(task)); message('已复制修正请求。'); }
+          if (action === 'copy') { await copy(prompt(task)); message('已复制选定范围的任务，请粘贴到外部 Agent。'); }
+          if (action === 'download') download(prompt(task), task.taskId + '-' + (parts.value || 'full') + '-task.txt');
+          if (action === 'repair') { await copy('请修正上一份结果并返回完整结果信封，保留正确内容。软件提示：' + (lastError || task.lastAttempt && task.lastAttempt.error || '请依据原文复核结构与证据') + '\n\n' + prompt(task)); message('已复制修正请求。'); }
+          if (action === 'revise') { await receive(JSON.stringify({ kind: 'patentlens-agent-result', schemaVersion: 1, taskId: task.taskId, taskType: task.taskType, sourceHash: task.sourceHash, payload: JSON.parse(edit.value) })); revisions.value = ''; }
+          if (action === 'rebind') { if (!options.rebind) throw new Error('请到生图工作台绑定'); message(await options.rebind(task)); }
+          if (action === 'backup') { var previous = (task.previousAnalyses || [])[Number(backup.querySelector('select').value)]; if (!previous) throw new Error('没有选中备份'); download(previous.report, task.taskId + '-previous-analysis.md'); }
+          if (action === 'accept') {
+            if (!options.accept) throw new Error('生成版本已保存在原工作台，请在那里切换版本');
+            var revision = (task.revisions || []).find(function (row) { return row.hash === revisions.value; }); if (!revision) throw new Error('请先选择完整结果版本');
+            var outcome = await options.accept(task, revision.payload, revision.hash); options.store.recordAcceptance(task.taskId, revision.hash, outcome); message(outcome || '已采用选中版本');
+          }
           if (action === 'remove') { options.store.remove(task.taskId); currentId = ''; textarea.value = ''; message('已删除交接记录，已生成的图和比对历史仍可查看。'); }
         }
       });
     });
     select.addEventListener('change', function () { currentId = select.value; var task = current(); textarea.value = task && task.lastAttempt ? task.lastAttempt.raw : ''; lastError = task && task.lastAttempt ? task.lastAttempt.error : ''; refresh(currentId); message(lastError || '', !!lastError); });
+    parts.addEventListener('change', function () { var task = current(); if (task) dialog.querySelector('.agent-task-prompt').value = prompt(task); });
+    revisions.addEventListener('change', showRevision);
+    extra.querySelector('.agent-bundle-file').addEventListener('change', function (event) { var file = event.target.files[0]; event.target.value = ''; void run(async function () { if (!file || file.size > 32 * 1024 * 1024) throw new Error('请选择不超过 32 MB 的任务包'); if (!root.AgentTaskWorkspace) throw new Error('请在主工作台导入任务包'); var count = await root.AgentTaskWorkspace.importBundle(await file.text()); message('已导入 ' + count + ' 个任务；在对应工作台选择原文后采用。'); }); });
     input.addEventListener('change', function () { var selected = input.files[0]; input.value = ''; void run(function () { return file(selected); }); });
     var drop = dialog.querySelector('.agent-task-drop');
     // Prevent Electron navigation even when a file misses the dashed target.
@@ -113,7 +168,7 @@
     overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
     document.addEventListener('keydown', keydown, true);
     try {
-      refresh();
+      refresh(currentId);
       var savedTask = current();
       if (savedTask && savedTask.lastAttempt && !options.initialRaw) {
         textarea.value = savedTask.lastAttempt.raw; lastError = savedTask.lastAttempt.error || '';

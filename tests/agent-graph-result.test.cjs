@@ -10,7 +10,7 @@ function load(name) {
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2021 } }).outputText, context, { filename });
   return context.exports;
 }
-const { validateAgentGraph } = load('agent-result');
+const { validateAgentGraph, validateAgentRedraw } = load('agent-result');
 const original = 'A device comprising a housing and a motor connected to the housing.';
 const base = () => ({ claimType: 'structure', nodes: [
   { id: 'n1', originalText: 'housing', chineseText: '壳体', nodeType: 'component', sourceSentence: 'a housing' },
@@ -45,4 +45,18 @@ test('external graph rejects cross-kind duplicate IDs and unknown group/frame re
   assert.throws(() => validateAgentGraph(data, original), /分步展示/);
   data = base(); data.nodes[0].nodeType = 'decision';
   assert.throws(() => validateAgentGraph(data, original), /类型不符合/);
+});
+
+test('external redraw preserves manual base vocabulary and labels new unsupported schematic objects', () => {
+  const manual = base(); manual.nodes[0].originalText = 'hand edited housing'; manual.nodes[0].sourceSentence = '';
+  const data = structuredClone(manual);
+  data.nodes.push({ id: 'n-new-1', originalText: 'reducer', chineseText: '减速器', nodeType: 'component', sourceSentence: 'invented original' });
+  assert.throws(() => validateAgentRedraw(data, original, manual, '增加减速器示意'), /proposals/);
+  data.proposals = [{ id: 'n-new-1', reason: '用户要求增加示意减速器' }];
+  const result = validateAgentRedraw(data, original, manual, '增加减速器示意');
+  assert.equal(result.nodes[2].chineseText, '【示意】减速器');
+  assert.equal(result.nodes[2].sourceSentence, '用户修改要求：增加减速器示意');
+  assert.match(result.changes.join(''), /示意修改/);
+  const next = structuredClone(result); next.nodes[2].chineseText = '重命名减速器';
+  assert.equal(validateAgentRedraw(next, original, result, '重命名减速器').nodes[2].chineseText, '【示意】重命名减速器');
 });

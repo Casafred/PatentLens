@@ -40,6 +40,7 @@ app.whenReady().then(async () => {
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     require('../patent2pic-ipc.cjs').registerPatent2PicIPC({ ipcMain, userData: path.join(output, 'patent2pic'), getPort: () => server.address().port });
+    require('../agent-handoff-ipc.cjs').registerAgentHandoffIPC({ ipcMain, clipboard: require('electron').clipboard, userData: path.join(output, 'agent-tasks'), getPort: () => server.address().port });
     win = new BrowserWindow({ show: false, width: 1500, height: 1100, webPreferences: { offscreen: true, backgroundThrottling: false, contextIsolation: true, nodeIntegration: false, preload: path.join(root, 'preload.js'), webviewTag: true } });
     const errors = [];
     win.webContents.on('console-message', details => { if (details.level === 'error' && /ReferenceError|SyntaxError|Uncaught|is not defined/.test(details.message)) errors.push(details.message); });
