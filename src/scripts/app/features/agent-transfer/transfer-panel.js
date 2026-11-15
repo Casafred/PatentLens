@@ -53,7 +53,8 @@ var TransferPanel = (function () {
     if (document.getElementById("pl-transfer-style")) return;
     var css = [
       ".pl-transfer-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100050;display:flex;align-items:center;justify-content:center;padding:24px;}",
-      ".pl-transfer-modal{background:#fff;border-radius:14px;width:min(900px,100%);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:inherit;color:#1f2937;}",
+      ".pl-transfer-modal{background:var(--bg-primary,#fff);border-radius:14px;width:min(900px,100%);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:inherit;color:var(--text-primary,#1f2937);}",
+      ".pl-transfer-modal *{box-sizing:border-box;}.pl-transfer-header,.pl-transfer-footer{flex-shrink:0;}.pl-transfer-body{min-height:0;}.pl-transfer-intro{margin:0 0 18px;font-size:13px;color:var(--text-secondary,#64748b);}.pl-transfer-section>summary{cursor:pointer;font-weight:600;font-size:13px;margin-bottom:10px;}",
       ".pl-transfer-header{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid #e5e7eb;background:#f0fdf4;}",
       ".pl-transfer-header h3{margin:0;font-size:16px;color:#14532d;display:flex;align-items:center;gap:8px;}",
       ".pl-transfer-close{border:none;background:none;font-size:22px;cursor:pointer;color:#6b7280;line-height:1;padding:4px 8px;}",
@@ -101,6 +102,10 @@ var TransferPanel = (function () {
       ".pl-transfer-preview summary{cursor:pointer;font-size:12.5px;color:#2563eb;font-weight:600;}",
       ".pl-transfer-preview pre{background:#0f172a;color:#d1fae5;border-radius:10px;padding:14px;font-size:12px;line-height:1.6;max-height:260px;overflow:auto;white-space:pre-wrap;}",
       ".pl-doc-check{border:1px solid #e5e7eb;border-radius:10px;padding:4px 10px;max-height:230px;overflow-y:auto;margin-bottom:8px;}",
+      ".pl-transfer-header,.pl-transfer-footer{background:var(--bg-secondary,#f0fdf4);border-color:var(--border,#e5e7eb);}.pl-transfer-header h3,.pl-transfer-section>h4{color:var(--text-primary,#14532d);}.pl-transfer-close,.pl-budget{color:var(--text-secondary,#475569);}.pl-budget strong{color:var(--accent,#15803d);}",
+      ".pl-check-row:hover{background:var(--bg-hover,#f0fdf4)}.pl-check-row .pl-cr-meta,.pl-file-chip .pl-fc-sub{color:var(--text-secondary,#6b7280)}.pl-check-row .pl-cr-note{color:var(--warning,#b45309)}.pl-check-row.disabled{opacity:.7}",
+      ".pl-transfer-textarea{background:var(--bg-secondary,#fff);color:var(--text-primary,#1f2937);border-color:var(--border,#d1d5db)}.pl-btn-ghost{background:var(--bg-hover,#f1f5f9);color:var(--text-primary,#374151)}.pl-file-chip{background:var(--accent-dim,#f0fdf4)}.pl-file-chip.error{background:var(--bg-secondary,#fef2f2)}.pl-doc-check{border-color:var(--border,#e5e7eb)}",
+      "@media(max-width:600px){.pl-transfer-overlay{padding:8px}.pl-transfer-modal{max-height:95vh}.pl-transfer-header,.pl-transfer-body,.pl-transfer-footer{padding:14px}.pl-transfer-header h3{flex-wrap:wrap;font-size:14px}.pl-transfer-footer{flex-wrap:wrap}.pl-transfer-section>h4{flex-wrap:wrap}.pl-transfer-section>h4 .pl-row-actions{margin-left:0;flex-wrap:wrap}}",
     ].join("");
     var style = document.createElement("style");
     style.id = "pl-transfer-style";
@@ -128,14 +133,14 @@ var TransferPanel = (function () {
     var stats = currentStats();
     var budgetEl = root.querySelector("[data-role=budget]");
     if (budgetEl) {
-      budgetEl.innerHTML = "已勾选 <strong>" + stats.blocks.length + "</strong> 个上下文块 · 上下文约 <strong>" +
-        stats.chars.toLocaleString() + "</strong> 字符（估算 " + Math.round(stats.chars / 1.8).toLocaleString() + " tokens）";
+      budgetEl.innerHTML = "已选 <strong>" + stats.blocks.length + "</strong> 项材料 · <strong>" +
+        stats.chars.toLocaleString() + "</strong> 字符";
       budgetEl.classList.toggle("over", stats.chars > 60000);
     }
     var previewEl = root.querySelector("[data-role=preview]");
     if (previewEl) {
       var pkg = TransferPackager.buildPackage({
-        prompt: root.querySelector("[data-role=prompt]").value,
+        prompt: TransferTemplates.compose(SCENE_META[state.scene].tpl, root.querySelector("[data-role=prompt]").value),
         note: root.querySelector("[data-role=note]").value,
         blocks: stats.blocks,
         sceneLabel: SCENE_META[state.scene].title.replace("交接给外部 Agent · ", ""),
@@ -208,13 +213,13 @@ var TransferPanel = (function () {
     var oldList = state.blocks.filter(function (b) { return b.key === "doc-list"; })[0];
     var listPos = state.blocks.indexOf(oldList);
     if (listPos >= 0) state.blocks[listPos] = listBlock;
-    // OCR 块勾选与文档选择联动
-    state.blocks.forEach(function (b) {
-      if (b.key.indexOf("ocr-") === 0) {
-        var idx = Number(b.key.slice(4));
-        b.checked = !!state.docSelected[idx];
-      }
-    });
+    state.blocks = state.blocks.filter(function (b) { return b.key.indexOf("ocr-") !== 0; }).concat(
+      TransferContext.buildOcrBlocks(state.docs, state.extractions, selectedIdxs).map(function (b) {
+        b.checked = b.available !== false;
+        return b;
+      })
+    );
+    renderFileDock();
   }
 
   function setAllDocs(checked) {
@@ -226,11 +231,33 @@ var TransferPanel = (function () {
   }
 
   // ── 文件交接区 ──
+  function retainPayloads(payloads, cache) {
+    return payloads.map(function (p) {
+      var key = p.url + "|" + p.fileName;
+      if (!cache[key]) cache[key] = p;
+      return cache[key];
+    });
+  }
+
+  function exportPayload(payload, image) {
+    var session = state;
+    var ticketId = ensureTicketId();
+    payload.status = "exporting";
+    var exporter = image ? TransferFileDock.exportImage : TransferFileDock.exportPdf;
+    return Promise.resolve().then(function () { return exporter(ticketId, payload); }).then(function (res) {
+      payload.status = res && res.ok && res.filePath ? "ready" : "error";
+      payload.filePath = res && res.filePath || null;
+      payload.error = payload.status === "error" ? (res && res.error || "文件准备失败") : "";
+    }).catch(function (error) {
+      payload.status = "error"; payload.error = error.message || "文件准备失败";
+    }).then(function () { return state === session; });
+  }
+
   function renderFileDock() {
     var host = root.querySelector("[data-role=file-dock]");
     if (!host) return;
     var selectedDocs = state.docs.filter(function (d) { return state.docSelected[d.idx]; });
-    var payloads = TransferFileDock.describePayloads(state.data, selectedDocs);
+    var payloads = retainPayloads(TransferFileDock.describePayloads(state.data, selectedDocs), state.pdfCache);
     state.payloads = payloads;
     if (!payloads.length) {
       host.innerHTML = '<div class="pl-cr-meta">勾选文档后可准备 PDF 交接文件</div>';
@@ -248,7 +275,7 @@ var TransferPanel = (function () {
         '<div class="pl-fc-sub">' + esc(p.docName) + " · " + esc(sub) + (p.error && p.status !== "unsupported" ? " · " + esc(p.error) : "") + "</div></span>" +
         (p.status === "ready"
           ? '<button class="pl-btn pl-btn-ghost" data-action="show-item">文件夹</button>'
-          : (p.status === "pending" ? '<button class="pl-btn pl-btn-ghost" data-action="export">准备</button>' : "")) +
+          : (p.status === "pending" || p.status === "error" ? '<button class="pl-btn pl-btn-ghost" data-action="export">' + (p.status === "error" ? "重试" : "准备") + '</button>' : (p.status === "exporting" ? "准备中…" : ""))) +
         "</div>";
     }).join("");
 
@@ -278,44 +305,28 @@ var TransferPanel = (function () {
   }
 
   function prepareOnePdf(payload, chip) {
-    var ticketId = ensureTicketId();
-    payload.status = "exporting";
     var btn = chip.querySelector("button");
     if (btn) { btn.disabled = true; btn.textContent = "准备中…"; }
-    TransferFileDock.exportPdf(ticketId, payload).then(function (res) {
-      if (res && res.ok && res.filePath) {
-        payload.status = "ready";
-        payload.filePath = res.filePath;
-        toast("PDF 已就绪，可拖入 Agent 窗口");
-      } else {
-        payload.status = "error";
-        payload.error = (res && res.error) || "落盘失败";
-        toast("文件准备失败：" + payload.error, true);
-      }
+    exportPayload(payload, false).then(function (active) {
+      if (!active) return;
+      toast(payload.status === "ready" ? "PDF 已就绪，可拖入 Agent 窗口" : payload.error, payload.status === "error");
       renderFileDock();
     });
   }
 
   function prepareAllPdfs() {
-    var pendings = (state.payloads || []).filter(function (p) { return p.status === "pending"; });
+    var session = state;
+    var pendings = (state.payloads || []).filter(function (p) { return p.status === "pending" || p.status === "error"; });
     if (!pendings.length) { toast("没有待准备的文件"); return; }
-    var ticketId = ensureTicketId();
     var chain = Promise.resolve();
     pendings.forEach(function (p) {
       chain = chain.then(function () {
-        p.status = "exporting";
-        return TransferFileDock.exportPdf(ticketId, p).then(function (res) {
-          if (res && res.ok && res.filePath) {
-            p.status = "ready";
-            p.filePath = res.filePath;
-          } else {
-            p.status = "error";
-            p.error = (res && res.error) || "落盘失败";
-          }
-        });
+        if (state !== session || p.status === "ready" || p.status === "exporting") return;
+        return exportPayload(p, false).then(function (active) { if (active) renderFileDock(); });
       });
     });
     chain.then(function () {
+      if (state !== session) return;
       renderFileDock();
       var failed = (state.payloads || []).filter(function (p) { return p.status === "error"; }).length;
       toast(failed ? "部分文件准备失败，请查看芯片提示" : "全部 PDF 已就绪，可拖入 Agent 窗口", failed > 0);
@@ -350,7 +361,7 @@ var TransferPanel = (function () {
   function renderImageDock() {
     var host = root.querySelector("[data-role=image-dock]");
     if (!host) return;
-    var payloads = TransferFileDock.describeImagePayloads(state.data);
+    var payloads = retainPayloads(TransferFileDock.describeImagePayloads(state.data), state.imageCache);
     state.imagePayloads = payloads;
     if (!payloads.length) {
       host.innerHTML = '<div class="pl-cr-meta">该专利没有可交接的附图</div>';
@@ -369,7 +380,7 @@ var TransferPanel = (function () {
         '<div class="pl-fc-sub">' + esc(p.docName) + " · " + esc(sub) + (p.error && p.status !== "unsupported" ? " · " + esc(p.error) : "") + "</div></span>" +
         (p.status === "ready"
           ? '<button class="pl-btn pl-btn-ghost" data-action="show-item">文件夹</button>'
-          : (p.status === "pending" ? '<button class="pl-btn pl-btn-ghost" data-action="export-img">准备</button>' : "")) +
+          : (p.status === "pending" || p.status === "error" ? '<button class="pl-btn pl-btn-ghost" data-action="export-img">' + (p.status === "error" ? "重试" : "准备") + '</button>' : (p.status === "exporting" ? "准备中…" : ""))) +
         "</div>";
     }).join("");
 
@@ -392,44 +403,28 @@ var TransferPanel = (function () {
   }
 
   function prepareOneImage(payload, chip) {
-    var ticketId = ensureTicketId();
-    payload.status = "exporting";
     var btn = chip.querySelector("button");
     if (btn) { btn.disabled = true; btn.textContent = "准备中…"; }
-    TransferFileDock.exportImage(ticketId, payload).then(function (res) {
-      if (res && res.ok && res.filePath) {
-        payload.status = "ready";
-        payload.filePath = res.filePath;
-        toast("附图已就绪，可拖入 Agent 窗口");
-      } else {
-        payload.status = "error";
-        payload.error = (res && res.error) || "图片下载失败";
-        toast("附图准备失败：" + payload.error, true);
-      }
+    exportPayload(payload, true).then(function (active) {
+      if (!active) return;
+      toast(payload.status === "ready" ? "附图已就绪，可拖入 Agent 窗口" : payload.error, payload.status === "error");
       renderImageDock();
     });
   }
 
   function prepareAllImages() {
-    var pendings = (state.imagePayloads || []).filter(function (p) { return p.status === "pending"; });
+    var session = state;
+    var pendings = (state.imagePayloads || []).filter(function (p) { return p.status === "pending" || p.status === "error"; });
     if (!pendings.length) { toast("没有待准备的附图"); return; }
-    var ticketId = ensureTicketId();
     var chain = Promise.resolve();
     pendings.forEach(function (p) {
       chain = chain.then(function () {
-        p.status = "exporting";
-        return TransferFileDock.exportImage(ticketId, p).then(function (res) {
-          if (res && res.ok && res.filePath) {
-            p.status = "ready";
-            p.filePath = res.filePath;
-          } else {
-            p.status = "error";
-            p.error = (res && res.error) || "图片下载失败";
-          }
-        });
+        if (state !== session || p.status === "ready" || p.status === "exporting") return;
+        return exportPayload(p, true).then(function (active) { if (active) renderImageDock(); });
       });
     });
     chain.then(function () {
+      if (state !== session) return;
       renderImageDock();
       var failed = (state.imagePayloads || []).filter(function (p) { return p.status === "error"; }).length;
       toast(failed ? "部分附图准备失败，请查看芯片提示" : "全部附图已就绪，可拖入 Agent 窗口", failed > 0);
@@ -481,21 +476,22 @@ var TransferPanel = (function () {
       ' <span class="pl-badge green" data-role="tpl-badge">系统预置</span></h3>' +
       '<button class="pl-transfer-close" data-action="close" title="关闭">&times;</button></div>' +
       '<div class="pl-transfer-body">' +
+      '<p class="pl-transfer-intro">选择材料 → 复制到外部 Agent → 按需上传附件。已自动勾选当前页面的可用内容。</p>' +
       docSection +
-      '<div class="pl-transfer-section"><h4>上下文块勾选 <div class="pl-row-actions">' +
+      '<div class="pl-transfer-section"><h4>要发送的材料 <div class="pl-row-actions">' +
       '<button class="pl-btn pl-btn-ghost" data-action="blocks-all">全选可用</button>' +
       '<button class="pl-btn pl-btn-ghost" data-action="blocks-none">全不选</button></div></h4>' +
       '<div data-role="block-list"></div></div>' +
-      '<div class="pl-transfer-section"><h4>任务提示词（可编辑，自动保存为我的自定义版本）</h4>' +
+      '<details class="pl-transfer-section"><summary>调整分析指令（已预填，可选）</summary>' +
       '<textarea class="pl-transfer-textarea" data-role="prompt" rows="9"></textarea>' +
       '<div style="margin-top:8px;display:flex;gap:8px;">' +
       '<button class="pl-btn pl-btn-ghost" data-action="save-tpl">保存为我的默认</button>' +
-      '<button class="pl-btn pl-btn-ghost" data-action="reset-tpl">恢复系统预置</button></div></div>' +
-      '<div class="pl-transfer-section"><h4>补充备注（可选，随指令一起交接）</h4>' +
+      '<button class="pl-btn pl-btn-ghost" data-action="reset-tpl">恢复系统预置</button></div></details>' +
+      '<div class="pl-transfer-section"><h4>这次希望重点分析什么？（可选）</h4>' +
       '<textarea class="pl-transfer-textarea" data-role="note" rows="3" placeholder="例如：客户重点关注创造性争议，希望输出对比表格…"></textarea></div>' +
       fileSection +
       imageSection +
-      '<details class="pl-transfer-preview" open><summary>预览完整交接指令（复制内容即所得）</summary>' +
+      '<details class="pl-transfer-preview"><summary>预览将发送的内容</summary>' +
       '<pre data-role="preview"></pre></details>' +
       "</div>" +
       '<div class="pl-transfer-footer">' +
@@ -598,6 +594,8 @@ var TransferPanel = (function () {
       docSelected: opts.docSelected || {},
       payloads: [],
       imagePayloads: [],
+      pdfCache: Object.create(null),
+      imageCache: Object.create(null),
       ticketId: null,
       promptText: TransferTemplates.get(SCENE_META[scene].tpl).body,
     };

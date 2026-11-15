@@ -20,7 +20,7 @@ const payload = { claimType: 'structure', nodes: [
   edges: [{ id: 'e1', source: 'n2', target: 'n1', originalText: 'connected to', chineseText: '连接于', relationType: 'position' }], groups: [],
   sentencePairs: [{ original: claimText, translation: '一种装置，包括壳体和连接于壳体的电机。' }] };
 function envelope(task, data) { return JSON.stringify({ kind: 'patentlens-agent-result', schemaVersion: 1, taskId: task.taskId, taskType: task.taskType, sourceHash: task.sourceHash, payload: data }); }
-function evaluate(code) { return win.webContents.executeJavaScript(code); }
+function evaluate(code) { return win.webContents.executeJavaScript(code).catch(error => { error.message += '\nRenderer script: ' + code.slice(0, 700); throw error; }); }
 function editor(code) { return evaluate(`(async()=>{const w=document.querySelector('#patent2pic-workbench iframe').contentWindow;const d=w.document;${code}})()`); }
 async function until(check, label) {
   const deadline = Date.now() + 25000;
@@ -207,6 +207,8 @@ app.whenReady().then(async () => {
     fs.writeFileSync(path.join(output, 'agent-ledger.png'), (await win.webContents.capturePage()).toPNG());
     await evaluate("AgentTaskWorkspace.flush()");
     assert.equal(JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'agent-handoff-tasks.json'), 'utf8')).length, 6);
+    await require('./agent-workflow-ui.cjs')({ win, evaluate, until, output });
+    await require('./desktop-tools-ui.cjs')({ win, evaluate, until, output });
     assert.equal(modelCalls, 0);
     assert.deepEqual(errors, []);
     clearTimeout(timeout);
@@ -214,7 +216,7 @@ app.whenReady().then(async () => {
     console.log('Artifacts: ' + output);
     win.destroy(); server.close(); app.exit(0);
   } catch (error) {
-    clearTimeout(timeout); console.error(error.stack || error);
+    clearTimeout(timeout); console.error(error.stack || error); console.error('Renderer errors:', errors);
     if (win && !win.isDestroyed()) { console.error(await evaluate("document.querySelector('.agent-task-status')?.textContent")); console.error(await editor("return {status:d.querySelector('.agent-task-status')?.textContent,errors:typeof w.parent.electronAPI?.copyToClipboard,protocol:typeof w.AgentHandoffProtocol};").catch(() => 'no editor')); fs.writeFileSync(path.join(output, 'failure.png'), (await win.webContents.capturePage()).toPNG()); win.destroy(); }
     if (server) server.close(); app.exit(1);
   }

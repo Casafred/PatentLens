@@ -63,15 +63,18 @@
   function open() {
     void ready.then(function () {
       var instructions = '', material = '';
-      root.AgentHandoffPanel.open({ title: 'Agent 任务台账', description: '统一查看交接、分包、结果修订和采用记录。可导出任务包迁移；在对应工作台重新绑定原文后采用。',
+      root.AgentHandoffPanel.open({ title: 'Agent 任务', description: '准备材料 → 复制给外部 Agent → 带回回答。在这里继续已有任务，或填写材料新建分析任务。',
         store: store, reviewFirst: true,
         configure: function (dialog) {
-          var config = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = '新建通用报告（填写分析目标和完整材料）'; config.appendChild(summary);
+          var config = document.createElement('div'); config.className = 'agent-report-config';
           var goal = document.createElement('textarea'), source = document.createElement('textarea'); goal.placeholder = '分析目标'; source.placeholder = '报告原文材料'; goal.setAttribute('aria-label', '报告分析目标'); source.setAttribute('aria-label', '报告原文材料');
-          goal.oninput = function () { instructions = goal.value; }; source.oninput = function () { material = source.value; }; config.append(goal, source); dialog.insertBefore(config, dialog.querySelector('.agent-task-step'));
+          var goalLabel = document.createElement('label'); goalLabel.textContent = '你希望 Agent 分析什么？'; goalLabel.className = 'agent-task-step';
+          var sourceLabel = document.createElement('label'); sourceLabel.textContent = '分析使用的原文材料'; sourceLabel.className = 'agent-task-step';
+          goal.id = 'agent-report-goal'; goalLabel.htmlFor = goal.id; source.id = 'agent-report-source'; sourceLabel.htmlFor = source.id;
+          goal.oninput = function () { instructions = goal.value; }; source.oninput = function () { material = source.value; }; config.append(goalLabel, goal, sourceLabel, source); dialog.querySelector('[data-step="prepare"]').prepend(config);
         },
         createTask: async function () {
-          if (!instructions.trim() || !material.trim()) throw new Error('请展开“新建通用报告”，填写目标和原文材料');
+          if (!instructions.trim() || !material.trim()) throw new Error('请填写分析目标和原文材料');
           return root.AgentHandoffProtocol.create({ taskType: 'report', label: instructions.slice(0, 60), target: {}, input: { sources: root.AgentSourceReferences.textSources('report:material', material, { documentName: '报告材料' }) }, instructions: instructions + '\n返回 {"report":"完整报告","evidence":[{"sourceId":"原文编号","quote":"逐字引文","explanation":"对应结论"}]}。找不到依据时明确待核查。' });
         },
         apply: function (task, payload, hash) {
@@ -94,8 +97,10 @@
     exportBundle: function () { return JSON.stringify({ kind: 'patentlens-agent-workspace', schemaVersion: 1, exportedAt: Date.now(), tasks: store.list() }, null, 2); }
   };
   function init() {
-    var button = document.createElement('button'); button.type = 'button'; button.textContent = 'Agent 任务'; button.title = '任务台账 / 导入 / 结果版本';
-    button.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:9500;padding:8px 14px;border:1px solid #86aa9d;border-radius:20px;background:var(--bg-primary,#fff);color:var(--text-primary,#234);cursor:pointer';
+    if (document.getElementById('agent-workspace-entry')) return;
+    var button = document.createElement('button'); button.type = 'button'; button.textContent = 'Agent 任务'; button.title = '继续 Agent 任务、导入回答、查看结果';
+    button.id = 'agent-workspace-entry';
+    button.style.cssText = 'position:fixed;left:18px;bottom:24px;z-index:9500;padding:10px 16px;border:1px solid #86aa9d;border-radius:12px;background:var(--bg-primary,#fff);color:var(--text-primary,#234);cursor:pointer;box-shadow:0 3px 14px #0002';
     button.addEventListener('click', open); document.body.appendChild(button);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
