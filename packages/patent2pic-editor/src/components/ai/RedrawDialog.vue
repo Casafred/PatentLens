@@ -83,6 +83,7 @@
 
     <template #footer>
       <el-button :disabled="isRunning" @click="handleVisibleChange(false)">取消</el-button>
+      <el-button :disabled="isRunning || !instructions.trim()" @click="handleAgent">交给 Agent 修改 / 导入</el-button>
       <el-button
         type="primary"
         :loading="isRunning"
@@ -101,6 +102,7 @@ import { ElMessage } from 'element-plus'
 import { useGraphStore } from '@/stores/graph'
 import { useAIStore } from '@/stores/ai'
 import { useAIRedraw } from '@/composables/useAIRedraw'
+import { useAgentHandoff } from '@/composables/useAgentHandoff'
 import { x6ToExtractResult } from '@/services/graph/x6-to-extract'
 import { graphEngine } from '@/services/graph/engine'
 import type { RedrawBase } from '@/types/redraw'
@@ -118,6 +120,13 @@ const emit = defineEmits<{
 const graphStore = useGraphStore()
 const aiStore = useAIStore()
 const { redraw, abort, isRunning, streamContent, error } = useAIRedraw()
+const agent = useAgentHandoff(false)
+async function handleAgent(): Promise<void> {
+  try {
+    await agent.open(undefined, undefined, { fileId: props.sourceFileId, instructions: instructions.value.trim(), options: { base: base.value, includeClaimContext: includeClaimContext.value, keepFrames: keepFrames.value } })
+    emit('update:visible', false)
+  } catch (err) { ElMessage.error(err instanceof Error ? err.message : String(err)) }
+}
 
 const QUICK_COMMANDS = [
   '将…改名为…',

@@ -99,6 +99,7 @@ async function exportFormat(format) {
 
 app.whenReady().then(async () => {
   registerPatent2PicIPC({ ipcMain, userData: path.join(artifacts, 'persistent-data'), getPort: () => port });
+  require('../agent-handoff-ipc.cjs').registerAgentHandoffIPC({ ipcMain, clipboard: require('electron').clipboard, userData: path.join(artifacts, 'agent-tasks'), getPort: () => port });
   session.defaultSession.webRequest.onBeforeRequest({ urls: ['https://cdnjs.cloudflare.com/*'] }, (_details, callback) => callback({ cancel: true }));
   session.defaultSession.on('will-download', (_event, item) => {
     const destination = path.join(artifacts, item.getFilename()); item.setSavePath(destination);
@@ -123,6 +124,9 @@ app.whenReady().then(async () => {
   await until("!!document.querySelector('#patent-detail-content .p2p-open-button')", 'claim action injected');
   await evaluate("document.querySelector('#patent-detail-content .p2p-open-button').click()");
   assert.equal(await evaluate("document.querySelector('dialog.p2p-claim-dialog input:checked').value"), '0');
+  assert.deepEqual(await evaluate("Array.from(document.querySelectorAll('dialog.p2p-claim-dialog input:checked'), input=>input.value)"), ['0', '1'], 'all independent claims are selected by default');
+  // This part exercises single-claim generation; the batch path is covered below.
+  await evaluate("document.querySelectorAll('dialog.p2p-claim-dialog input:checked').forEach(input=>{if(input.value!=='0')input.click();})");
   await evaluate("document.querySelector('dialog.p2p-claim-dialog .p2p-primary').click()");
   await until(editorCondition("!!d.querySelector('.claim-textarea textarea')"), 'claim imported');
   await until('!document.querySelector("dialog.p2p-claim-dialog")', 'selection dialog closes');

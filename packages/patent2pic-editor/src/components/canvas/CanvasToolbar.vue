@@ -228,9 +228,9 @@ const taskBadgeCount = computed(() =>
   parallel.tasks.value.filter(t => t.status !== 'success').length,
 )
 
-// 当前文件存在可重构的版本（有版本即可：基准取当前画布或版本抽取结果）且有 API Key 时可用
+// External Agent redraws do not require an API key.
 const canRedraw = computed(() => {
-  return !!(graphStore.activeVersion && aiStore.activeApiKey && !aiStore.isExtracting)
+  return !!(graphStore.activeVersion && !aiStore.isExtracting)
 })
 
 function handleFontSizeChange(delta: number): void {

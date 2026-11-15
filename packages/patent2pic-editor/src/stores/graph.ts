@@ -19,6 +19,8 @@ export interface CanvasSnapshot {
  */
 export interface CanvasVersion {
   id: string
+  agentTaskId?: string
+  agentResultHash?: string
   /** 展示名：初始分析 / 重新分析 / 重构V{n} */
   label: string
   extractResult: ExtractResult | null

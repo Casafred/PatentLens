@@ -130,6 +130,7 @@
         source: cleanText(f.source) || "manual",
         prompt: cleanText(f.prompt),
         model: cleanText(f.model),
+        ...(f.agentTaskId ? { agentTaskId: cleanText(f.agentTaskId), agentResultHash: cleanText(f.agentResultHash) } : {}),
         generatedAt: cleanText(f.generatedAt),
         reviewState: f.reviewState === "accepted" ? "accepted" : "pending",
         // 字段级原文范围覆盖；为 null 或缺失表示继承项目级 aiContextScope。
@@ -1129,6 +1130,8 @@
     if (typeof updates.label === "string") field.label = cleanText(updates.label) || field.label;
     if (typeof updates.prompt === "string") field.prompt = cleanText(updates.prompt);
     if (typeof updates.model === "string") field.model = cleanText(updates.model);
+    if (typeof updates.agentTaskId === "string") field.agentTaskId = cleanText(updates.agentTaskId);
+    if (typeof updates.agentResultHash === "string") field.agentResultHash = cleanText(updates.agentResultHash);
     if (typeof updates.generatedAt === "string") field.generatedAt = cleanText(updates.generatedAt);
     if (updates.source === "ai" || updates.source === "manual") field.source = updates.source;
     if (updates.reviewState === "accepted") field.reviewState = "accepted";

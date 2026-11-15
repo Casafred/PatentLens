@@ -10,6 +10,7 @@ dist-electron/
 
 # Node
 node_modules/
+.local-qa/
 
 # Python
 __pycache__/

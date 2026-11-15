@@ -13,6 +13,7 @@ var ClaimDiffTree = (function () {
     promoted: '#d97706',
     demoted: '#d97706',
     dependency_migrated: '#d97706',
+    inherited_changed: '#7c699e',
     renumbered: '#0284c7',
     reference_only: '#0284c7',
     merged_into: '#ea580c',
@@ -24,7 +25,8 @@ var ClaimDiffTree = (function () {
     { status: 'same', label: '未变化' },
     { status: 'modified', label: '内容修改 / 独从转换' },
     { status: 'renumbered', label: '编号或引用调整' },
-    { status: 'merged_into', label: '限定并入' },
+    { status: 'inherited_changed', label: '引用路径影响' },
+    { status: 'merged_into', label: '可能限定并入' },
     { status: 'added', label: '授权新增' },
     { status: 'deleted', label: '整项删除' }
   ];
@@ -58,6 +60,7 @@ var ClaimDiffTree = (function () {
     var list = (claims || []).map(function (claim, index) {
       return {
         num: canon(claim.num),
+        text: String(claim.text || ''),
         type: claim.type === 'dependent' ? 'dependent' : 'independent',
         dependencies: (claim.dependencies || []).map(canon),
         index: index,
@@ -123,13 +126,13 @@ var ClaimDiffTree = (function () {
     return '<ul class="' + listClass + '">' + nodes.map(function (node) {
       var info = infoMap[node.num] || {};
       var classes = 'claimtree-node-card' + (info.status ? ' ' + info.status : '') + (info.dim ? ' dim' : '') + (node.orphan ? ' orphan' : '');
-      var card = '<div class="' + classes + '" data-side="' + side + '" data-num="' + esc(node.num) + '" data-key="' + esc(info.key || '') + '">';
+      var card = '<button type="button" class="' + classes + '" data-side="' + side + '" data-num="' + esc(node.num) + '" data-key="' + esc(info.key || '') + '" title="' + esc(node.text) + '">';
       card += '<span class="claimtree-num">' + esc(node.num) + '</span>';
       card += '<span class="claimtree-kind ' + node.type + '">' + (node.type === 'independent' ? '独立' : '从属') + '</span>';
       if (node.type === 'dependent' && node.dependencies.length) card += '<span class="claimtree-deps">引' + node.dependencies.map(esc).join('、') + '</span>';
       if (info.status) card += '<span class="claimdiff-status ' + info.status + '">' + esc(label(info.status)) + '</span>';
       if (info.mergeCount) card += '<span class="claimtree-merge-chip">并入×' + info.mergeCount + '</span>';
-      card += '</div>';
+      card += '<span class="claimtree-node-preview">' + esc(node.text.slice(0, 90)) + '</span></button>';
       return '<li class="claimtree-branch">' + card + renderLevel(node.children, side, infoMap, depth + 1) + '</li>';
     }).join('') + '</ul>';
   }
@@ -228,12 +231,13 @@ var ClaimDiffTree = (function () {
   }
 
   function detailTitle(item) {
+    var baseLabel = _current.baseLabel || '公开版', compareLabel = _current.compareLabel || '授权版';
     if (item.base) {
       var target = item.compare || item.mergedInto;
-      var targetText = target ? (item.mergedInto && !item.compare ? ' → 并入授权权 ' + target.num : ' → 授权权 ' + target.num) : ' → 授权版无对应权项';
-      return '公开权 ' + item.base.num + targetText + ' · ' + label(item.status);
+      var targetText = target ? (' → ' + (item.mergedInto && !item.compare ? '可能并入' : '') + compareLabel + '权 ' + target.num) : ' → ' + compareLabel + '无对应权项';
+      return baseLabel + '权 ' + item.base.num + targetText + ' · ' + label(item.status);
     }
-    return '授权权 ' + item.compare.num + ' · 授权新增';
+    return compareLabel + '权 ' + item.compare.num + ' · 新增';
   }
 
   function detailBody(item) {
@@ -331,11 +335,12 @@ var ClaimDiffTree = (function () {
       var info = ensureCompare(item.compare);
       info.key = 'granted:' + canon(item.compare.num);
       info.status = 'added';
+      info.dim = ['all', 'changed', 'technical', 'added'].indexOf(filter) === -1;
     });
     Object.keys(compareInfo).forEach(function (num) { compareKeyByNum[num] = compareInfo[num].key; });
 
     var links = buildTreeLinks(result).map(function (link) {
-      link.dim = link.kind !== 'added' && !visibleKeys[link.key];
+      link.dim = link.kind === 'added' ? ['all', 'changed', 'technical', 'added'].indexOf(filter) === -1 : !visibleKeys[link.key];
       return link;
     });
 
@@ -345,12 +350,13 @@ var ClaimDiffTree = (function () {
     var html = '<div class="claimtree-legend">' + LEGEND.map(function (entry) {
       return '<span class="claimtree-legend-item"><span class="claimtree-legend-swatch" style="border-color:' + STATUS_COLORS[entry.status] + '"></span>' + esc(entry.label) + '</span>';
     }).join('') + '</div>';
+    html += '<div class="claimtree-navigation"><button type="button" class="btn-secondary btn-small" data-step="-1">← 上一变化</button><button type="button" class="btn-secondary btn-small" data-step="1">下一变化 →</button><span class="claimtree-position" aria-live="polite"></span><label>查找 <input type="search" placeholder="权项文本或编号" aria-label="在演变树中查找权项"></label><span class="claimtree-search-count" aria-live="polite"></span></div>';
     html += '<div class="claimdiff-tree-wrap"><svg class="claimtree-links" aria-hidden="true"></svg>';
-    html += '<div class="claimtree-side base"><header>公开版 · ' + (stats.baseTotal || baseClaims.length) + ' 项</header>' + (renderLevel(baseTree.roots, 'base', baseInfo, 0) || '<div class="claimtree-none">无权利要求数据</div>') + '</div>';
+    html += '<div class="claimtree-side base"><header>' + esc(options.baseLabel || '公开版') + ' · ' + (stats.baseTotal || baseClaims.length) + ' 项</header>' + (renderLevel(baseTree.roots, 'base', baseInfo, 0) || '<div class="claimtree-none">无权利要求数据</div>') + '</div>';
     html += '<div class="claimtree-mid"></div>';
-    html += '<div class="claimtree-side compare"><header>授权版 · ' + (stats.compareTotal || compareClaims.length) + ' 项</header>' + (renderLevel(compareTree.roots, 'compare', compareInfo, 0) || '<div class="claimtree-none">无权利要求数据</div>') + '</div>';
+    html += '<div class="claimtree-side compare"><header>' + esc(options.compareLabel || '授权版') + ' · ' + (stats.compareTotal || compareClaims.length) + ' 项</header>' + (renderLevel(compareTree.roots, 'compare', compareInfo, 0) || '<div class="claimtree-none">无权利要求数据</div>') + '</div>';
     html += '</div>';
-    html += '<p class="claimtree-hint">左侧为公开版独从权结构，右侧为授权版结构；实线表示权项演变去向，虚线表示整项删除 / 授权新增。悬停高亮对应关系，点击节点查看该权项的词句级变化详情。</p>';
+    html += '<p class="claimtree-hint">左侧基准版本，右侧对比版本；保留淡化节点以便追溯父项。实线为候选演变关系，虚线为整项增删。点击节点或使用上一 / 下一变化核对片段与原文。</p>';
     html += '<div class="claimtree-detail" hidden></div>';
     container.innerHTML = html;
 
@@ -358,6 +364,30 @@ var ClaimDiffTree = (function () {
     _current.links = links;
     _current.itemByKey = itemByKey;
     _current.compareKeyByNum = compareKeyByNum;
+    _current.baseLabel = options.baseLabel;
+    _current.compareLabel = options.compareLabel;
+
+    var changes = links.filter(function (link) { return !link.dim && link.status !== 'same'; }), position = -1;
+    var positionLabel = container.querySelector('.claimtree-position');
+    positionLabel.textContent = changes.length + ' 处可定位变化';
+    container.querySelectorAll('[data-step]').forEach(function (button) {
+      button.disabled = !changes.length;
+      button.addEventListener('click', function () {
+        position = position < 0 ? (Number(button.dataset.step) > 0 ? 0 : changes.length - 1) : (position + Number(button.dataset.step) + changes.length) % changes.length;
+        var link = changes[position], side = link.fromNum ? 'base' : 'compare', number = link.fromNum || link.toNum;
+        var card = Array.from(container.querySelectorAll('.claimtree-node-card')).find(function (c) { return c.dataset.side === side && c.dataset.num === number; });
+        openDetail(side, number, card); setHighlight(side, number);
+        positionLabel.textContent = (position + 1) + ' / ' + changes.length;
+      });
+    });
+    container.querySelector('input[type="search"]').addEventListener('input', function () {
+      var query = this.value.trim().toLowerCase(), count = 0;
+      container.querySelectorAll('.claimtree-node-card').forEach(function (card) {
+        var found = !!query && ((card.title || '').toLowerCase().includes(query) || card.dataset.num === query);
+        card.classList.toggle('search-match', found); if (found) count++;
+      });
+      container.querySelector('.claimtree-search-count').textContent = query ? count + ' 个匹配节点' : '';
+    });
 
     container.querySelectorAll('.claimtree-node-card').forEach(function (card) {
       card.addEventListener('mouseenter', function () { setHighlight(card.dataset.side, card.dataset.num); });

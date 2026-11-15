@@ -182,6 +182,7 @@ var ComparisonUI = (function () {
     html += '</div>';
 
     html += '<div class="comparison-items-panel">';
+    html += '<p class="family-scope-coverage" style="padding:12px 16px;">分析将生成统一特征树、各权项采用情况与原文证据。独权用于概览各方案；需查看从属限定的布局时，请选中相关从权或全选已加载权项。</p>';
     html += '  <div class="comparison-items-header">';
     html += '    <div>';
     html += '      <span class="comparison-items-title">待比对项列表</span>';
@@ -190,7 +191,7 @@ var ComparisonUI = (function () {
     html += '    </div>';
     html += '    <div class="comparison-items-actions">';
     if (items.length > 0) {
-      html += '      <button class="btn-secondary btn-small" onclick="ComparisonCore.selectAll();ComparisonUI.render();">全选</button>';
+      html += '      <button class="btn-secondary btn-small" onclick="ComparisonCore.selectAll();ComparisonUI.render();">全选已加载权项</button>';
       html += '      <button class="btn-secondary btn-small" onclick="ComparisonCore.deselectAll();ComparisonUI.render();">取消全选</button>';
     }
     html += '    </div>';
@@ -614,6 +615,7 @@ var ComparisonUI = (function () {
         items: resultItems,
         others: resultItems.filter(function(i) { return i.id !== resultAnchor.id; }),
         markdownContent: entry.markdownContent || '',
+        scopeSources: entry.scopeSources || resultItems,
         htmlContent: entry.htmlContent || '',
         similarityMatrix: null,
         aiSimilarityScores: null,
@@ -720,7 +722,8 @@ var ComparisonUI = (function () {
       html += '    </div>';
       html += '  </div>';
 
-      html += renderAiSimMatrix(result);
+      html += '<div id="family-scope-result"></div>';
+      html += '<details class="family-scope-secondary"><summary>AI 语义相似度（辅助阅读）</summary>' + renderAiSimMatrix(result) + '</details>';
 
       html += '  <div class="comparison-result-content markdown-body">';
       html += result.htmlContent;
@@ -729,6 +732,8 @@ var ComparisonUI = (function () {
     }
 
     container.innerHTML = html;
+
+    if (result && !isLoading && typeof FamilyScopeView !== 'undefined') FamilyScopeView.mount(container.querySelector('#family-scope-result'), result);
 
     if (isLoading) {
       _streamContent = '';
@@ -740,7 +745,7 @@ var ComparisonUI = (function () {
         _streamContent = content;
         var el = document.getElementById('comparison-stream-preview');
         if (el) {
-          el.textContent = content;
+          el.textContent = typeof FamilyScope !== 'undefined' ? FamilyScope.stripBlocks(content) : content;
           el.scrollTop = el.scrollHeight;
         }
       };

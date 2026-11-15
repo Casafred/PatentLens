@@ -172,40 +172,18 @@ var ComparisonCore = (function () {
   }
 
   function parseAiSimilarityScores(markdownContent) {
-    if (!markdownContent) return {};
     var scores = {};
-    try {
-      var jsonMatch = markdownContent.match(/```(?:json)?\s*\n?(\{[\s\S]*?"similarityScores"[\s\S]*?\})\s*\n?```/);
-      if (!jsonMatch) {
-        jsonMatch = markdownContent.match(/```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```/g);
-        if (jsonMatch) {
-          for (var k = 0; k < jsonMatch.length; k++) {
-            var block = jsonMatch[k];
-            var inner = block.match(/```(?:json)?\s*\n?([\s\S]*?)\s*\n?```/);
-            if (inner) {
-              try {
-                var parsed = JSON.parse(inner[1].trim());
-                if (parsed && parsed.similarityScores) {
-                  jsonMatch = [null, inner[1].trim()];
-                  break;
-                }
-              } catch (e2) { /* continue */ }
-            }
+    var blocks = String(markdownContent || '').matchAll(/```(?:json)?[^\S\r\n]*\r?\n([\s\S]*?)```/g);
+    for (var block of blocks) {
+      try {
+        var data = JSON.parse(block[1]);
+        if (!data || !Array.isArray(data.similarityScores)) continue;
+        data.similarityScores.forEach(function (item) {
+          if (item && typeof item.label === 'string' && typeof item.score === 'number' && Number.isFinite(item.score)) {
+            scores[item.label] = Math.max(0, Math.min(100, item.score)) / 100;
           }
-        }
-      }
-      if (jsonMatch && jsonMatch[1]) {
-        var data = JSON.parse(jsonMatch[1].trim());
-        if (data && Array.isArray(data.similarityScores)) {
-          data.similarityScores.forEach(function(item) {
-            if (item.label && typeof item.score === 'number') {
-              scores[item.label] = Math.max(0, Math.min(100, item.score)) / 100;
-            }
-          });
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to parse AI similarity scores:', e);
+        });
+      } catch (_) { /* Ignore unrelated or incomplete JSON blocks. */ }
     }
     return scores;
   }
@@ -410,10 +388,11 @@ var ComparisonCore = (function () {
 
     try {
       var others = selected.filter(function(i) { return i.id !== anchor.id; });
+      var scopeSources = typeof FamilyScope !== 'undefined' ? FamilyScope.sourcesFor(selected, Object.assign({}, _state.loadedPatents, _state.fetchedPatents || {})) : selected;
 
       var messages = [
         { role: 'system', content: ComparisonPrompts.SYSTEM_PROMPT },
-        { role: 'user', content: ComparisonPrompts.buildAnchorPrompt(anchor, others) }
+        { role: 'user', content: ComparisonPrompts.buildAnchorPrompt(anchor, others) + (typeof FamilyScope !== 'undefined' ? FamilyScope.buildPrompt(selected, scopeSources) : '') }
       ];
 
       var stream = AI.streamChat(
@@ -445,7 +424,7 @@ var ComparisonCore = (function () {
       if (!_state.isAborted) {
         _state.aiSimilarityScores = parseAiSimilarityScores(resultContent);
         var aiSimMatrix = buildAiSimilarityMatrix(selected, anchor, _state.aiSimilarityScores);
-        var cleanMarkdown = resultContent
+        var cleanMarkdown = (typeof FamilyScope !== 'undefined' ? FamilyScope.stripBlocks(resultContent) : resultContent)
           .replace(/##+\s*五[、.．]\s*相似度评分[^\n]*\n*/g, '')
           .replace(/```json\s*\n?\{"similarityScores":[\s\S]*?\}\s*\n?```/g, '')
           .replace(/注意：label必须[\s\S]*?(?=\n##|\n*$)/g, '')
@@ -457,6 +436,7 @@ var ComparisonCore = (function () {
           anchor: anchor,
           items: selected,
           others: others,
+          scopeSources: scopeSources,
           markdownContent: resultContent,
           htmlContent: marked.parse(cleanMarkdown),
           similarityMatrix: _state.similarityMatrix,
@@ -700,6 +680,7 @@ var ComparisonCore = (function () {
         itemCount: (result.items || []).length,
         markdownContent: result.markdownContent || '',
         htmlContent: result.htmlContent || '',
+        scopeSources: result.scopeSources || result.items || [],
         claimsSnapshot: claimsSnapshot,
         itemsSummary: (result.items || []).map(function(i) {
           return {
