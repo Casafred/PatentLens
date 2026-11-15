@@ -106,6 +106,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC
     html += '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n';
     html += '  <title>智能比对分析报告 - PatentLens</title>\n';
     html += '  <style>' + REPORT_CSS + '</style>\n';
+    if (typeof FamilyScopeStyles !== 'undefined') html += '<style>' + FamilyScopeStyles + '</style>\n';
     html += '</head>\n';
     html += '<body>\n';
     html += '<div class="container">\n';
@@ -123,6 +124,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC
     html += '  <div class="content">\n';
 
     html += '    <h2 style="margin-top:0;">一、比对项概览</h2>\n';
+    if (typeof FamilyScopeView !== 'undefined') html += FamilyScopeView.exportSection(result);
     html += '    <div class="items-summary">\n';
     var anchorId = result.anchor ? result.anchor.id : null;
     var aiScores = result.aiSimilarityScores || {};

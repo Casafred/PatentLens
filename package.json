@@ -8,6 +8,7 @@
     "dev": "electron .",
     "test": "node scripts/run-tests.cjs",
     "test:electron-smoke": "electron tests/electron-smoke-main.cjs",
+    "test:claims-comparison-smoke": "electron tests/claims-comparison-smoke-main.cjs",
     "verify:web-app": "node scripts/guard-web-app.cjs --working-tree",
     "verify:refactor": "npm run verify:web-app && node scripts/verify-refactor.cjs && npm test",
     "verify:refactor:full": "npm run verify:refactor && npm run test:electron-smoke",

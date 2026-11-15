@@ -17,7 +17,7 @@ var ComparisonClaimDiff = (function () {
     isLoading: false,
     error: '',
     filter: 'all',
-    view: 'list',
+    view: 'tree',
     referenceOnlyExpanded: false
   };
 
@@ -235,6 +235,12 @@ var ComparisonClaimDiff = (function () {
     return String(text || '').replace(CLAIM_REFERENCE_PATTERN, ' ');
   }
 
+  function referenceLogicKey(text) {
+    return (String(text || '').normalize('NFKC').match(CLAIM_REFERENCE_PATTERN) || []).map(function (reference) {
+      return normalizeText(reference).replace(/\d+/g, '#').replace(/\bclaims\b/g, 'claim').replace(/\s+/g, '');
+    }).join('|');
+  }
+
   // 去掉权项自身的编号前缀（如 "5. " / "17、 "），保留标题与技术特征原文，
   // 这样“仅编号变化”可由 ownKey 相等单独识别出来。
   function stripLeadingClaimNumber(text) {
@@ -340,8 +346,9 @@ var ComparisonClaimDiff = (function () {
     if (base.type !== 'dependent' || compare.type !== 'dependent') return null;
     var baseDeps = base.dependencies.map(canonicalClaimNum), compareDeps = compare.dependencies.map(canonicalClaimNum);
     var mapped = baseDeps.map(function (num) { return parentMap[num] || num; });
-    var changed = baseDeps.join(',') !== compareDeps.join(',');
-    return changed ? { from: base.dependencies, mapped: mapped, to: compare.dependencies, coherent: mapped.join(',') === compareDeps.join(',') } : null;
+    var sameLogic = referenceLogicKey(base.text) === referenceLogicKey(compare.text);
+    var changed = baseDeps.join(',') !== compareDeps.join(',') || !sameLogic;
+    return changed ? { from: base.dependencies, mapped: mapped, to: compare.dependencies, coherent: sameLogic && mapped.join(',') === compareDeps.join(',') } : null;
   }
 
   function classifyPair(pair, parentMap) {
@@ -356,13 +363,13 @@ var ComparisonClaimDiff = (function () {
     if (base.num !== compare.num) reasons.push('权项编号变化');
     if (compare.amendmentStatus) reasons.push('OCR 修订标记：' + ({ currently_amended: '当前修改', previously_presented: '此前提交', original: '原始文本', cancelled: '取消', withdrawn: '撤回', not_entered: '未录入' }[compare.amendmentStatus] || compare.amendmentStatus));
     if (base.type !== compare.type) reasons.push(base.type === 'dependent' ? '从属权利要求提升为独立权利要求' : '独立权利要求调整为从属权利要求');
-    if (referenceOnly) reasons.push(migration && migration.coherent ? '仅因父项映射更新引用序号' : '仅引用序号或权项编号变化');
+    if (referenceOnly) reasons.push(migration ? (migration.coherent ? '仅因父项映射更新引用序号' : '引用对象发生调整，自身技术内容未变') : '仅引用序号或权项编号变化');
     else if (migration) reasons.push(migration.coherent ? '随父项迁移' : '从属关系调整');
     if (base.key !== compare.key && !referenceOnly) reasons.push('文字或技术特征变化');
     var status = 'same';
     if (base.type === 'dependent' && compare.type === 'independent') status = 'promoted';
     else if (base.type === 'independent' && compare.type === 'dependent') status = 'demoted';
-    else if (referenceOnly) status = 'reference_only';
+    else if (referenceOnly && (!migration || migration.coherent)) status = 'reference_only';
     else if (migration) status = 'dependency_migrated';
     else if (base.key === compare.key && base.num !== compare.num) status = 'renumbered';
     else if (base.key !== compare.key) status = 'modified';
@@ -397,7 +404,8 @@ var ComparisonClaimDiff = (function () {
       if (claim.amendmentStatus) reasons.push('OCR 修订标记：' + ({ currently_amended: '当前修改', previously_presented: '此前提交', original: '原始文本', cancelled: '取消', withdrawn: '撤回', not_entered: '未录入' }[claim.amendmentStatus] || claim.amendmentStatus));
       return { base: null, compare: claim, primaryGranted: claim, status: 'added', lineageType: 'added', reasons: reasons, score: 0, featureDiff: buildFeatureDiff('', claim.text) };
     });
-    var stats = { baseTotal: aligned.bases.length, compareTotal: aligned.compares.length, same: 0, changed: 0, added: grantedOnly.length, deleted: 0, promoted: 0, demoted: 0, merged: 0, migrated: 0, referenceOnly: 0 };
+    if (typeof ClaimDiffReader !== 'undefined') ClaimDiffReader.annotateInheritance(publicItems, grantedOnly);
+    var stats = { baseTotal: aligned.bases.length, compareTotal: aligned.compares.length, same: 0, changed: 0, added: grantedOnly.length, deleted: 0, promoted: 0, demoted: 0, merged: 0, migrated: 0, referenceOnly: 0, inherited: 0 };
     publicItems.forEach(function (item) {
       if (item.status === 'same') stats.same++; else stats.changed++;
       if (item.status === 'deleted') stats.deleted++;
@@ -406,6 +414,7 @@ var ComparisonClaimDiff = (function () {
       if (item.status === 'merged_into') stats.merged++;
       if (item.status === 'dependency_migrated') stats.migrated++;
       if (item.status === 'reference_only') stats.referenceOnly++;
+      if (item.status === 'inherited_changed') stats.inherited++;
     });
     return { publicItems: publicItems, grantedOnly: grantedOnly, items: publicItems.concat(grantedOnly), stats: stats };
   }
@@ -439,7 +448,7 @@ var ComparisonClaimDiff = (function () {
   }
 
   function statusLabel(status) {
-    return { same: '未变化', modified: '内容修改', renumbered: '仅编号变化', promoted: '从属转独立', demoted: '独立转从属', dependency_migrated: '随父项迁移', reference_only: '仅引用序号变化', merged_into: '限定并入', added: '授权新增', deleted: '整项删除' }[status] || status;
+    return { same: '未变化', modified: '内容修改', renumbered: '仅编号变化', promoted: '从属转独立', demoted: '独立转从属', dependency_migrated: '引用关系调整', inherited_changed: '引用路径影响', reference_only: '仅引用序号变化', merged_into: '可能限定并入', added: '对比新增', deleted: '整项删除' }[status] || status;
   }
 
   function claimLabel(claim) {
@@ -466,6 +475,7 @@ var ComparisonClaimDiff = (function () {
   function renderItemBody(item) {
     var base = item.base, compare = item.compare || item.mergedInto;
     var html = '<div class="claimdiff-item-body">';
+    if (typeof ClaimDiffReader !== 'undefined') html += ClaimDiffReader.changeSummary(item);
     html += '<div class="claimdiff-relation"><b>谱系判断</b><span>' + esc(relationText(base) + ' → ' + relationText(compare)) + '</span>';
     if (item.parentMigration) html += '<span>父项路径：公开权' + esc(item.parentMigration.from.join('、')) + ' → 授权权' + esc(item.parentMigration.to.join('、')) + '</span>';
     html += '</div>';
@@ -476,7 +486,7 @@ var ComparisonClaimDiff = (function () {
 
   function renderItem(item) {
     var base = item.base, compare = item.compare || item.mergedInto;
-    var open = item.status !== 'reference_only' || _state.referenceOnlyExpanded;
+    var open = ['same', 'reference_only', 'renumbered'].indexOf(item.status) === -1 || _state.referenceOnlyExpanded;
     var html = '<details class="claimdiff-item ' + item.status + '"' + (open ? ' open' : '') + '>';
     html += '<summary><div class="claimdiff-map-columns">';
     html += '<span class="claimdiff-map-claim">' + claimLabel(base) + '</span>';
@@ -496,9 +506,10 @@ var ComparisonClaimDiff = (function () {
 
   function filterPublicItems(result, filter) {
     return result.publicItems.filter(function (item) {
+      if (typeof ClaimDiffReader !== 'undefined') { var match = ClaimDiffReader.matches(item, filter); if (match !== null) return match; }
       if (filter === 'all') return true;
       if (filter === 'independent') return item.base.type === 'independent' || (item.compare && item.compare.type === 'independent');
-      if (filter === 'structure') return item.status === 'promoted' || item.status === 'demoted' || item.status === 'deleted' || item.status === 'merged_into' || item.status === 'dependency_migrated' || item.status === 'reference_only';
+      if (filter === 'structure') return item.status === 'promoted' || item.status === 'demoted' || item.status === 'deleted' || item.status === 'merged_into' || item.status === 'dependency_migrated' || item.status === 'inherited_changed' || item.status === 'reference_only';
       return item.status !== 'same';
     });
   }
@@ -509,7 +520,8 @@ var ComparisonClaimDiff = (function () {
     var stats = result.stats;
     var filter = _state.filter;
     var visible = filterPublicItems(result, filter);
-    var html = '<div class="claimdiff-stats">';
+    var html = typeof ClaimDiffReader !== 'undefined' ? ClaimDiffReader.overview(result) : '';
+    html += '<div class="claimdiff-stats">';
     html += '<span><b>' + stats.baseTotal + '</b> 项基准权利要求</span><span><b>' + stats.compareTotal + '</b> 项' + esc(_state.compareSourceLabel || '对比版本') + '权利要求</span>';
     html += '<span class="same"><b>' + stats.same + '</b> 项未变化</span><span class="changed"><b>' + stats.changed + '</b> 项发生变化</span>';
     html += '<span class="added"><b>' + stats.added + '</b> 项新增</span><span class="deleted"><b>' + stats.deleted + '</b> 项删除</span>';
@@ -533,7 +545,7 @@ var ComparisonClaimDiff = (function () {
     html += '<div class="claimdiff-section-title"><strong>基准权利要求变动</strong><span>以基准版本原始顺序完整展示</span></div>';
     html += '<div class="claimdiff-map-head"><span>基准版本（主轴）</span><span></span><span>' + esc(_state.compareSourceLabel || '对比版本') + '去向</span><span>结论</span><span>变化说明</span></div>';
     html += '<div class="claimdiff-list">' + (visible.length ? visible.map(renderItem).join('') : '<div class="claimdiff-empty">当前筛选条件下没有对应的权利要求变化。</div>') + '</div>';
-    if (result.grantedOnly.length) html += '<section class="claimdiff-granted-section"><div class="claimdiff-section-title"><strong>' + esc(_state.compareSourceLabel || '对比版本') + '新增权利要求</strong><span>未由某一基准权项直接演变而来</span></div>' + result.grantedOnly.map(renderGrantedOnly).join('') + '</section>';
+    if (result.grantedOnly.length && ['all', 'changed', 'technical', 'added'].indexOf(filter) !== -1) html += '<section class="claimdiff-granted-section"><div class="claimdiff-section-title"><strong>' + esc(_state.compareSourceLabel || '对比版本') + '新增权利要求</strong><span>未由某一基准权项直接演变而来</span></div>' + result.grantedOnly.map(renderGrantedOnly).join('') + '</section>';
     return html;
   }
 
@@ -578,12 +590,13 @@ var ComparisonClaimDiff = (function () {
     container.querySelector('#claimdiff-run').addEventListener('click', run);
     var swap = container.querySelector('#claimdiff-swap');
     if (swap) swap.addEventListener('click', function () { var value = _state.baseNum; _state.baseNum = _state.compareNum; _state.compareNum = value; rerender(); });
-    container.querySelectorAll('.claimdiff-filter').forEach(function (button) { button.addEventListener('click', function () { _state.filter = this.dataset.filter; rerender(); }); });
+    container.querySelectorAll('.claimdiff-filter').forEach(function (button) { button.classList.toggle('active', _state.filter === button.dataset.filter); button.setAttribute('aria-pressed', String(_state.filter === button.dataset.filter)); button.addEventListener('click', function () { _state.filter = this.dataset.filter; rerender(); }); });
     container.querySelectorAll('.claimdiff-view').forEach(function (button) { button.addEventListener('click', function () { _state.view = this.dataset.view; rerender(); }); });
     var referenceToggle = container.querySelector('#claimdiff-toggle-reference');
     if (referenceToggle) referenceToggle.addEventListener('click', function () { _state.referenceOnlyExpanded = !_state.referenceOnlyExpanded; rerender(); });
+    if (_state.view !== 'tree' && typeof ClaimDiffTree !== 'undefined') ClaimDiffTree._teardown();
     if (_state.view === 'tree' && _state.result && typeof ClaimDiffTree !== 'undefined') {
-      ClaimDiffTree.render(container.querySelector('#claimdiff-tree-root'), { result: _state.result, filter: _state.filter });
+      ClaimDiffTree.render(container.querySelector('#claimdiff-tree-root'), { result: _state.result, filter: _state.filter, baseLabel: _state.compareClaims ? '基准版本' : '公开版', compareLabel: _state.compareSourceLabel || '授权版' });
     }
   }
 
