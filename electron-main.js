@@ -161,8 +161,14 @@ const GD_AUTH_PARTITION = "persist:gd-auth";
 const GD_SITE_URL = "https://globaldossier.uspto.gov/";
 let _gdAuthWindow = null;
 let _gdAuthPending = null;
-let _gdTokenCache = { token: null, expiresAtMs: 0 };
+let _gdTokenCache = { token: null, expiresAtMs: 0, obtainedAt: 0 };
 let _gdAuthPromptSuppressedUntil = 0;
+
+// 登录刚成功时 token 可能还没在 GD 后端生效。这个时间戳用于判断“刚登录”，
+// 期间遇到 401/403 只做短暂重试，不立即降级 EPO，也不强制重载登录窗口。
+function _gdTokenAgeMs() {
+  return _gdTokenCache.obtainedAt ? Date.now() - _gdTokenCache.obtainedAt : Infinity;
+}
 
 function _gdNormalizeExpiry(value, token) {
   let ms = Number(value) || 0;
@@ -412,7 +418,9 @@ function _ensureGdAuthWindow() {
 }
 
 function invalidateGdAccessToken() {
-  _gdTokenCache = { token: null, expiresAtMs: 0 };
+  // 保留 obtainedAt：即使 token 被作废，也记得“刚刚登录过”，
+  // 这样后续 401/403 不会立刻强制重载登录窗口。
+  _gdTokenCache = { token: null, expiresAtMs: 0, obtainedAt: _gdTokenCache.obtainedAt || 0 };
 }
 
 async function getGdAccessToken(options) {
@@ -425,7 +433,7 @@ async function getGdAccessToken(options) {
   if (!force && _gdAuthWindow && !_gdAuthWindow.isDestroyed()) {
     const existing = await _gdReadTokenFromWindow(_gdAuthWindow);
     if (existing && existing.token && existing.expiresAtMs - Date.now() > 60000) {
-      _gdTokenCache = existing;
+      _gdTokenCache = { ...existing, obtainedAt: Date.now() };
       try { if (_gdAuthWindow.isVisible()) _gdAuthWindow.hide(); } catch (_) {}
       console.log("[GD Auth] reusing token from existing login window");
       return existing.token;
@@ -455,7 +463,7 @@ async function getGdAccessToken(options) {
       const info = await _gdReadTokenFromWindow(win);
       const now = Date.now();
       if (info && info.token && info.expiresAtMs - now > 60000) {
-        _gdTokenCache = info;
+        _gdTokenCache = { ...info, obtainedAt: now };
         try { if (win.isVisible()) win.hide(); } catch (_) {}
         console.log("[GD Auth] token ready, expires in " + Math.round((info.expiresAtMs - now) / 1000) + "s");
         return info.token;
@@ -538,7 +546,7 @@ function _startGdAuthWatcher() {
     if (!win || win.isDestroyed()) return;
     const info = await _gdReadTokenFromWindow(win);
     if (info && info.token && info.expiresAtMs - Date.now() > 60000) {
-      _gdTokenCache = info;
+      _gdTokenCache = { ...info, obtainedAt: Date.now() };
       _gdAuthPromptSuppressedUntil = 0;
       clearInterval(_gdAuthWatcher);
       _gdAuthWatcher = null;
@@ -643,13 +651,16 @@ function serveStatic(filePath, res) {
 
 async function httpsGet(targetUrl, headers, timeout) {
   const isGd = isGdApiUrl(targetUrl);
-  const attempts = isGd ? 2 : 1;
+  const attempts = isGd ? 3 : 1;
   let lastResult = null;
   for (let attempt = 0; attempt < attempts; attempt++) {
     const merged = { ...GD_HEADERS, ...(headers || {}) };
     if (isGd) {
       try {
-        const token = await getGdAccessToken({ force: attempt > 0 });
+        // 刚登录成功时 token 可能还没在 GD 后端生效，此时强制重载登录窗口
+        // 往往只会拿到同一个 token 并再次失败；只有 token 已不新时才强制刷新，
+        // 且最多只强制刷新一次，避免无登录态时反复等待登录窗口。
+        const token = await getGdAccessToken({ force: attempt === 1 && _gdTokenAgeMs() > 120000 });
         if (token) {
           merged["x-authorization-token"] = "Bearer " + token;
           console.log("[GD Auth] attaching token to GD request (attempt " + (attempt + 1) + ")");
@@ -660,39 +671,59 @@ async function httpsGet(targetUrl, headers, timeout) {
         console.warn("[GD Auth] token acquisition failed:", e.message);
       }
     }
-    const result = await new Promise((resolve, reject) => {
-      const urlObj = new URL(targetUrl);
-      const options = {
-        hostname: urlObj.hostname,
-        port: 443,
-        path: urlObj.pathname + urlObj.search,
-        method: "GET",
-        headers: merged,
-        timeout: timeout || 30000,
-      };
-      const req = https.request(options, (resp) => {
-        const chunks = [];
-        resp.on("data", (chunk) => chunks.push(chunk));
-        resp.on("end", () => {
-          const body = Buffer.concat(chunks);
-          resolve({ statusCode: resp.statusCode, headers: resp.headers, body });
+    let result;
+    try {
+      result = await new Promise((resolve, reject) => {
+        const urlObj = new URL(targetUrl);
+        const options = {
+          hostname: urlObj.hostname,
+          port: 443,
+          path: urlObj.pathname + urlObj.search,
+          method: "GET",
+          headers: merged,
+          timeout: timeout || 30000,
+        };
+        const req = https.request(options, (resp) => {
+          const chunks = [];
+          resp.on("data", (chunk) => chunks.push(chunk));
+          resp.on("end", () => {
+            const body = Buffer.concat(chunks);
+            resolve({ statusCode: resp.statusCode, headers: resp.headers, body });
+          });
         });
+        req.on("error", reject);
+        req.on("timeout", () => { req.destroy(); reject(new Error("Request timeout")); });
+        req.end();
       });
-      req.on("error", reject);
-      req.on("timeout", () => { req.destroy(); reject(new Error("Request timeout")); });
-      req.end();
-    });
-    lastResult = result;
-    if (isGd && (result.statusCode === 401 || result.statusCode === 403)) {
-      const snippet = result.body ? result.body.toString("utf-8").slice(0, 200) : "";
-      console.warn(`[GD Auth] GD responded ${result.statusCode}: ${snippet}`);
-    }
-    if (isGd && result.statusCode === 401 && attempt === 0) {
-      console.log("[GD Auth] GD returned 401, refreshing token and retrying...");
-      invalidateGdAccessToken();
+    } catch (e) {
+      // GD 的网络错误/超时只重试一次，避免真正宕机时让用户等太久。
+      if (!isGd || attempt >= 1) throw e;
+      console.warn(`[GD] request failed (${e.message}); retrying ${attempt + 2}/${attempts} after a short delay`);
+      await new Promise((r) => setTimeout(r, 1500));
       continue;
     }
-    return result;
+    lastResult = result;
+    const status = result.statusCode;
+    if (isGd && (status === 401 || status === 403)) {
+      const snippet = result.body ? result.body.toString("utf-8").slice(0, 200) : "";
+      console.warn(`[GD Auth] GD responded ${status}: ${snippet}`);
+    }
+    // 200 但不是 JSON 通常意味着被登录页/人机验证页拦截，同样属于暂时状态。
+    let invalidJson = false;
+    if (isGd && status === 200 && !targetUrl.includes("/doc-content/")) {
+      try { JSON.parse(result.body.toString("utf-8").replace(/^\uFEFF/, "")); } catch (_) { invalidJson = true; }
+    }
+    // 登录后的鉴权传播、限流和上游 5xx 都是暂时性的：先短暂重试，
+    // 不要因为一次 401/403 就把仍在工作的 GD 直接降级到 EPO。
+    const transient = isGd && attempt < attempts - 1 && (
+      invalidJson || status === 401 || status === 403 || status === 408 || status === 425
+      || status === 429 || status >= 500
+    );
+    if (!transient) return result;
+    if (status === 401 || status === 403 || invalidJson) invalidateGdAccessToken();
+    const wait = (status === 401 || status === 403 || invalidJson ? 2500 : 1200) * (attempt + 1);
+    console.warn(`[GD] transient ${invalidJson ? "non-JSON response" : "HTTP " + status}; retrying ${attempt + 2}/${attempts} in ${wait}ms`);
+    await new Promise((r) => setTimeout(r, wait));
   }
   return lastResult;
 }
@@ -3244,7 +3275,9 @@ async function proxyGdApi(urlPath, res) {
   } else {
     try {
       const acceptHeader = isDocContent ? "application/pdf,*/*" : "application/json, text/plain, */*";
-      const timeout = isDocContent ? 60000 : 30000;
+      // GD 在刚登录后的首次文档列表请求需要由上游汇总各局数据，30 秒很容易
+      // 在数据仍在返回时超时并被误判为不可用；这里留出更充分的等待时间。
+      const timeout = isDocContent ? 90000 : 75000;
 
       // 同族查询：EP 等局的用户经常输入公开号（如 EP3762180），
       // 按 application 查询会返回 417/空数据。依次尝试 application/publication/patent，
@@ -3332,7 +3365,7 @@ async function proxyGdApi(urlPath, res) {
     return;
   }
 
-  console.log(`[EPO Fallback] GD failed (${isDocContent ? "PDF" : "doclist"} office=${office}): ${gdFailReason}, trying EPO Register...`);
+  console.log(`[EPO Fallback] GD failed (${isDocContent ? "PDF" : "doclist"} office=${office}, tokenAge=${_gdTokenAgeMs()}ms): ${gdFailReason}, trying EPO Register...`);
 
   try {
     if (isDocContent && docId) {
@@ -4793,7 +4826,7 @@ function guardGdResponse(promise, res, label) {
         res.end();
       }
     } catch (_) {}
-  }, 120000);
+  }, 240000);
   try { res.once("finish", cleanup); } catch (_) {}
   try { res.once("close", cleanup); } catch (_) {}
   Promise.resolve(promise).catch((err) => {
