@@ -25,19 +25,34 @@
     } }
   ];
   function icon(tool) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + tool.path + '</svg>'; }
+  var offsets = [-1, -1 / 3, 1 / 3, 1], radiusMax = 124;
   function position(x, y, save) {
     var w = document.documentElement.clientWidth, h = document.documentElement.clientHeight;
     x = Math.max(10, Math.min(Number(x) || 10, w - 56)); y = Math.max(10, Math.min(Number(y) || 10, h - dock.offsetHeight - 10));
     dock.style.left = x + 'px'; dock.style.top = y + 'px';
     var inward = x > w / 2 ? -1 : 1;
     dock.classList.toggle('at-left', inward > 0);
-    var center = Math.max(140, Math.min(y + dock.offsetHeight / 2, h - 140));
+    var dockWidth = dock.offsetWidth, margin = 10, cardW = 136, cardH = 56, gap = 10;
+    var availIn = inward > 0 ? w - x - dockWidth - margin : x - margin;
+    var radius = Math.max(64, Math.min(radiusMax, (availIn - cardW / 2 - 8) / .97, (h - margin * 2 - cardH) / 2 / .97));
+    // Equal vertical steps keep the gaps between the four strips identical; the x offset
+    // follows the same arc so the group still reads as a wheel around the dock.
+    var half = Math.min((cardH + gap) * 1.5, radius * .85, (h - margin * 2 - cardH) / 2);
+    var pad = Math.max(0, cardW / 2 - Math.sqrt(Math.max(0, radius * radius - half * half))) + 2;
+    var lift = half + cardH / 2 + margin;
+    var center = Math.max(lift, Math.min(y + dock.offsetHeight / 2, h - lift));
+    wheel.style.left = (inward > 0 ? dockWidth + pad : -pad) + 'px';
     wheel.style.top = (center - y) + 'px';
-    // Four points on the inward-facing half of a circle. Labels fit inside 136 px cards.
+    var origin = wheel.getBoundingClientRect();
+    var froms = dock.querySelectorAll('.pl-tools-mini button'), boxes = [];
+    for (var j = 0; j < froms.length; j++) boxes.push(froms[j].getBoundingClientRect());
     wheel.querySelectorAll('button').forEach(function (button, i) {
-      var angle = (-72 + i * 48) * Math.PI / 180, dx = inward * (92 + Math.cos(angle) * 58), dy = Math.sin(angle) * 112;
-      var left = Math.max(8 - x, Math.min(23 + dx - 68, w - x - 144));
-      button.style.left = left + 'px'; button.style.top = (dy - 28) + 'px';
+      var dy = offsets[i] * half, dx = inward * Math.sqrt(Math.max(0, radius * radius - dy * dy));
+      button.style.left = (dx - cardW / 2) + 'px'; button.style.top = (dy - cardH / 2) + 'px';
+      // Remember the dock icon this card grows out of so collapsing reverses the morph.
+      var from = boxes[i];
+      button.style.setProperty('--pl-morph-x', (from.left + from.width / 2 - origin.left - dx) + 'px');
+      button.style.setProperty('--pl-morph-y', (from.top + from.height / 2 - origin.top - dy) + 'px');
     });
     if (save) { try { localStorage.setItem(key, JSON.stringify({ x: x, y: y })); } catch (_) {} }
   }
