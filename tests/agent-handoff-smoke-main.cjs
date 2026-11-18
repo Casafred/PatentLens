@@ -83,7 +83,7 @@ app.whenReady().then(async () => {
     assert.equal(file.versions.length, 1);
     assert.equal(file.versions[0].extractResult.nodes.length, 2);
     assert.equal(file.versions[0].extractResult.claimId, task.input.claim.id);
-    assert.equal(await editor("return d.querySelectorAll('.x6-node').length;"), 2);
+    await until(() => editor("return d.querySelectorAll('.x6-node').length===2;"), 'editable graph rendered');
     await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
     fs.writeFileSync(path.join(output, 'agent-graph.png'), (await win.webContents.capturePage()).toPNG());
     assert.match(await dropGraph(envelope(task, payload)), /已经导入/);

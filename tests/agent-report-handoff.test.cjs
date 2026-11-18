@@ -82,6 +82,22 @@ test('review defaults to loaded documents when the selection set is empty', asyn
   const task = await api.createReview('');
   assert.deepEqual(Array.from(task.input.documents, d => d.idx), [1, 2]);
   assert.ok(task.input.sources.length);
+  assert.match(task.input.timeline, /Office Action/);
+  assert.match(task.input.timeline, /Response/);
+  assert.match(protocol.prompt(task), /2025-01-01/);
+});
+
+test('new review tasks track timeline changes while earlier tasks remain adoptable', async () => {
+  const { api, kb, store } = adapters();
+  const task = await api.createReview(''); store.put(task);
+  const payload = { report: '分析', evidence: [] };
+  kb.documents[1].date = '2025-03-01';
+  await assert.rejects(api.routes['review-report'].accept(task, payload), /变化/);
+  kb.documents[1].date = undefined;
+  const input = structuredClone(task.input); delete input.timeline;
+  const legacy = await protocol.create({ taskType: 'review-report', input, target: {}, instructions: '旧任务' }); store.put(legacy);
+  await api.routes['review-report'].accept(legacy, payload);
+  assert.match(kb.analysis, /分析/);
 });
 test('share returns append pending editable drafts, preserve accepted manual fields and reject changed source', async () => {
   const { api, project } = adapters(), task = await api.createShare(['p1'], 'summary', '');

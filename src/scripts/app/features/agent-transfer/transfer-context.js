@@ -44,6 +44,23 @@ var TransferContext = (function () {
     WIPO: "WIPO（PCT）",
   };
 
+  function listOf(value) {
+    if (Array.isArray(value)) return value.filter(function (v) { return v != null; });
+    if (value && Array.isArray(value.items)) return value.items.filter(Boolean);
+    return value == null || value === "" ? [] : [value];
+  }
+  function firstValue(data, keys) {
+    for (var i = 0; data && i < keys.length; i++) {
+      var v = data[keys[i]];
+      if (v != null && v !== "" && (!Array.isArray(v) || v.length)) return v;
+    }
+    return null;
+  }
+  function drawingUrls(data) {
+    return listOf(firstValue(data, ["drawings", "figures", "images"])).map(function (v) {
+      return typeof v === "string" ? v : v.url || v.src || v.imageUrl || "";
+    }).filter(Boolean);
+  }
   function safeStr(v) {
     return v == null ? "" : String(v);
   }
@@ -100,7 +117,7 @@ var TransferContext = (function () {
   }
 
   function claimLine(c, i) {
-    var num = c.num || (i + 1);
+    var num = c.num || c.number || (i + 1);
     return "权利要求" + num + "：" + safeStr(c.text).trim();
   }
 
@@ -196,8 +213,9 @@ var TransferContext = (function () {
         block.chars = r.text.length;
         block.available = true;
         block.truncated = r.truncated;
+        block.fullText = raw;
       } else {
-        block.note = "该文档尚未 OCR，可在软件内先执行 OCR，或仅交接 PDF 文件";
+        block.note = "该文档尚未 OCR，可直接交接 PDF 给 Agent 识别，或先导入 OCR 全文";
       }
       blocks.push(block);
     });
@@ -205,18 +223,29 @@ var TransferContext = (function () {
   }
 
   function buildDossierBlocks(data, documents, extractions, selectedIdxs) {
-    var blocks = [buildMetaBlock(data), buildDocListBlock(data, documents, selectedIdxs)];
+    // 审查文档交接必须带上完整时间轴；否则 Agent 只能看到 OCR 片段，
+    // 无法判断哪一次审查意见对应哪一次答复。
+    var timeline = makeBlock(
+      "timeline",
+      "审查时间轴（全部文档节点）",
+      "审查档案",
+      documents && documents.length ? renderTimelineTable(data && data.office, documents) : ""
+    );
+    if (!(documents && documents.length)) timeline.note = "暂无审查文档数据";
+    var blocks = [buildMetaBlock(data), timeline, buildDocListBlock(data, documents, selectedIdxs)];
     blocks = blocks.concat(buildOcrBlocks(documents, extractions, selectedIdxs));
     return blocks;
   }
 
   // ───────────────────────── 场景三：专利原文 ─────────────────────────
   function buildAbstractBlock(data) {
-    return makeBlock("abstract", "摘要", "专利原文", safeStr(data && data.abstract));
+    return makeBlock("abstract", "摘要", "专利原文", safeStr(data && (data.abstract || data.abstractText || data.summary)));
   }
 
   function buildClaimBlocks(data) {
-    var claims = (data && data.claims) || [];
+    var claims = listOf(firstValue(data, ["claims", "claimsData", "claimList"])).map(function (v) {
+      return typeof v === "string" ? { text: v } : v;
+    });
     var ind = [];
     var dep = [];
     claims.forEach(function (c, i) {
@@ -232,6 +261,7 @@ var TransferContext = (function () {
       indR.text
     );
     indBlock.truncated = indR.truncated;
+    indBlock.fullText = ind.join("\n\n");
     var depBlock = makeBlock(
       "claims-dependent",
       "从属权利要求（" + dep.length + " 项）",
@@ -239,6 +269,7 @@ var TransferContext = (function () {
       depR.text
     );
     depBlock.truncated = depR.truncated;
+    depBlock.fullText = dep.join("\n\n");
     if (!claims.length) {
       indBlock.note = "暂无权利要求数据";
       depBlock.note = "暂无权利要求数据";
@@ -247,15 +278,17 @@ var TransferContext = (function () {
   }
 
   function buildDescriptionBlock(data) {
-    var r = truncate(data && data.description, DESCRIPTION_MAX);
-    var block = makeBlock("description", "说明书（节选）", "专利原文·说明书", r.text);
+    var raw = safeStr(firstValue(data, ["description", "specification", "detailedDescription"]));
+    var r = truncate(raw, DESCRIPTION_MAX);
+    var block = makeBlock("description", "说明书", "专利原文·说明书", r.text);
     block.truncated = r.truncated;
-    if (!(data && data.description)) block.note = "暂无说明书数据";
+    block.fullText = raw;
+    if (!(data && (data.description || data.specification || data.detailedDescription))) block.note = "暂无说明书数据";
     return block;
   }
 
-  function citationRows(list) {
-    return (list || []).slice(0, LIST_MAX).map(function (c) {
+  function citationRows(list, limit) {
+    return listOf(list).slice(0, limit || LIST_MAX).map(function (c) {
       var pn = c.patent_number || c.patentNumber || c.publicationNumber || c.publication_number || "";
       var date = c.publication_date || c.publicationDate || c.priority_date || c.priorityDate || "";
       var owner = c.assignee || nameOf(c);
@@ -264,7 +297,7 @@ var TransferContext = (function () {
   }
 
   function buildCitationsBlock(data) {
-    var list = data.patent_citations || data.citations || [];
+    var list = listOf(firstValue(data, ["patent_citations", "citations"]));
     var rows = citationRows(list);
     var text = "";
     if (rows.length) {
@@ -272,12 +305,13 @@ var TransferContext = (function () {
         "| 专利号 | 标题 | 申请人 | 日期 |\n|------|------|--------|------|\n" + rows.join("\n");
     }
     var block = makeBlock("citations", "引用专利（向后引证）", "专利原文·引证", text);
+    block.fullText = rows.length ? "共 " + list.length + " 件：\n\n| 专利号 | 标题 | 申请人 | 日期 |\n|------|------|--------|------|\n" + citationRows(list, Infinity).join("\n") : "";
     if (!rows.length) block.note = "无引证数据";
     return block;
   }
 
   function buildCitedByBlock(data) {
-    var list = data.cited_by || data.citedBy || [];
+    var list = listOf(firstValue(data, ["cited_by", "citedBy"]));
     var rows = citationRows(list);
     var text = "";
     if (rows.length) {
@@ -285,12 +319,13 @@ var TransferContext = (function () {
         "| 专利号 | 标题 | 申请人 | 日期 |\n|------|------|--------|------|\n" + rows.join("\n");
     }
     var block = makeBlock("cited-by", "被引专利（向前引证）", "专利原文·引证", text);
+    block.fullText = rows.length ? "共 " + list.length + " 件：\n\n| 专利号 | 标题 | 申请人 | 日期 |\n|------|------|--------|------|\n" + citationRows(list, Infinity).join("\n") : "";
     if (!rows.length) block.note = "无被引数据";
     return block;
   }
 
   function buildDrawingsBlock(data) {
-    var drawings = (data && data.drawings) || [];
+    var drawings = drawingUrls(data);
     var text = drawings.map(function (url, i) {
       return "图" + (i + 1) + "：" + url;
     }).join("\n");
@@ -304,12 +339,15 @@ var TransferContext = (function () {
   }
 
   function buildFamilyBlock(data) {
-    var list = data.family_applications || data.familyMembers || [];
+    var list = listOf(firstValue(data, ["family_applications", "familyMembers", "family"]));
     var lines = list.slice(0, LIST_MAX).map(function (f) {
       var pn = f.publication_number || f.publicationNumber || "";
       return "- " + pn + "｜" + safeStr(f.title) + "｜" + safeStr(f.status || "");
     });
     var block = makeBlock("family", "同族专利（" + list.length + " 件）", "专利原文·同族", lines.join("\n"));
+    block.fullText = list.map(function (f) {
+      return "- " + (f.publication_number || f.publicationNumber || "") + "｜" + safeStr(f.title) + "｜" + safeStr(f.status || "");
+    }).join("\n");
     if (!list.length) block.note = "无同族数据";
     return block;
   }
@@ -348,7 +386,14 @@ var TransferContext = (function () {
     var normalize = function (value) { return safeStr(value).replace(/\s/g, "").toUpperCase(); };
     var result = {};
     var merge = function (candidate) {
-      if (!candidate || normalize(candidate.patent_number || candidate.patentNumber) !== normalize(pn)) return;
+      if (!candidate || typeof candidate !== "object") return;
+      // 部分缓存版本包了一层 { data: {...} }，解包后仍按文献号严格匹配，
+      // 避免把上一页的说明书/附图混入当前文档。
+      if (candidate.data && typeof candidate.data === "object" && !candidate.patent_number && !candidate.patentNumber) {
+        candidate = candidate.data;
+      }
+      var candidatePn = candidate.patent_number || candidate.patentNumber || candidate.publication_number || candidate.publicationNumber || candidate.applicationNumber;
+      if (normalize(candidatePn) !== normalize(pn)) return;
       Object.keys(candidate).forEach(function (key) {
         var value = candidate[key];
         if (value != null && value !== "" && (!Array.isArray(value) || value.length)) result[key] = value;
@@ -388,6 +433,7 @@ var TransferContext = (function () {
 
   return {
     // 常量（供测试与面板复用）
+    drawingUrls: drawingUrls,
     DESCRIPTION_MAX: DESCRIPTION_MAX,
     OCR_PER_DOC_MAX: OCR_PER_DOC_MAX,
     CLAIMS_MAX: CLAIMS_MAX,

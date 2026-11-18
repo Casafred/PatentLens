@@ -135,6 +135,23 @@ test('上下文采集：dossier 场景按勾选生成文档清单与 OCR 块，�
   const ocr1 = blocks.find((b) => b.key === 'ocr-1');
   assert.equal(ocr1.available, false);
   assert.ok(ocr1.note.includes('尚未 OCR'));
+  const timeline = blocks.find((b) => b.key === 'timeline');
+  assert.ok(timeline && timeline.text.includes('第一次审查意见'));
+});
+
+test('上下文采集：原文缓存字段别名仍能生成摘要、权项、说明书和附图块', () => {
+  const { TransferContext } = loadModules();
+  const blocks = TransferContext.buildFulltextBlocks({
+    patentNumber: 'US1', abstractText: '摘要别名',
+    claimsData: [{ num: 1, text: 'An apparatus.' }],
+    specification: '说明书别名', figures: ['https://example.com/figure.png'],
+    family: [{ publicationNumber: 'EP2', title: 'Family' }],
+  });
+  assert.equal(blocks.find((b) => b.key === 'abstract').available, true);
+  assert.equal(blocks.find((b) => b.key === 'claims-independent').available, true);
+  assert.equal(blocks.find((b) => b.key === 'description').available, true);
+  assert.equal(blocks.find((b) => b.key === 'drawings').available, true);
+  assert.equal(blocks.find((b) => b.key === 'family').available, true);
 });
 
 test('上下文采集：单篇 OCR 超 12000 字截断', () => {
