@@ -130,6 +130,9 @@ var TransferPanel = (function () {
   }
 
   function refreshStatsAndPreview() {
+    state.revision = (state.revision || 0) + 1;
+    state.bundlePath = null; state.bundleFiles = null;
+    renderBundleDock();
     var stats = currentStats();
     var budgetEl = root.querySelector("[data-role=budget]");
     if (budgetEl) {
@@ -152,7 +155,7 @@ var TransferPanel = (function () {
 
   function blockRowHtml(b, idx) {
     var disabled = b.available === false;
-    var meta = b.chars ? b.chars.toLocaleString() + " 字" + (b.truncated ? " · 已截断" : "") : "无数据";
+    var meta = b.chars ? b.chars.toLocaleString() + " 字" + (b.truncated ? " · 复制预览节选，文件交接含全文" : "") : "无数据";
     return '<label class="pl-check-row' + (disabled ? " disabled" : "") + '">' +
       '<input type="checkbox" data-block-idx="' + idx + '" ' + (b.checked ? "checked" : "") + (disabled ? " disabled" : "") + ">" +
       '<span class="pl-cr-main"><span class="pl-cr-label">' + esc(b.label) + '</span>' +
@@ -242,15 +245,17 @@ var TransferPanel = (function () {
   function exportPayload(payload, image) {
     var session = state;
     var ticketId = ensureTicketId();
+    if (payload.promise) return payload.promise.then(function () { return state === session; });
     payload.status = "exporting";
     var exporter = image ? TransferFileDock.exportImage : TransferFileDock.exportPdf;
-    return Promise.resolve().then(function () { return exporter(ticketId, payload); }).then(function (res) {
+    payload.promise = Promise.resolve().then(function () { return exporter(ticketId, payload); }).then(function (res) {
       payload.status = res && res.ok && res.filePath ? "ready" : "error";
       payload.filePath = res && res.filePath || null;
       payload.error = payload.status === "error" ? (res && res.error || "文件准备失败") : "";
     }).catch(function (error) {
       payload.status = "error"; payload.error = error.message || "文件准备失败";
-    }).then(function () { return state === session; });
+    }).then(function () { payload.promise = null; return state === session; });
+    return payload.promise;
   }
 
   function renderFileDock() {
@@ -305,6 +310,7 @@ var TransferPanel = (function () {
   }
 
   function prepareOnePdf(payload, chip) {
+    refreshStatsAndPreview();
     var btn = chip.querySelector("button");
     if (btn) { btn.disabled = true; btn.textContent = "准备中…"; }
     exportPayload(payload, false).then(function (active) {
@@ -314,24 +320,30 @@ var TransferPanel = (function () {
     });
   }
 
-  function prepareAllPdfs() {
-    var session = state;
-    var pendings = (state.payloads || []).filter(function (p) { return p.status === "pending" || p.status === "error"; });
-    if (!pendings.length) { toast("没有待准备的文件"); return; }
-    var chain = Promise.resolve();
-    pendings.forEach(function (p) {
-      chain = chain.then(function () {
-        if (state !== session || p.status === "ready" || p.status === "exporting") return;
-        return exportPayload(p, false).then(function (active) { if (active) renderFileDock(); });
-      });
-    });
-    chain.then(function () {
-      if (state !== session) return;
-      renderFileDock();
-      var failed = (state.payloads || []).filter(function (p) { return p.status === "error"; }).length;
-      toast(failed ? "部分文件准备失败，请查看芯片提示" : "全部 PDF 已就绪，可拖入 Agent 窗口", failed > 0);
-    });
+  async function preparePayloads(image) {
+    var session = state, key = image ? "imagePayloads" : "payloads";
+    var pending = (state[key] || []).filter(function (p) { return p.status === "pending" || p.status === "error" || p.status === "exporting"; });
+    var next = 0, done = 0;
+    async function worker() {
+      while (next < pending.length && state === session) {
+        var payload = pending[next++];
+        if (state[key].indexOf(payload) < 0) continue;
+        await exportPayload(payload, image); done++;
+        if (state !== session) return;
+        if (image) renderImageDock(); else renderFileDock();
+        var button = root.querySelector('[data-action="bundle"]');
+        if (button && button.disabled) button.textContent = "正在准备附件 " + done + " / " + pending.length + "…";
+      }
+    }
+    // EPO may need an interactive verification window; keep those sequential.
+    // GD and image downloads can use two connections.
+    var interactiveEpo = !image && pending.some(function (p) { return /[?&](?:epoDirect|epoPdfUrl)=/.test(p.url || ""); });
+    await Promise.all(interactiveEpo ? [worker()] : [worker(), worker()]);
+    if (state !== session) return;
+    var failed = (state[key] || []).filter(function (p) { return p.status === "error" || p.status === "unsupported"; }).length;
+    if (failed) toast("有 " + failed + " 个附件未准备成功，可查看下载状态并重试", true);
   }
+  function prepareAllPdfs() { return preparePayloads(false); }
 
   function exportOcrMd() {
     var selectedIdxs = Object.keys(state.docSelected).filter(function (k) { return state.docSelected[k]; }).map(Number);
@@ -403,6 +415,7 @@ var TransferPanel = (function () {
   }
 
   function prepareOneImage(payload, chip) {
+    refreshStatsAndPreview();
     var btn = chip.querySelector("button");
     if (btn) { btn.disabled = true; btn.textContent = "准备中…"; }
     exportPayload(payload, true).then(function (active) {
@@ -412,23 +425,108 @@ var TransferPanel = (function () {
     });
   }
 
-  function prepareAllImages() {
-    var session = state;
-    var pendings = (state.imagePayloads || []).filter(function (p) { return p.status === "pending" || p.status === "error"; });
-    if (!pendings.length) { toast("没有待准备的附图"); return; }
-    var chain = Promise.resolve();
-    pendings.forEach(function (p) {
-      chain = chain.then(function () {
-        if (state !== session || p.status === "ready" || p.status === "exporting") return;
-        return exportPayload(p, true).then(function (active) { if (active) renderImageDock(); });
-      });
+  function prepareAllImages() { return preparePayloads(true); }
+
+  function renderBundleDock() {
+    if (!root || !state) return;
+    var host = root.querySelector("[data-role=bundle-dock]");
+    if (!host) return;
+    if (!state.bundlePath) {
+      host.innerHTML = '<div class="pl-cr-meta">准备后，将 context.md、所选 PDF / 附图一次拖入 Agent 的文件上传区。也可使用 ZIP。</div>';
+      return;
+    }
+    var files = state.bundleFiles.slice(), bundlePath = state.bundlePath;
+    var missing = state.bundleMissing || [];
+    host.innerHTML = '<div class="pl-file-chip ready" draggable="true" data-role="bundle-chip">' +
+      '<span class="pl-fc-icon">📄</span><span class="pl-fc-main"><div class="pl-fc-name">拖给 Agent · ' + files.length + ' 个文件</div>' +
+      '<div class="pl-fc-sub">含指令、完整已选上下文、时间轴和附件' + (missing.length ? '；缺少 ' + missing.length + ' 个附件，见下方' : '') + '</div></span></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="pl-btn pl-btn-ghost" draggable="true" data-role="zip-chip">📦 拖出 ZIP</button><button class="pl-btn pl-btn-ghost" data-action="show-bundle">打开文件夹</button></div>' +
+      (missing.length ? '<p role="status" class="pl-cr-note">以下材料未能下载，已在上下文中标记：' + missing.map(function (p) { return esc(p.fileName + '（' + p.error + '）'); }).join('；') + '</p>' : '');
+    host.querySelector('[data-role="bundle-chip"]').addEventListener("dragstart", function (event) { event.preventDefault(); TransferFileDock.startDrag(files); });
+    host.querySelector('[data-role="zip-chip"]').addEventListener("dragstart", function (event) { event.preventDefault(); TransferFileDock.startDrag(bundlePath); });
+    host.querySelector('[data-action="show-bundle"]').addEventListener("click", function () { TransferFileDock.showItem(bundlePath); });
+  }
+
+  function buildBundleManifest(stats, pkg) {
+    var docs = (state.docs || []).filter(function (d) { return state.docSelected[d.idx]; }).map(function (d) {
+      var ext = state.extractions && state.extractions[d.idx];
+      var pdf = (state.payloads || []).filter(function (p) { return String(p.idx) === String(d.idx); })[0];
+      return {
+        idx: d.idx, docId: d.docId || "", docCode: d.docCode || "", name: d.name || d.desc || "",
+        date: d.date || "", type: d.type || "", pages: d.numberOfPages || 0,
+        hasOcr: !!(ext && (ext.text || ext.markdown)), pdfFile: pdf && pdf.status === "ready" ? pdf.fileName : "",
+        sourceUrl: d.epoPdfUrl || pdf && pdf.url || "",
+        attachmentStatus: pdf && pdf.status || "unavailable", attachmentError: pdf && pdf.error || "",
+      };
     });
-    chain.then(function () {
+    return {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      scene: state.scene,
+      patent: state.data && (state.data.patent_number || state.data.raw || state.data.applicationNumber) || "",
+      office: state.data && state.data.office || "",
+      task: { title: SCENE_META[state.scene].title, promptChars: String(state.promptText || "").length, note: root.querySelector("[data-role=note]").value || "" },
+      blocks: stats.blocks.map(function (b) { return { key: b.key, label: b.label, source: b.source || "", chars: b.chars || 0, truncated: !!b.truncated }; }),
+      documents: docs,
+      attachments: (stats.blocks.some(function (b) { return b.key === "drawings"; }) ? state.imagePayloads || [] : []).filter(function (p) { return p.status === "ready"; }).map(function (p) { return { fileName: p.fileName, docName: p.docName }; }),
+      timelineDocumentCount: state.docs.length,
+      packageChars: pkg.chars,
+      source: "PatentLens",
+    };
+  }
+
+  async function prepareBundle() {
+    var stats = currentStats();
+    if (!stats.blocks.length) { toast("请至少勾选一项材料", true); return; }
+    var session = state, revision = state.revision;
+    var button = root.querySelector('[data-action="bundle"]');
+    if (button) { button.disabled = true; button.textContent = "正在下载并整理材料…"; }
+    try {
+      if (state.scene === "dossier") await prepareAllPdfs();
       if (state !== session) return;
-      renderImageDock();
-      var failed = (state.imagePayloads || []).filter(function (p) { return p.status === "error"; }).length;
-      toast(failed ? "部分附图准备失败，请查看芯片提示" : "全部附图已就绪，可拖入 Agent 窗口", failed > 0);
-    });
+      var includeImages = checkedBlocks().some(function (b) { return b.key === "drawings"; });
+      if (state.scene === "fulltext" && includeImages) await prepareAllImages();
+      if (state !== session || state.revision !== revision) return;
+      stats = currentStats();
+      stats.blocks = stats.blocks.map(function (b) {
+        var full = b.fullText || b.text;
+        return Object.assign({}, b, { text: full, chars: full.length, truncated: false });
+      });
+      var pkg = TransferPackager.buildPackage({
+        prompt: TransferTemplates.compose(SCENE_META[state.scene].tpl, state.promptText),
+        note: root.querySelector("[data-role=note]").value, blocks: stats.blocks,
+        sceneLabel: SCENE_META[state.scene].title.replace("交接给外部 Agent · ", ""), data: state.data,
+      });
+      var payloads = (state.payloads || []).concat(includeImages ? state.imagePayloads || [] : []);
+      var missing = payloads.filter(function (p) { return p.status !== "ready"; });
+      var manifest = buildBundleManifest(stats, pkg);
+      manifest.missingAttachments = missing.map(function (p) { return { fileName: p.fileName, reason: p.error || p.status }; });
+      manifest.complete = missing.length === 0;
+      var missingText = missing.length ? "\n\n## 未能交接的附件（请勿假设已阅读）\n" + missing.map(function (p) { return "- " + p.fileName + "：" + (p.error || p.status); }).join("\n") : "";
+      var context = pkg.text + missingText;
+      var pn = (state.data && (state.data.patent_number || state.data.raw || state.data.applicationNumber)) || "PATENT";
+      var bundleName = TransferFileDock.sanitizeFileName(pn + "_Agent.zip");
+      var result = await TransferFileDock.createBundle({
+        ticketId: TransferFileDock.newTicketId(), bundleName: bundleName,
+        textFiles: [
+          { fileName: "context.md", content: context },
+          { fileName: "manifest.json", content: JSON.stringify(manifest, null, 2) },
+        ],
+        fileEntries: payloads.filter(function (p) { return p.status === "ready" && p.filePath; }).map(function (p) { return { filePath: p.filePath, archiveName: p.fileName }; }),
+      });
+      if (state !== session || state.revision !== revision) return;
+      if (!result || !result.ok) throw new Error(result && result.error || "上下文文件生成失败");
+      state.bundlePath = result.filePath;
+      state.bundleFiles = result.filePaths.filter(function (file) { return !/[\\/](?:manifest|checksums)\.json$/i.test(file); });
+      state.bundleName = bundleName; state.bundleMissing = missing;
+      renderBundleDock();
+      toast(missing.length ? "已准备可用材料；有 " + missing.length + " 个附件缺失，请查看提示或重试" : "材料已就绪，拖动文件卡片到 Agent 上传区", missing.length > 0);
+    } catch (error) {
+      if (state === session) toast(error.message || "上下文文件生成失败", true);
+    } finally {
+      if (button && button.isConnected) { button.disabled = false; button.textContent = "准备材料并拖给 Agent"; }
+      if (state === session && state.revision !== revision) toast("材料选择已变更，请重新准备文件");
+    }
   }
 
   // ── 提示词区 ──
@@ -458,17 +556,21 @@ var TransferPanel = (function () {
       : "";
 
     var fileSection = state.scene === "dossier"
-      ? '<div class="pl-transfer-section"><h4>PDF 文件交接（拖入 Agent 上传区）<div class="pl-row-actions">' +
+      ? '<details class="pl-transfer-section"><summary>查看 PDF 下载状态 / 单独拖出</summary><h4>PDF 文件交接<div class="pl-row-actions">' +
         '<button class="pl-btn pl-btn-ghost" data-action="prep-all">准备全部 PDF</button>' +
         '<button class="pl-btn pl-btn-ghost" data-action="export-md">导出 OCR 文本.md</button>' +
-        '</div></h4><div data-role="file-dock"></div></div>'
+        '</div></h4><div data-role="file-dock"></div></details>'
       : "";
 
     var imageSection = state.scene === "fulltext"
-      ? '<div class="pl-transfer-section"><h4>说明书附图交接（下载后拖入 Agent 上传区）<div class="pl-row-actions">' +
+      ? '<details class="pl-transfer-section"><summary>查看附图下载状态 / 单独拖出</summary><h4>说明书附图交接<div class="pl-row-actions">' +
         '<button class="pl-btn pl-btn-ghost" data-action="prep-images">准备全部附图</button>' +
-        '</div></h4><div data-role="image-dock"></div></div>'
+        '</div></h4><div data-role="image-dock"></div></details>'
       : "";
+    var bundleSection = '<div class="pl-transfer-section"><h4>拖给外部 Agent</h4>' +
+      '<div class="pl-cr-meta" style="margin-bottom:8px">把 PatentLens 整理好的指令、时间轴、原文上下文和附件一次拖进 Agent，避免分别找文件。</div>' +
+      '<button class="pl-btn pl-btn-primary" data-action="bundle">准备材料并拖给 Agent</button>' +
+      '<div data-role="bundle-dock" style="margin-top:8px"></div></div>';
 
     overlay.innerHTML =
       '<div class="pl-transfer-modal" role="dialog" aria-modal="true">' +
@@ -476,21 +578,22 @@ var TransferPanel = (function () {
       ' <span class="pl-badge green" data-role="tpl-badge">系统预置</span></h3>' +
       '<button class="pl-transfer-close" data-action="close" title="关闭">&times;</button></div>' +
       '<div class="pl-transfer-body">' +
-      '<p class="pl-transfer-intro">选择材料 → 复制到外部 Agent → 按需上传附件。已自动勾选当前页面的可用内容。</p>' +
+      '<p class="pl-transfer-intro">已选好当前材料。点击准备，再将文件卡片拖到 Agent 的聊天上传区。需要时可调整下方材料与指令。</p>' +
+      bundleSection +
+      '<div class="pl-transfer-section"><h4>这次要 Agent 做什么？（可选）</h4><textarea class="pl-transfer-textarea" data-role="note" rows="2" placeholder="例如：梳理审查意见和答复，指出尚未解决的问题"></textarea></div>' +
       docSection +
-      '<div class="pl-transfer-section"><h4>要发送的材料 <div class="pl-row-actions">' +
+      '<details class="pl-transfer-section"><summary>调整上下文材料</summary><h4>要发送的材料 <div class="pl-row-actions">' +
       '<button class="pl-btn pl-btn-ghost" data-action="blocks-all">全选可用</button>' +
       '<button class="pl-btn pl-btn-ghost" data-action="blocks-none">全不选</button></div></h4>' +
-      '<div data-role="block-list"></div></div>' +
+      '<div data-role="block-list"></div></details>' +
       '<details class="pl-transfer-section"><summary>调整分析指令（已预填，可选）</summary>' +
       '<textarea class="pl-transfer-textarea" data-role="prompt" rows="9"></textarea>' +
       '<div style="margin-top:8px;display:flex;gap:8px;">' +
       '<button class="pl-btn pl-btn-ghost" data-action="save-tpl">保存为我的默认</button>' +
       '<button class="pl-btn pl-btn-ghost" data-action="reset-tpl">恢复系统预置</button></div></details>' +
-      '<div class="pl-transfer-section"><h4>这次希望重点分析什么？（可选）</h4>' +
-      '<textarea class="pl-transfer-textarea" data-role="note" rows="3" placeholder="例如：客户重点关注创造性争议，希望输出对比表格…"></textarea></div>' +
       fileSection +
       imageSection +
+      (state.scene === "dossier" ? '<details class="pl-transfer-section"><summary>把分析结果保存回 PatentLens（可选）</summary><p class="pl-transfer-intro">创建审查分析任务后，可将 Agent 返回的结果导入本案并审核采用。</p><button class="pl-btn pl-btn-ghost" data-action="report">创建审查分析任务</button> <button class="pl-btn pl-btn-ghost" data-action="tasks">已有任务 / 导入结果</button></details>' : '') +
       '<details class="pl-transfer-preview"><summary>预览将发送的内容</summary>' +
       '<pre data-role="preview"></pre></details>' +
       "</div>" +
@@ -498,7 +601,7 @@ var TransferPanel = (function () {
       '<span class="pl-budget" data-role="budget"></span>' +
       '<span style="flex:1"></span>' +
       '<button class="pl-btn pl-btn-ghost" data-action="close">取消</button>' +
-      '<button class="pl-btn pl-btn-primary" data-action="copy">📋 一键复制交接指令</button>' +
+      '<button class="pl-btn pl-btn-primary" data-action="copy">复制指令（可选）</button>' +
       "</div></div>";
 
     overlay.addEventListener("click", function (e) {
@@ -521,17 +624,27 @@ var TransferPanel = (function () {
     if (docsNone) docsNone.addEventListener("click", function () { setAllDocs(false); });
 
     var prepAll = root.querySelector('[data-action="prep-all"]');
-    if (prepAll) prepAll.addEventListener("click", prepareAllPdfs);
+    if (prepAll) prepAll.addEventListener("click", function () { refreshStatsAndPreview(); void prepareAllPdfs(); });
     var prepImages = root.querySelector('[data-action="prep-images"]');
-    if (prepImages) prepImages.addEventListener("click", prepareAllImages);
+    if (prepImages) prepImages.addEventListener("click", function () { refreshStatsAndPreview(); void prepareAllImages(); });
     var exportMd = root.querySelector('[data-action="export-md"]');
     if (exportMd) exportMd.addEventListener("click", exportOcrMd);
+    root.querySelector('[data-action="bundle"]').addEventListener("click", function () { void prepareBundle(); });
 
+    var report = root.querySelector('[data-action="report"]');
+    if (report) report.addEventListener("click", function () {
+      var selected = state.docs.filter(function (d) { return state.docSelected[d.idx]; }).map(function (d) { return d.idx; });
+      close();
+      window.AgentReportHandoff.open("review-report", { selectedIdxs: selected }).catch(function (error) { toast(error.message, true); });
+    });
+    var tasks = root.querySelector('[data-action="tasks"]');
+    if (tasks) tasks.addEventListener("click", function () { close(); window.AgentTaskWorkspace.open(); });
     var promptTa = root.querySelector("[data-role=prompt]");
     root.querySelector('[data-action="save-tpl"]').addEventListener("click", function () {
       var ok = TransferTemplates.saveCustom(SCENE_META[state.scene].tpl, promptTa.value);
       state.promptText = promptTa.value;
       renderPromptSection();
+      refreshStatsAndPreview();
       toast(ok ? "已保存为该场景的自定义默认提示词" : "保存失败", !ok);
     });
     root.querySelector('[data-action="reset-tpl"]').addEventListener("click", function () {
@@ -612,6 +725,7 @@ var TransferPanel = (function () {
     if (scene === "fulltext") {
       renderImageDock();
     }
+    renderBundleDock();
     bindActions();
     refreshStatsAndPreview();
   }

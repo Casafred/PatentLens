@@ -83,13 +83,23 @@
       return { id: docId, name: meta.documentName, date: meta.date, type: doc.type || '', idx: doc.idx, hasText: !!text.trim() || !!(extraction && extraction.blocks && extraction.blocks.length) };
     });
     if (!sources.length) throw new Error('所选文档尚无 OCR 全文，请先完成解析');
-    return { patentNumber: number(data) || String(data && data.applicationNumber || ''), documents: manifest, sources: sources };
+    // 把全案时间轴作为独立字段交给 Agent，保证报告能解释
+    // 审查意见—答复—授权之间的日期和顺序，而不是只拿到几段 OCR。
+    var timeline;
+    if (root.TransferContext && typeof root.TransferContext.renderTimelineTable === 'function') {
+      timeline = root.TransferContext.renderTimelineTable(data && data.office, kb.documents || []);
+    } else {
+      timeline = (kb.documents || []).slice().sort(function (a, b) { return String(a.date || '').localeCompare(String(b.date || '')); }).map(function (doc, i) {
+        return (i + 1) + '. ' + (doc.date || '—') + ' · ' + (doc.docCode || '') + ' · ' + (doc.name || doc.desc || '') + ' · ' + (doc.type || '');
+      }).join('\n');
+    }
+    return { patentNumber: number(data) || String(data && data.applicationNumber || ''), timeline: timeline, documents: manifest, sources: sources };
   }
-  async function createReview(instructions) {
+  async function createReview(instructions, selectedOverride) {
     var kb = root.TransferContext.getKanban(), selected = typeof _kanbanSelected !== 'undefined' && _kanbanSelected.size ? Array.from(_kanbanSelected) : kb.documents.map(function (d) { return d.idx; });
-    var input = reviewInput(selected);
+    var input = reviewInput(selectedOverride || selected);
     return protocol.create({ taskType: 'review-report', label: (input.patentNumber || '案卷') + ' · 审查与答复分析', input: input, target: {},
-      instructions: '按日期梳理审查意见—申请人答复—修改—授权的链条，分析争议焦点、权项变化、引用文献和仍待确认的问题。没有OCR全文的文档只列为材料缺口。不得把推测当事实；每个关键结论提供 sourceId 和原文 quote。输出 {"report":"中文 Markdown 报告，使用 ### 分节","evidence":[{"sourceId":"输入编号","quote":"逐字引文","explanation":"关联结论"}]}。分包报告明确本包覆盖范围，合并不推断未读材料。\n补充要求：' + instructions });
+      instructions: '按日期梳理审查意见—申请人答复—修改—授权的链条，分析争议焦点、权项变化、引用文献和仍待确认的问题。输入中的 timeline 是全案时间轴，必须先据此建立事件顺序。没有OCR全文的文档只列为材料缺口。不得把推测当事实；每个关键结论提供 sourceId 和原文 quote。输出 {"report":"中文 Markdown 报告，使用 ### 分节","evidence":[{"sourceId":"输入编号","quote":"逐字引文","explanation":"关联结论"}]}。分包报告明确本包覆盖范围，合并不推断未读材料。\n补充要求：' + instructions });
   }
   function reviewView(task, result) {
     var container = document.getElementById('kanban-analysis-content'); if (!container) return;
@@ -108,6 +118,7 @@
   }
   async function acceptReview(task, payload) {
     var result = refs.report(task, payload), input = reviewInput(task.input.documents.map(function (d) { return d.idx; }));
+    if (!Object.prototype.hasOwnProperty.call(task.input, 'timeline')) delete input.timeline;
     if (await protocol.hash(input) !== task.sourceHash) throw new Error('当前案卷或 OCR 原文已经变化，请打开原案卷或重新创建任务');
     var kb = root.TransferContext.getKanban();
     if (kb.analysis && kb.analysis !== savedReview(task, result)) { var saved = workspace.getStore().list().find(function (t) { return t.taskId === task.taskId; }); saved.previousAnalyses = saved.previousAnalyses || []; if (!saved.previousAnalyses.some(function (p) { return p.report === kb.analysis; })) saved.previousAnalyses.push({ report: kb.analysis, savedAt: Date.now() }); workspace.getStore().put(saved); await workspace.flush(); }
@@ -199,7 +210,7 @@
     if (type === 'share-processing') ids = root.PatentShareStore.getSnapshot().patents.map(function (p) { return p.id; });
     root.AgentHandoffPanel.open(Object.assign({ title: { 'claim-support': 'Agent 权利要求支撑定位', 'review-report': 'Agent 审查与答复分析', 'share-processing': 'Agent 分享内容加工' }[type],
       description: '准备材料 → 交给外部 Agent → 拖回结果 → 查看版本和证据 → 采用。无需 API；长文可选择分包交接。', taskType: type, reviewFirst: true, store: workspace.getStore(),
-      createTask: function () { return type === 'claim-support' ? createSupport(scope) : type === 'review-report' ? createReview(extra) : createShare(ids, mode, extra); },
+      createTask: function () { return type === 'claim-support' ? createSupport(scope) : type === 'review-report' ? createReview(extra, scope && scope.selectedIdxs) : createShare(ids, mode, extra); },
       configure: function (dialog) {
         var config = document.createElement('div'); config.className = 'agent-report-config';
         var instruction = document.createElement('textarea'); instruction.placeholder = '补充分析要求（可选）'; instruction.setAttribute('aria-label', '补充分析要求'); instruction.style.minHeight = '60px'; instruction.oninput = function () { extra = instruction.value; };

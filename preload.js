@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   ocrSharePdf: (bytes) => ipcRenderer.invoke("ocr-share-pdf", bytes),
   onForceClose: (callback) => ipcRenderer.on("force-close-app", () => callback()),
   onDataSourceIssue: (callback) => ipcRenderer.on("data-source-issue", (_event, payload) => callback(payload)),
+  gdOpenLoginWindow: () => ipcRenderer.invoke("gd-open-login-window"),
+  gdNetworkDiagnostics: () => ipcRenderer.invoke("gd-network-diagnostics"),
+  onGdNetworkProgress: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on("gd-network-progress", handler);
+    return () => ipcRenderer.removeListener("gd-network-progress", handler);
+  },
   forceRefocus: () => ipcRenderer.send("force-refocus"),
   resetFocusKick: () => ipcRenderer.send("reset-focus-kick"),
   sendToMain: (data) => ipcRenderer.send("popout-to-main", data),
@@ -51,4 +58,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   agentHandoffSave: (raw) => ipcRenderer.invoke("agent-handoff:save", raw),
   transferStartDrag: (payload) => ipcRenderer.send("transfer:start-drag", payload),
   transferShowItem: (payload) => ipcRenderer.send("transfer:show-item", payload),
+  transferCreateBundle: (payload) => ipcRenderer.invoke("transfer:create-bundle", payload),
 });

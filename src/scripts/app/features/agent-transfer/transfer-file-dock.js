@@ -59,7 +59,7 @@ var TransferFileDock = (function () {
     var pn = (data && (data.patent_number || data.raw || data.applicationNumber)) || "PATENT";
     var safeDate = (doc.date || "").replace(/[\\/:*?"<>|\s]/g, "-");
     var code = doc.docCode || ("doc" + doc.idx);
-    return sanitizeFileName(pn + "_" + code + (safeDate ? "_" + safeDate : "") + ".pdf");
+    return sanitizeFileName(pn + "_" + code + "_" + doc.idx + (safeDate ? "_" + safeDate : "") + ".pdf");
   }
 
   // 把文档描述符数组转为文件载荷描述（不落盘，仅描述）
@@ -99,7 +99,7 @@ var TransferFileDock = (function () {
     var bridge = api();
     if (!bridge || typeof bridge.transferStartDrag !== "function" || !filePath) return false;
     try {
-      bridge.transferStartDrag({ filePath: filePath });
+      bridge.transferStartDrag(Array.isArray(filePath) ? { filePaths: filePath } : { filePath: filePath });
       return true;
     } catch (e) {
       return false;
@@ -130,6 +130,14 @@ var TransferFileDock = (function () {
     });
   }
 
+  function createBundle(payload) {
+    var bridge = api();
+    if (!bridge || typeof bridge.transferCreateBundle !== "function") {
+      return Promise.resolve({ ok: false, error: "当前环境不支持上下文包交接" });
+    }
+    return bridge.transferCreateBundle(payload || {});
+  }
+
   // ── 说明书附图（外部图片 URL）──
   function imageExtFromUrl(url) {
     try {
@@ -150,7 +158,7 @@ var TransferFileDock = (function () {
 
   // 把附图 URL 数组转为图片载荷描述（不落盘，仅描述）
   function describeImagePayloads(data) {
-    var drawings = (data && data.drawings) || [];
+    var drawings = TransferContext.drawingUrls(data);
     return drawings.map(function (url, i) {
       var ok = /^https?:\/\//.test(url);
       return {
@@ -188,6 +196,7 @@ var TransferFileDock = (function () {
     startDrag: startDrag,
     showItem: showItem,
     saveTextFile: saveTextFile,
+    createBundle: createBundle,
     imageExtFromUrl: imageExtFromUrl,
     buildImageFileName: buildImageFileName,
     describeImagePayloads: describeImagePayloads,

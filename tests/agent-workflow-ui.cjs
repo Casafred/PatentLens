@@ -52,14 +52,14 @@ module.exports = async function verifyWorkflow({ win, evaluate, until, output })
   assert.doesNotMatch(await evaluate("document.querySelector('[data-role=preview]').textContent"), /US14412875/);
   await evaluate("TransferPanel.close();document.querySelector('#patent-popup-viewer').classList.add('hidden');");
 
-  // The review toolbar has one entry, with explicit choices inside it.
+  // One toolbar entry opens materials directly; return-to-app tasks are optional.
   assert.equal(await evaluate("document.querySelectorAll('.doclist-header-actions [data-agent-report],.kanban-header-actions [data-agent-report]').length"), 0);
   await evaluate("document.querySelector('#pl-transfer-entry-doclist').click();");
-  assert.equal(await evaluate("document.querySelectorAll('.pl-agent-choice [data-choice]').length"), 4);
-  const centered = await evaluate("(()=>{const r=document.querySelector('.pl-agent-choice').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,w:document.documentElement.clientWidth,h:document.documentElement.clientHeight}})()");
+  assert.equal(await evaluate("document.querySelectorAll('.pl-agent-choice').length"), 0);
+  await assertVisible('.pl-transfer-overlay [data-action=bundle]');
+  const centered = await evaluate("(()=>{const r=document.querySelector('.pl-transfer-modal').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,w:document.documentElement.clientWidth,h:document.documentElement.clientHeight}})()");
   assert.ok(Math.abs(centered.x - centered.w / 2) < 2 && Math.abs(centered.y - centered.h / 2) < 2, JSON.stringify(centered));
   await capture('workflow-review-entry');
-  await evaluate("document.querySelector('[data-choice=materials]').click();");
   assert.equal(await evaluate("document.querySelector('.pl-transfer-header').textContent.includes('审查文档')"), true);
   // Newly selected OCR and prepared PDFs stay in sync with document selection.
   await evaluate(`TransferPanel.close();
@@ -75,7 +75,7 @@ module.exports = async function verifyWorkflow({ win, evaluate, until, output })
   await evaluate("document.querySelector('[data-doc-idx=\"32\"]').click();document.querySelector('[data-doc-idx=\"32\"]').click();");
   assert.equal(await evaluate("document.querySelectorAll('[data-role=file-dock] .ready').length"), 2);
   await evaluate("TransferPanel.close();TransferFileDock.exportPdf=_exportPdfs;void 0;");
-  await evaluate("document.querySelector('#pl-transfer-entry-doclist').click();document.querySelector('[data-choice=report]').click();");
+  await evaluate("document.querySelector('#pl-transfer-entry-doclist').click();document.querySelector('[data-action=report]').click();");
   await until(() => evaluate("!!document.querySelector('.agent-task-overlay')"), 'review report choice');
   assert.match(await evaluate("document.querySelector('#agent-task-title').textContent"), /审查与答复/);
   await evaluate("document.querySelector('.agent-task-close').click();");
