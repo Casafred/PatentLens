@@ -156,8 +156,9 @@ function normalizeGdFamilyData(family, office) {
 // ── USPTO Global Dossier 登录（Okta）─────────────────────────────────────
 // GD 前端把 Okta accessToken 存在 localStorage["okta-token-storage"]，
 // API 请求头使用 x-authorization-token: Bearer <accessToken>。
-// 使用持久化 partition 保存 localStorage 与 Okta session cookie，重启后仍可静默续期。
-const GD_AUTH_PARTITION = "persist:gd-auth";
+// 登录窗口使用 Electron 默认 session（与内置浏览器 / popout webview 共享），
+// 这样用户在应用内浏览器登录 GD 后，查询链路可以直接复用同一份登录态；
+// 默认 session 本身持久化在 userData 中，重启后仍可静默续期。
 const GD_SITE_URL = "https://globaldossier.uspto.gov/";
 let _gdAuthWindow = null;
 let _gdAuthPending = null;
@@ -172,7 +173,8 @@ function _gdTokenAgeMs() {
 
 function _gdNormalizeExpiry(value, token) {
   let ms = Number(value) || 0;
-  if (ms > 0 && ms < 1e12) ms *= 1000; // Okta SDK 的 expiresAt 通常是秒
+  if (ms > 0 && ms < 1e8) ms = Date.now() + ms * 1000; // 相对有效期（秒）
+  else if (ms > 0 && ms < 1e12) ms *= 1000; // Okta SDK 的 expiresAt 通常是绝对秒级时间戳
   if (!ms && token) {
     try {
       const payload = JSON.parse(Buffer.from(String(token).split(".")[1] || "", "base64url").toString("utf-8"));
@@ -185,13 +187,22 @@ function _gdNormalizeExpiry(value, token) {
 function _gdParseTokenStorage(raw) {
   if (!raw) return null;
   try {
-    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    let data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    // 兼容 Okta SDK 的不同存储结构：
+    //   { accessToken: { accessToken, expiresAt, ... } }
+    //   { accessToken: "eyJ..." }
+    //   以及外层再包一层 okta-token-storage 的历史格式
+    if (data && data["okta-token-storage"] && !data.accessToken) {
+      data = data["okta-token-storage"];
+    }
     const at = data && data.accessToken;
-    const token = at && at.accessToken;
+    const token = typeof at === "string" ? at : (at && (at.accessToken || at.token));
     if (!token) return null;
+    const expiresAtRaw = (at && typeof at === "object" && at.expiresAt)
+      || (data && data.expiresAt);
     // 若页面未提供 expiresAt 且 token 不是可解析的 JWT，先按 10 分钟有效处理；
     // 真正过期时 GD 会返回 401，届时会自动刷新并重试。
-    const expiresAtMs = _gdNormalizeExpiry(at.expiresAt, token) || (Date.now() + 10 * 60 * 1000);
+    const expiresAtMs = _gdNormalizeExpiry(expiresAtRaw, token) || (Date.now() + 10 * 60 * 1000);
     return { token: String(token), expiresAtMs };
   } catch (_) {
     return null;
@@ -384,17 +395,12 @@ function _showGdAuthWindowIfNeeded(win) {
 
 function _ensureGdAuthWindow() {
   if (_gdAuthWindow && !_gdAuthWindow.isDestroyed()) return _gdAuthWindow;
-  try {
-    const gdSession = session.fromPartition(GD_AUTH_PARTITION, { cache: true });
-    gdSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
-  } catch (_) {}
   const win = new BrowserWindow({
     show: false,
     width: 1100,
     height: 820,
     title: "USPTO Global Dossier 登录（关闭窗口可跳过，改用 EPO 降级）",
     webPreferences: {
-      partition: GD_AUTH_PARTITION,
       preload: path.join(__dirname, "gd-preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
@@ -404,6 +410,8 @@ function _ensureGdAuthWindow() {
   win.on("closed", () => {
     if (_gdAuthWindow === win) _gdAuthWindow = null;
   });
+  // 与内置浏览器保持一致，使用 Chrome UA 访问 GD / Okta。
+  try { win.webContents.setUserAgent(CHROME_UA); } catch (_) {}
   // 一旦落到 Okta/USPTO 登录页就展示给用户；登录成功后页面会回到 GD 并写入 token。
   // 只有真正的登录页才显示，避免加载慢或被拦截时弹出空白 Global Dossier 白屏。
   win.webContents.on("did-finish-load", () => {
@@ -447,7 +455,7 @@ async function getGdAccessToken(options) {
     const win = _ensureGdAuthWindow();
     const start = Date.now();
     const deadline = start + 5 * 60 * 1000;
-    let lastReloadAt = 0;
+    let lastReloadAt = Date.now();
     let shownAt = 0;
     if (force) {
       try { win.webContents.reload(); } catch (_) {}
@@ -482,6 +490,14 @@ async function getGdAccessToken(options) {
       if (info && info.token && info.expiresAtMs - now <= 60000 && now - lastReloadAt > 15000) {
         lastReloadAt = now;
         try { win.webContents.reload(); } catch (_) {}
+      }
+      // 没有 token 且窗口隐藏：用户很可能已经在内置浏览器（默认 session）里
+      // 完成 GD 登录，但该隐藏窗口还停留在 Okta 页面。定期重新加载 GD，
+      // 让它回到同一 session 下并读取 localStorage 中的 token。
+      if (!info && !win.isVisible() && now - lastReloadAt > 20000) {
+        lastReloadAt = now;
+        console.log("[GD Auth] no token in hidden window; reloading GD to reuse shared browser login");
+        try { win.loadURL(GD_SITE_URL); } catch (_) {}
       }
       await new Promise((r) => setTimeout(r, 1000));
     }
@@ -536,6 +552,7 @@ function _retrySearchAfterGdLogin() {
 function _startGdAuthWatcher() {
   if (_gdAuthWatcher) return;
   const started = Date.now();
+  let lastReloadAt = Date.now();
   _gdAuthWatcher = setInterval(async () => {
     if (Date.now() - started > 15 * 60 * 1000) {
       clearInterval(_gdAuthWatcher);
@@ -553,6 +570,13 @@ function _startGdAuthWatcher() {
       try { if (win.isVisible()) win.hide(); } catch (_) {}
       console.log("[GD Auth] token arrived after timeout; retrying search");
       _retrySearchAfterGdLogin();
+      return;
+    }
+    // 与查询阶段的逻辑一致：隐藏窗口可能停在 Okta，需要定期回到 GD 以复用
+    // 内置浏览器（默认 session）中已完成的登录。
+    if (!win.isVisible() && Date.now() - lastReloadAt > 20000) {
+      lastReloadAt = Date.now();
+      try { win.loadURL(GD_SITE_URL); } catch (_) {}
     }
   }, 2000);
 }
@@ -649,6 +673,82 @@ function serveStatic(filePath, res) {
   });
 }
 
+function nodeHttpsGet(targetUrl, headers, timeout) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(targetUrl);
+    const options = {
+      hostname: urlObj.hostname,
+      port: 443,
+      path: urlObj.pathname + urlObj.search,
+      method: "GET",
+      headers: headers,
+      timeout: timeout || 30000,
+    };
+    const req = https.request(options, (resp) => {
+      const chunks = [];
+      resp.on("data", (chunk) => chunks.push(chunk));
+      resp.on("end", () => {
+        const body = Buffer.concat(chunks);
+        resolve({ statusCode: resp.statusCode, headers: resp.headers, body });
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("Request timeout")); });
+    req.end();
+  });
+}
+
+// 使用 Electron/Chromium 网络栈请求 GD API：系统代理、cookie、HTTP/2、
+// IPv4/IPv6 回退、TLS 指纹等都与用户日常浏览器一致。此前直接使用 Node
+// https.request，在启用系统代理或网络环境较差时很容易超时/被拦截，而同一
+// 链接在浏览器里却很流畅。
+async function chromiumHttpsGet(targetUrl, headers, timeout) {
+  let ses = null;
+  try {
+    // 使用默认 session：与内置浏览器 / GD 登录窗口共享 cookie 与登录态。
+    ses = session.defaultSession;
+  } catch (_) {}
+  const doFetch = ses && typeof ses.fetch === "function"
+    ? ses.fetch.bind(ses)
+    : (typeof net.fetch === "function" ? net.fetch.bind(net) : null);
+  if (!doFetch) {
+    const err = new Error("Chromium fetch unavailable");
+    err.chromiumUnavailable = true;
+    throw err;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    try { controller.abort(); } catch (_) {}
+  }, Math.max(1000, Number(timeout) || 30000));
+  let request;
+  try {
+    request = doFetch(targetUrl, {
+      method: "GET",
+      headers,
+      redirect: "follow",
+      credentials: "include",
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    err.chromiumUnavailable = true;
+    throw err;
+  }
+  try {
+    const resp = await request;
+    clearTimeout(timer);
+    const body = Buffer.from(await resp.arrayBuffer());
+    const respHeaders = {};
+    try {
+      resp.headers.forEach((value, name) => { respHeaders[name] = value; });
+    } catch (_) {}
+    return { statusCode: resp.status, headers: respHeaders, body };
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 async function httpsGet(targetUrl, headers, timeout) {
   const isGd = isGdApiUrl(targetUrl);
   const attempts = isGd ? 3 : 1;
@@ -673,34 +773,27 @@ async function httpsGet(targetUrl, headers, timeout) {
     }
     let result;
     try {
-      result = await new Promise((resolve, reject) => {
-        const urlObj = new URL(targetUrl);
-        const options = {
-          hostname: urlObj.hostname,
-          port: 443,
-          path: urlObj.pathname + urlObj.search,
-          method: "GET",
-          headers: merged,
-          timeout: timeout || 30000,
-        };
-        const req = https.request(options, (resp) => {
-          const chunks = [];
-          resp.on("data", (chunk) => chunks.push(chunk));
-          resp.on("end", () => {
-            const body = Buffer.concat(chunks);
-            resolve({ statusCode: resp.statusCode, headers: resp.headers, body });
-          });
-        });
-        req.on("error", reject);
-        req.on("timeout", () => { req.destroy(); reject(new Error("Request timeout")); });
-        req.end();
-      });
+      // 优先走 Chromium 网络栈（与浏览器一致）；仅当该能力不可用时退回 Node https，
+      // 避免在超时场景下把等待时间翻倍。
+      result = await chromiumHttpsGet(targetUrl, merged, timeout);
     } catch (e) {
-      // GD 的网络错误/超时只重试一次，避免真正宕机时让用户等太久。
-      if (!isGd || attempt >= 1) throw e;
-      console.warn(`[GD] request failed (${e.message}); retrying ${attempt + 2}/${attempts} after a short delay`);
-      await new Promise((r) => setTimeout(r, 1500));
-      continue;
+      if (!e || !e.chromiumUnavailable) {
+        // 网络/超时错误交给下面的重试逻辑处理。
+        if (!isGd || attempt >= 1) throw e;
+        console.warn(`[GD] request failed (${e.message}); retrying ${attempt + 2}/${attempts} after a short delay`);
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      console.warn("[GD] Chromium fetch unavailable (" + e.message + "), falling back to Node https");
+      try {
+        result = await nodeHttpsGet(targetUrl, merged, timeout);
+      } catch (nodeErr) {
+        // GD 的网络错误/超时只重试一次，避免真正宕机时让用户等太久。
+        if (!isGd || attempt >= 1) throw nodeErr;
+        console.warn(`[GD] request failed (${nodeErr.message}); retrying ${attempt + 2}/${attempts} after a short delay`);
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
     }
     lastResult = result;
     const status = result.statusCode;

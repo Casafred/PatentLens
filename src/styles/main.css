@@ -3173,7 +3173,9 @@ body.pl-hide-p2p-float #patent2pic-entry {
   display: block;
 }
 
-/* pdf.js 文本层：透明文字覆盖在 canvas 上，用于选择 / 复制 */
+/* pdf.js 文本层：透明文字覆盖在 canvas 上，用于选择 / 复制。
+   文字层整体接收鼠标事件（空白处也能开始拖选）；关闭“选字”模式时由下方
+   :not(.pdf-text-select-mode) 规则统一改为 pointer-events:none。 */
 .pdf-text-layer {
   position: absolute;
   left: 0;
@@ -3181,7 +3183,7 @@ body.pl-hide-p2p-float #patent2pic-entry {
   overflow: hidden;
   line-height: 1;
   z-index: 20;
-  pointer-events: none;
+  pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;
 }

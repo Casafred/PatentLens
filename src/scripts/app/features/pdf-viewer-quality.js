@@ -243,6 +243,14 @@
         }
       }
 
+      // 先挂到页面上再做宽度测量。之前的实现是在 layer 尚未插入 DOM 时调用
+      // getBoundingClientRect()，此时宽度恒为 0，scaleX 永远不会生效，文字层
+      // 与画面文字明显错位，拖动选区经常落在文字外面。
+      layer.addEventListener("mousedown", onTextLayerMouseDown);
+      wrapper.appendChild(layer);
+      // 只有真正存在文字层的页面，才在“选字模式”下让 OCR 框让位给文字选择
+      wrapper.classList.add("has-text-layer");
+
       // 按 PDF 中的实际宽度做水平缩放，保证选择区域与画面文字对齐
       for (const span of layer.querySelectorAll("span")) {
         const targetWidth = span._plTargetWidth;
@@ -255,10 +263,7 @@
         delete span._plTargetWidth;
       }
 
-      layer.addEventListener("mousedown", onTextLayerMouseDown);
-      wrapper.appendChild(layer);
-      // 只有真正存在文字层的页面，才在“选字模式”下让 OCR 框让位给文字选择
-      wrapper.classList.add("has-text-layer");
+      applyTextSelectMode();
     }
   }
 

@@ -3,6 +3,10 @@
 
   // Keep all state local to this patch. The legacy renderer owns the global
   // timeline variables and is intentionally not edited here.
+  // 鼠标离开节点/弹层后只等待一个很短的宽限期，且后续的 pointermove 不会
+  // 不断重置计时器（之前的实现会在鼠标持续移动时无限推迟关闭）。
+  var CLOSE_DELAY_MS = 180;
+
   var state = {
     closeTimer: null,
     refreshFrame: 0,
@@ -138,12 +142,16 @@
   };
 
   window._tlScheduleClosePopup = function () {
-    if (typeof _tlPopupPinned !== "undefined" && _tlPopupPinned) return;
-    if (state.closeTimer) clearTimeout(state.closeTimer);
+    // 单次计时：鼠标在页面其他区域持续移动时，不重新开始倒计时。
+    if (state.closeTimer) return;
     state.closeTimer = setTimeout(function () {
       state.closeTimer = null;
-      if (!state.pointerInNode && !state.pointerInPopup) window._tlClosePopup();
-    }, 320);
+      if (state.pointerInNode || state.pointerInPopup) return;
+      // 点击固定（pinned）只用于在节点/弹层内部交互；一旦指针离开两者，
+      // 就解除固定并关闭，避免列表窗口一直挂在页面上。
+      if (typeof _tlPopupPinned !== "undefined") _tlPopupPinned = false;
+      window._tlClosePopup();
+    }, CLOSE_DELAY_MS);
     if (typeof _tlPopupCloseTimer !== "undefined") _tlPopupCloseTimer = state.closeTimer;
   };
 
@@ -312,6 +320,10 @@
     if (node) {
       state.pointerInNode = true;
       state.pointerInPopup = false;
+      var current = getPopupInfo();
+      if (current && current.home !== node && typeof _tlPopupPinned !== "undefined") {
+        _tlPopupPinned = false;
+      }
       if (!(typeof _tlPopupPinned !== "undefined" && _tlPopupPinned)) window._tlOpenPopupFor(node);
       return;
     }
@@ -326,6 +338,14 @@
     state.globalEventsBound = true;
 
     document.addEventListener("pointermove", onPointerMove, true);
+    // 指针直接移出应用窗口时不会再收到 pointermove；这里主动安排关闭。
+    // relatedTarget 非空表示只是在页面内部元素之间移动，不能误判为离开。
+    document.addEventListener("pointerleave", function (event) {
+      if (event && event.relatedTarget) return;
+      state.pointerInNode = false;
+      state.pointerInPopup = false;
+      window._tlScheduleClosePopup();
+    }, true);
     window.addEventListener("scroll", schedulePopupRefresh, { passive: true, capture: true });
     window.addEventListener("resize", schedulePopupRefresh, { passive: true });
   }
@@ -333,6 +353,8 @@
   window._bindTimelineHoverPopups = function (board) {
     if (!board) return;
     _tlPopupPinned = false;
+    state.pointerInNode = false;
+    state.pointerInPopup = false;
     window._tlClosePopup();
     bindGlobalEvents();
 
@@ -340,6 +362,10 @@
       node.addEventListener("pointerenter", function () {
         state.pointerInNode = true;
         state.pointerInPopup = false;
+        var current = getPopupInfo();
+        if (current && current.home !== node && typeof _tlPopupPinned !== "undefined") {
+          _tlPopupPinned = false;
+        }
         if (!(typeof _tlPopupPinned !== "undefined" && _tlPopupPinned)) window._tlOpenPopupFor(node);
       });
       node.addEventListener("pointerleave", function (event) {
