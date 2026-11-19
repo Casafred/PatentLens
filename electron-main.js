@@ -106,12 +106,27 @@ const pdfSessionCache = new PdfSessionCache({
 
 // 审查文档列表/同族数据在一次工作会话内变化很少。短 TTL 缓存和请求合并
 // 避免切换标签、重复点击或同一文档的多个组件同时触发相同的上游请求。
-const { RequestPool, fetchBuffer } = require("./dossier-network.cjs");
+const { RequestPool, fetchBuffer, GdTransport, GdOriginalDocuments } = require("./dossier-network.cjs");
 const _gdRequests = new RequestPool();
 const _gdJsonCache = _gdRequests.cache;
 const _gdInflight = new Map();
+const _gdOriginalDocuments = new GdOriginalDocuments();
 let _gdUnavailableUntil = 0;
 let _gdFailedTokenStamp = 0;
+let _gdDirectSessionPromise = null;
+const _gdTransport = new GdTransport({
+  systemSession: () => session.defaultSession,
+  directSession: () => {
+    if (!_gdDirectSessionPromise) _gdDirectSessionPromise = (async () => {
+      // Isolate the API fallback: never change the user's default proxy,
+      // login cookies, GD browser window, or EPO browser session.
+      const direct = session.fromPartition("gd-api-direct", { cache: false });
+      await direct.setProxy({ mode: "direct" });
+      return direct;
+    })().catch(error => { _gdDirectSessionPromise = null; throw error; });
+    return _gdDirectSessionPromise;
+  },
+});
 function getCachedGdJson(key) { return _gdRequests.get(key); }
 function cacheGdJson(key, body, source) { _gdRequests.set(key, body, source); }
 
@@ -128,6 +143,7 @@ function clearSessionPdfCaches() {
   pdfSessionCache.clear();
   _epoPdfBufferCache.clear();
   _gdJsonCache.clear();
+  _gdOriginalDocuments.clear();
 }
 
 const GD_HEADERS = {
@@ -736,6 +752,13 @@ async function chromiumHttpsGet(targetUrl, headers, timeout) {
     const err = new Error("Chromium fetch unavailable");
     err.chromiumUnavailable = true;
     throw err;
+  }
+  if (isGdApiUrl(targetUrl) && ses && typeof ses.fetch === "function") {
+    return _gdTransport.request(targetUrl, {
+      // GD's official client authenticates with the bearer header, not cookies.
+      // include makes Chromium reject the API response (net::ERR_FAILED).
+      method: "GET", headers, redirect: "follow", credentials: "omit",
+    }, Math.max(1000, Number(timeout) || 30000));
   }
   return fetchBuffer(doFetch, targetUrl, {
     method: "GET", headers, redirect: "follow", credentials: "include",
@@ -3258,12 +3281,14 @@ async function runGdProxy(urlPath, res) {
   const proxyStartedAt = Date.now();
   let proxyStage = "parse";
   let proxySource = "gd";
+  let networkRoute = "";
   const rawWriteHead = res.writeHead.bind(res);
   res.writeHead = (statusCode, headers, ...rest) => rawWriteHead(statusCode, {
     ...(headers || {}),
     "X-PatentLens-Source": proxySource,
     "X-PatentLens-Elapsed-Ms": String(Date.now() - proxyStartedAt),
     "X-PatentLens-Stage": proxyStage,
+    ...(networkRoute ? { "X-PatentLens-Network-Route": networkRoute } : {}),
   }, ...rest);
   function reportStage(stage, source) {
     proxyStage = stage; proxySource = source;
@@ -3412,6 +3437,7 @@ async function runGdProxy(urlPath, res) {
           const familyUrl = targetUrl.replace(/\/svc\/family\/(application|publication|patent)\//, `/svc/family/${qt}/`);
           if (Date.now() >= gdDeadline) throw new Error("GD family request budget exceeded");
           gdResult = await httpsGet(familyUrl, { Accept: acceptHeader }, Math.max(1, gdDeadline - Date.now()));
+          networkRoute = gdResult.networkRoute || "";
           if (gdResult.statusCode !== 200) {
             const bodyStr = gdResult.body ? gdResult.body.toString("utf-8") : "";
             gdFailReason = "HTTP " + gdResult.statusCode + (bodyStr ? ": " + bodyStr.slice(0, 120) : "");
@@ -3439,7 +3465,36 @@ async function runGdProxy(urlPath, res) {
           return;
         }
       } else {
-        gdResult = await httpsGet(targetUrl, { Accept: acceptHeader }, timeout);
+        // A restored renderer can request a PDF without re-fetching its doclist.
+        // Discover original attachment metadata once per dossier in this session.
+        if (isDocContent && docId && !_gdOriginalDocuments.hasList(office, docNumber)) {
+          try {
+            const listPath = _gdOriginalDocuments.docListPath(office, docNumber);
+            const cachedList = getCachedGdJson('gd:' + listPath);
+            const list = cachedList ? { statusCode: 200, body: cachedList.body } :
+              await httpsGet(GD_API_BASE + listPath, { Accept: 'application/json, text/plain, */*' }, Math.min(10000, Math.max(1, gdDeadline - Date.now())));
+            if (list.statusCode === 200) {
+              const data = JSON.parse(list.body.toString('utf-8'));
+              _gdOriginalDocuments.remember(office, docNumber, data);
+              if (Array.isArray(data.docs)) cacheGdJson('gd:' + listPath, list.body, 'gd');
+            }
+          } catch (_) { /* PDF viewing remains available when metadata is absent. */ }
+        }
+        const originalPath = isDocContent && docId ? _gdOriginalDocuments.get(office, docNumber, docId) : null;
+        if (originalPath) {
+          try {
+            const original = await httpsGet(GD_API_BASE + originalPath, { Accept: acceptHeader }, Math.max(1, gdDeadline - Date.now()));
+            if (original.statusCode === 200 && original.body?.length > 100 && original.body.subarray(0, 5).toString('ascii') === '%PDF-') {
+              gdResult = original;
+              corsHeaders['X-PatentLens-Pdf-Variant'] = 'original';
+            }
+          } catch (_) { /* Missing/inaccessible originals retain the viewer route. */ }
+        }
+        if (!gdResult) {
+          if (Date.now() >= gdDeadline) throw new Error("GD request budget exceeded");
+          gdResult = await httpsGet(targetUrl, { Accept: acceptHeader }, Math.min(timeout, gdDeadline - Date.now()));
+        }
+        networkRoute = gdResult.networkRoute || "";
 
         if (gdResult.statusCode === 200) {
           const bodyText = gdResult.body.toString("utf-8");
@@ -3461,6 +3516,7 @@ async function runGdProxy(urlPath, res) {
             let validJson = false;
             try { JSON.parse(bodyText); validJson = true; } catch (e) { validJson = false; }
             if (validJson) {
+              if (isDocList) _gdOriginalDocuments.remember(office, docNumber, JSON.parse(bodyText));
               corsHeaders["Content-Type"] = "application/json";
               cacheGdJson(jsonCacheKey, gdResult.body, "gd");
               res.writeHead(200, corsHeaders);
@@ -6097,6 +6153,7 @@ app.whenReady().then(async () => {
     jsonCacheEntries: _gdJsonCache.size,
     inflightRequests: _gdRequests.pending.size,
     gdCooldownMs: Math.max(0, _gdUnavailableUntil - Date.now()),
+    transport: _gdTransport.diagnostics(),
   }));
 
   // IPC: 渲染进程请求强制重新聚焦 —— 修复 renderer frame-level focus desync
