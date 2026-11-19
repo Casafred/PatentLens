@@ -20,7 +20,10 @@ function setup() {
     httpsGet: async () => { gdCalls++; throw new Error('GD login required'); },
     epoFetchDocListViaBrowser: async () => { epoCalls++; await new Promise(r => setTimeout(r, 5)); return { docs: [{ docId: 'D1' }], totalDocs: 1 }; },
   };
-  vm.createContext(context); vm.runInContext(slice, context);
+  vm.createContext(context);
+  const cacheStart = source.indexOf('function cacheGdJson(');
+  vm.runInContext(source.slice(cacheStart, source.indexOf('\n}', cacheStart) + 2), context);
+  vm.runInContext(slice, context);
   async function request(url) {
     const response = { writeHead(status, headers) { this.status = status; this.headers = headers; for (const [k, v] of Object.entries(headers)) validateHeaderValue(k, v); }, end(body) { this.body = body; } };
     await context.proxyGdApi(url, response); return response;
@@ -99,6 +102,32 @@ test('EPO direct mode never acquires GD token or downloads via GD', async () => 
   const { request, counts } = setup();
   const response = await request('/doc-list/svc/doclist/EP/19703079/A?epoDirect=1');
   assert.equal(response.status, 200); assert.deepEqual(counts(), { gdCalls: 0, epoCalls: 1 });
+});
+
+test('fresh login bypasses a pending EPO request and late EPO data cannot replace successful GD cache', { timeout: 3000 }, async () => {
+  const { context, request } = setup();
+  let releaseEpo, epoStarted;
+  const enteredEpo = new Promise(resolve => { epoStarted = resolve; });
+  context.epoFetchDocListViaBrowser = async () => {
+    epoStarted();
+    await new Promise(resolve => { releaseEpo = resolve; });
+    return { docs: [{ docId: 'old-epo' }], totalDocs: 1 };
+  };
+  const url = '/doc-list/svc/doclist/EP/19703079/A';
+  const old = request(url);
+  await enteredEpo;
+  context._gdTokenCache.obtainedAt = Date.now();
+  context.httpsGet = async () => ({ statusCode: 200, body: Buffer.from('{"docs":[{"docId":"fresh-gd"}]}') });
+  try {
+    const fresh = await request(url);
+    assert.equal(fresh.headers['X-PatentLens-Source'], 'gd');
+    assert.match(fresh.body.toString(), /fresh-gd/);
+  } finally { releaseEpo(); }
+  await old;
+  const cached = await request(url);
+  assert.equal(cached.headers['X-PatentLens-Source'], 'gd');
+  assert.equal(cached.headers['X-PatentLens-Cache'], 'HIT');
+  assert.match(cached.body.toString(), /fresh-gd/);
 });
 
 test('resolved EP applications go straight to Register while publication numbers retain resolution', () => {
