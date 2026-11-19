@@ -189,6 +189,13 @@
       return;
     }
     if (ev.shiftKey) return; // Shift + 拖拽 = 原有 OCR 文本块框选
+    // The legacy document mousedown listener cannot run after stopPropagation.
+    // Remove its old floating controls before a new native selection starts.
+    const button = document.getElementById("text-selection-float-btn");
+    if (button) button.remove();
+    const menu = document.querySelector(".text-selection-context-menu");
+    if (menu) menu.remove();
+    if (window.PatentLensLongSelectionMenu) window.PatentLensLongSelectionMenu.hide();
     // 阻止 wrapper 的 mousedown 处理器 preventDefault，从而允许浏览器原生选择文字
     ev.stopPropagation();
   }
@@ -198,6 +205,14 @@
     if (!container || !pdfDoc) return;
     const wrappers = container.querySelectorAll(".pdf-page-wrapper");
     for (const wrapper of wrappers) {
+      const label = wrapper.querySelector(".pdf-page-label");
+      if (label && label.textContent) {
+        // Decorative labels otherwise leak into programmatic/native cross-page
+        // ranges even with user-select:none in Chromium.
+        label.dataset.pageLabel = label.textContent;
+        label.setAttribute("aria-label", label.textContent);
+        label.textContent = "";
+      }
       if (wrapper.querySelector(".pdf-text-layer")) continue;
       const pageNumber = parseInt(wrapper.dataset.page, 10);
       if (!pageNumber) continue;
@@ -211,58 +226,33 @@
         continue;
       }
       const viewport = page.getViewport({ scale });
-      const items = buildTextItems(textContent, viewport);
-      if (items.length === 0) continue;
+      if (!textContent.items.some(item => item.str)) continue;
+      if (typeof container.contains === "function" && !container.contains(wrapper)) continue;
 
       const layer = document.createElement("div");
       layer.className = "pdf-text-layer";
       layer.dataset.page = String(pageNumber);
       layer.style.width = viewport.width + "px";
       layer.style.height = viewport.height + "px";
-
-      for (const item of items) {
-        const span = document.createElement("span");
-        span.textContent = item.str;
-        span.style.left = item.left + "px";
-        span.style.top = item.top + "px";
-        span.style.fontSize = item.fontSize + "px";
-        span.style.fontFamily = item.fontFamily;
-        if (Math.abs(item.angle) > 0.001) {
-          span.style.transform = "rotate(" + item.angle + "rad)";
-        }
-        span._plTargetWidth = item.targetWidth;
-        layer.appendChild(span);
-        if (item.eol) {
-          // 用真实换行文本节点，保证 Selection.toString() 复制出来带换行
-          const eolSpan = document.createElement("span");
-          eolSpan.className = "pdf-text-layer-eol";
-          eolSpan.textContent = "\n";
-          eolSpan.style.left = "0px";
-          eolSpan.style.top = "0px";
-          layer.appendChild(eolSpan);
-        }
-      }
-
-      // 先挂到页面上再做宽度测量。之前的实现是在 layer 尚未插入 DOM 时调用
-      // getBoundingClientRect()，此时宽度恒为 0，scaleX 永远不会生效，文字层
-      // 与画面文字明显错位，拖动选区经常落在文字外面。
+      layer.style.setProperty("--scale-factor", viewport.scale);
       layer.addEventListener("mousedown", onTextLayerMouseDown);
+      layer.addEventListener("dragstart", event => event.preventDefault());
       wrapper.appendChild(layer);
-      // 只有真正存在文字层的页面，才在“选字模式”下让 OCR 框让位给文字选择
-      wrapper.classList.add("has-text-layer");
-
-      // 按 PDF 中的实际宽度做水平缩放，保证选择区域与画面文字对齐
-      for (const span of layer.querySelectorAll("span")) {
-        const targetWidth = span._plTargetWidth;
-        const measuredWidth = span.getBoundingClientRect().width;
-        if (targetWidth > 1 && measuredWidth > 1) {
-          const scaleX = targetWidth / measuredWidth;
-          const prefix = span.style.transform ? span.style.transform + " " : "";
-          span.style.transform = prefix + "scaleX(" + scaleX + ")";
-        }
-        delete span._plTargetWidth;
+      try {
+        // Use the bundled PDF.js layout for font ascent, scaling and line breaks.
+        // Synthetic newline spans at (0,0) made Chromium jump backwards while
+        // dragging down through indented / inter-line whitespace.
+        await pdfjsLib.renderTextLayer({
+          textContentSource: textContent,
+          container: layer,
+          viewport,
+        }).promise;
+      } catch (error) {
+        layer.remove();
+        throw error;
       }
-
+      // Scans keep their existing OCR interaction; only real text takes priority.
+      wrapper.classList.add("has-text-layer");
       applyTextSelectMode();
     }
   }

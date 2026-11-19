@@ -3173,6 +3173,12 @@ body.pl-hide-p2p-float #patent2pic-entry {
   display: block;
 }
 
+.pdf-page-wrapper,
+.pdf-page-label {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* pdf.js 文本层：透明文字覆盖在 canvas 上，用于选择 / 复制。
    文字层整体接收鼠标事件（空白处也能开始拖选）；关闭“选字”模式时由下方
    :not(.pdf-text-select-mode) 规则统一改为 pointer-events:none。 */
@@ -3186,9 +3192,12 @@ body.pl-hide-p2p-float #patent2pic-entry {
   pointer-events: auto;
   user-select: text;
   -webkit-user-select: text;
+  text-size-adjust: none;
+  transform-origin: 0 0;
 }
 
-.pdf-text-layer span {
+.pdf-text-layer span,
+.pdf-text-layer br {
   position: absolute;
   color: transparent;
   -webkit-text-fill-color: transparent;
@@ -3206,17 +3215,25 @@ body.pl-hide-p2p-float #patent2pic-entry {
   color: transparent;
 }
 
-.pdf-text-layer .pdf-text-layer-eol {
-  pointer-events: none;
-  width: 0;
-  height: 0;
+.pdf-text-layer br::selection {
+  background: transparent;
+}
+
+.pdf-text-layer[data-main-rotation="90"] {
+  transform: rotate(90deg) translateY(-100%);
+}
+.pdf-text-layer[data-main-rotation="180"] {
+  transform: rotate(180deg) translate(-100%, -100%);
+}
+.pdf-text-layer[data-main-rotation="270"] {
+  transform: rotate(270deg) translateX(-100%);
 }
 
 /* 文字选择模式：只有存在文字层的页面，OCR 文本框才让位给文字选择；
    扫描件没有文字层，OCR 框必须保持可点击、可框选。 */
 .reader-pdf-container.pdf-text-select-mode {
-  user-select: text;
-  -webkit-user-select: text;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .reader-pdf-container.pdf-text-select-mode .pdf-page-wrapper.has-text-layer .pdf-block-overlay {
@@ -3714,6 +3731,10 @@ body.pl-hide-p2p-float #patent2pic-entry {
   border: 1px solid rgba(255, 179, 71, 0.40);
   border-radius: 4px;
   font-weight: 500;
+}
+
+.pdf-page-label[data-page-label]::before {
+  content: attr(data-page-label);
 }
 
 .pdf-block-context-menu {
