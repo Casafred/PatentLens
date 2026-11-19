@@ -128,7 +128,12 @@ const _gdTransport = new GdTransport({
   },
 });
 function getCachedGdJson(key) { return _gdRequests.get(key); }
-function cacheGdJson(key, body, source) { _gdRequests.set(key, body, source); }
+function cacheGdJson(key, body, source) {
+  // A pre-login EPO request may finish after a new login already returned GD.
+  const existing = key && _gdRequests.get(key);
+  if (source === 'epo' && existing?.source === 'gd') return;
+  _gdRequests.set(key, body, source);
+}
 
 function getSessionPdf(cacheKey) {
   return pdfSessionCache.get(cacheKey);
@@ -3263,7 +3268,8 @@ function notifyDataSourceIssue(source, reason, detail, url) {
 
 async function proxyGdApi(urlPath, res) {
   const started = Date.now();
-  const result = await _gdRequests.run("proxy:" + urlPath, async () => {
+  // Fresh login must not join an older request still waiting for EPO verification.
+  const result = await _gdRequests.run("proxy:" + (_gdTokenCache.obtainedAt || 0) + ":" + urlPath, async () => {
     let status, headers, body;
     await runGdProxy(urlPath, {
       writeHead(code, values) { status = code; headers = values; },
