@@ -8,6 +8,7 @@
     "dev": "electron .",
     "test": "node scripts/run-tests.cjs",
     "test:document-workflow-smoke": "electron tests/document-workflow-smoke-main.cjs",
+    "test:pdf-selection-smoke": "electron tests/pdf-selection-smoke-main.cjs",
     "test:electron-smoke": "electron tests/electron-smoke-main.cjs",
     "test:claims-comparison-smoke": "electron tests/claims-comparison-smoke-main.cjs",
     "test:agent-handoff-smoke": "electron tests/agent-handoff-smoke-main.cjs",

@@ -85,7 +85,7 @@ function makeFakeElement(tagName) {
   const el = {
     tagName: String(tagName || 'div').toUpperCase(),
     children: [],
-    style: {},
+    style: { setProperty(name, value) { this[name] = value; } },
     dataset: {},
     _connected: false,
     _text: '',
@@ -105,7 +105,8 @@ function makeFakeElement(tagName) {
         else classes.delete(name);
       },
     },
-    addEventListener() {},
+    _handlers: {},
+    addEventListener(name, handler) { el._handlers[name] = handler; },
     appendChild(child) {
       child.parentElement = el;
       child._connected = el._connected;
@@ -149,7 +150,7 @@ function makeFakeElement(tagName) {
   return el;
 }
 
-test('文字层会先挂到页面再测量宽度，保证 scaleX 对齐生效', async () => {
+test('文字层使用 PDF.js 的字体布局与换行，保留选字/OCR/标注的事件所有权', async () => {
   const file = path.resolve(__dirname, '../src/scripts/app/features/pdf-viewer-quality.js');
   const wrapper = makeFakeElement('div');
   wrapper._connected = true;
@@ -165,11 +166,21 @@ test('文字层会先挂到页面再测量宽度，保证 scaleX 对齐生效', 
       return null;
     },
     createElement: (tag) => makeFakeElement(tag),
+    querySelector: () => null,
   };
+  let rendered;
   const sandbox = {
     window: { localStorage: { getItem: () => null } },
     document: documentMock,
     Math,
+    pdfViewState: { annotTool: null },
+    pdfjsLib: { renderTextLayer(params) {
+      rendered = params;
+      assert.equal(params.container._connected, true, '布局必须在挂载后执行');
+      const span = makeFakeElement('span'); span.textContent = params.textContentSource.items[0].str;
+      params.container.appendChild(span);
+      return { promise: Promise.resolve() };
+    } },
   };
   sandbox.window.document = documentMock;
   const context = vm.createContext(sandbox);
@@ -191,5 +202,19 @@ test('文字层会先挂到页面再测量宽度，保证 scaleX 对齐生效', 
   assert.ok(wrapper.classList.contains('has-text-layer'));
   const span = layer.querySelectorAll('span').find((node) => node._text === 'Hello');
   assert.ok(span, '应生成文字片段');
-  assert.match(span.style.transform, /scaleX\(/, '文字片段宽度应被缩放到 PDF 实际宽度');
+  assert.equal(rendered.viewport.scale, 1);
+  assert.equal(layer.style['--scale-factor'], 1);
+  assert.ok(!layer.children.some(child => child.textContent === '\n'), '不再把真实换行字符定位到左上角');
+  const fire = overrides => {
+    const event = Object.assign({ button: 0, currentTarget: layer, stopped: false, prevented: false,
+      stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; } }, overrides);
+    layer._handlers.mousedown(event); return event;
+  };
+  assert.equal(fire().stopped, true);
+  assert.equal(fire({ shiftKey: true }).stopped, false);
+  sandbox.pdfViewState.annotTool = 'highlight';
+  const annotation = fire(); assert.equal(annotation.prevented, true); assert.equal(annotation.stopped, false);
+  sandbox.pdfViewState.annotTool = null;
+  wrapper.classList.add('ocr-page-selectable');
+  const ocr = fire(); assert.equal(ocr.prevented, true); assert.equal(ocr.stopped, false);
 });

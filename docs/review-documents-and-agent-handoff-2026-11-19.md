@@ -91,3 +91,21 @@ PatentLens 的完整材料生成和 Electron 原生拖拽参数。截图与本�
 `.local-qa/document-workflow/`、`.local-qa/epo-live-result.json`，不随源码发布。
 登录后现场记录另存于 `.local-qa/gd-*-result.json` 与
 `.local-qa/gd-native-selection.png`，不包含登录令牌或密码。
+
+## PDF 拖选与复制稳定性
+
+原手工文字层将真实换行字符统一定位到页面左上角。真实 Electron 鼠标测试中，
+从段落中间向下拖过缩进空白，会短暂选到前面的标题，再跳回当前行。
+本轮改用随应用打包的 PDF.js 官方文字层，保留字体 ascent、缩放和换行布局。
+空白处按最近的视觉行确定端点，行间空白取行首 / 行尾，固定本次拖选起点；
+在浏览器默认选择动作后、绘制前再次校正，避免端点回跳。
+
+浏览器继续负责真实文字选择和自动滚动，修正仅用于无修饰键的单击拖选；
+双击选词、Shift OCR 框选、标注及 OCR 页码选择仍走各自既有操作。
+装饰页码改为 CSS 生成内容，避免跨页复制夹带「第 N 页」。
+
+`npm run test:pdf-selection-smoke` 在生产 Electron 主进程、preload 和 HTML shell
+中加载三页真实 PDF，通过实际鼠标输入和系统剪贴板验证正反向跨行、缩进和
+行间空白、跨页、100% / 130% 缩放、90 度旋转页、双击选词及 OCR / 标注兼容。
+旧实现的失败选区与截图、修正后的结果保存在忽略目录
+`.local-qa/pdf-selection/`；测试不依赖外网或登录。
