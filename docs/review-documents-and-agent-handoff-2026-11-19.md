@@ -49,15 +49,43 @@ ZIP / 文件夹另外包含来源清单和 SHA-256 校验记录。更改材料�
 
 ### 现场网络测试的边界
 
-已打开真实 GD 登录窗口，页面到达 USPTO / Okta 登录页；尚未完成用户登录，
-因此没有宣称已验证登录后的 GD 文档速度。
+第一轮停在 USPTO / Okta 登录页。用户随后完成登录，第二轮使用同一登录会话、
+真实生产主进程和 preload 继续实测，发现并修正了两个独立的请求问题：
+
+- 当前系统代理连接 GD 的 CloudFront API 会断开；同一令牌经独立直连会话约
+  1.2–2.1 秒返回完整同族。应用现在先使用系统网络路径；代理连接故障或首次
+  4 秒仍未收到响应头时，在原预算内尝试直连，并在本会话复用成功路径 8 分钟。
+  只对 GD API 生效，不改变 Windows 代理、登录窗口或 EPO session。
+- GD 官方客户端通过 Bearer header 鉴权，额外设置 `credentials: include`
+  会使实际 Chromium 请求报 `net::ERR_FAILED`。GD API 改为 `omit`；其他站点
+  保留原 Cookie 行为。HTTP 鉴权 / 服务错误、证书错误不会触发网络路径切换。
+
+同时发现 GD 查看器 PDF 与原始附件并不等价：US16976733 的同一份权利要求，
+查看器版本 111,773 字节、第一页无文字片段，原始 PDF 99,743 字节、有 37 个
+文字片段。现在从官方文档列表 `mimeTypeData` 索引唯一的原始 PDF，阅读器和
+Agent 交接沿用原入口即可取得原始附件；原始附件不可用则回退查看器 PDF。
+恢复旧缓存后直接打开 PDF 时，也会在同一预算内补查一次附件元数据。
+
+现场结果（单次样本，不代表所有局 / 案卷的固定性能）：
+
+| 请求 | 实测结果 |
+| --- | --- |
+| EP19703079 同族 | 6 个成员，修复后经 GD 成功；缓存约 6 ms |
+| EP19703079 文档列表 | 76 份，首次 905 ms，缓存 6 ms |
+| EP 两页检索报告 PDF | 62,571 字节，首次 5,297 ms，缓存 5 ms；原文件为扫描件 |
+| US16976733 文档列表 | 151 份，首次 1,768 ms |
+| US 原始权利要求（恢复缓存、直接打开场景） | 含首次代理探测和补查列表，8,747 ms；缓存 5 ms |
+| 原生选字 / 复制 | 真实阅读器鼠标拖选 `AMENDMENTS TO THE CLAIMS:`，系统剪贴板内容一致；3 页都有文字层 |
 
 EP19703079 现场测试先复现 Espacenet Cloudflare 等待；修正后确认直接进入
 `https://register.epo.org/application?number=EP19703079&lng=en&tab=doclist`。
 该环境的新会话仍触发 Register Cloudflare，未完成人工验证时约 120.6 秒返回 503，
 响应准确标记 `source=epo` / `cloudflare=true`。这不能证明验证后的 PDF 获取成功。
-需要在测试窗口完成登录 / 验证，再以用户常用案卷补充冷、暖请求与 PDF 的实际耗时。
+本轮 GD 已完成登录后的列表、PDF、冷暖请求及复制验证；EPO Cloudflare 人工
+验证后的获取仍未测通，不将 GD 的成功结果当作 EPO 验证成功。
 
 外部 Agent 接收文件后的理解能力及上传数量限制由对应 Agent 决定；本轮验证的是
 PatentLens 的完整材料生成和 Electron 原生拖拽参数。截图与本机网络记录在忽略的
 `.local-qa/document-workflow/`、`.local-qa/epo-live-result.json`，不随源码发布。
+登录后现场记录另存于 `.local-qa/gd-*-result.json` 与
+`.local-qa/gd-native-selection.png`，不包含登录令牌或密码。
