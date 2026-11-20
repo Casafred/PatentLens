@@ -3325,8 +3325,17 @@ async function runGdProxy(urlPath, res) {
   if (epoPdfUrlParam && !epoPdfUrlParam.startsWith("http://") && !epoPdfUrlParam.startsWith("https://")) {
     epoPdfUrlParam = null;
   }
+  // GD 的 /doccontent 版本（官方阅读器使用）与 downloadFile 原始附件可能是不同文件：
+  // 有些原始附件是扫描图，而 doccontent 版本带文字层。前端发现当前版本无文字时，
+  // 会带 pdfVariant 重新请求另一版本。
+  const pdfVariant = _queryParams.get("pdfVariant") === "viewer"
+    ? "viewer"
+    : (_queryParams.get("pdfVariant") === "original" ? "original" : "");
+  const skipOriginalVariant = pdfVariant === "viewer";
   // 去掉 query string 后再做路径匹配与 GD 请求
   const urlPathNoQuery = _qIdx !== -1 ? urlPath.substring(0, _qIdx) : urlPath;
+  // 不同 PDF 版本不能共用同一份缓存，否则切换版本会拿回旧文件。
+  const pdfCacheKey = urlPathNoQuery + (pdfVariant ? "#" + pdfVariant : "");
   const targetUrl = GD_API_BASE + urlPathNoQuery;
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -3395,7 +3404,7 @@ async function runGdProxy(urlPath, res) {
 
   if (isDocContent) {
     proxyStage = "pdf-cache";
-    const cachedPdf = getSessionPdf(urlPathNoQuery);
+    const cachedPdf = getSessionPdf(pdfCacheKey);
     if (cachedPdf) {
       proxySource = "cache";
       res.writeHead(200, {
@@ -3403,6 +3412,7 @@ async function runGdProxy(urlPath, res) {
         "Content-Disposition": 'attachment; filename="document.pdf"',
         "X-PatentLens-Pdf-Cache": "HIT",
         "X-PatentLens-Cache": "HIT",
+        ...(pdfVariant ? { "X-PatentLens-Pdf-Variant": pdfVariant } : {}),
         ...corsHeaders,
       });
       res.end(cachedPdf);
@@ -3430,7 +3440,7 @@ async function runGdProxy(urlPath, res) {
       const cachedPdf = getCachedEpoPdf(office, docNumber, docId) || getCachedEpoPdfByEpoDocId(docId);
       if (cachedPdf) {
         console.log(`[EPO Direct] doc-content 命中 PDF 缓存, size=${cachedPdf.length}, 直接返回`);
-        cacheSessionPdf(urlPathNoQuery, cachedPdf);
+        cacheSessionPdf(pdfCacheKey, cachedPdf);
         res.writeHead(200, {
           "Content-Type": "application/pdf",
           "Content-Disposition": 'attachment; filename="document.pdf"',
@@ -3501,7 +3511,9 @@ async function runGdProxy(urlPath, res) {
             }
           } catch (_) { /* PDF viewing remains available when metadata is absent. */ }
         }
-        const originalPath = isDocContent && docId ? _gdOriginalDocuments.get(office, docNumber, docId) : null;
+        const originalPath = isDocContent && docId && !skipOriginalVariant
+          ? _gdOriginalDocuments.get(office, docNumber, docId)
+          : null;
         if (originalPath) {
           try {
             const original = await httpsGet(GD_API_BASE + originalPath, { Accept: acceptHeader }, Math.max(1, gdDeadline - Date.now()));
@@ -3514,6 +3526,7 @@ async function runGdProxy(urlPath, res) {
         if (!gdResult) {
           if (Date.now() >= gdDeadline) throw new Error("GD request budget exceeded");
           gdResult = await httpsGet(targetUrl, { Accept: acceptHeader }, Math.min(timeout, gdDeadline - Date.now()));
+          if (isDocContent) corsHeaders['X-PatentLens-Pdf-Variant'] = 'viewer';
         }
         networkRoute = gdResult.networkRoute || "";
 
@@ -3524,7 +3537,7 @@ async function runGdProxy(urlPath, res) {
 
           if (isDocContent) {
             if (isPdf && !isAttachmentNotFound) {
-              cacheSessionPdf(urlPathNoQuery, gdResult.body);
+              cacheSessionPdf(pdfCacheKey, gdResult.body);
               corsHeaders["Content-Type"] = "application/pdf";
               corsHeaders["Content-Disposition"] = 'attachment; filename="document.pdf"';
               res.writeHead(200, corsHeaders);
@@ -3643,7 +3656,7 @@ async function runGdProxy(urlPath, res) {
         console.log(`[EPO Fallback] EPO PDF succeeded for ${office}/${docNumber}/${docId}, size=${epoResult.body.length}`);
         // 缓存 PDF buffer，后续 extract-text 和重复的 doc-content 请求直接复用
         setCachedEpoPdf(office, docNumber, docId, epoResult.body);
-        cacheSessionPdf(urlPathNoQuery, epoResult.body);
+        cacheSessionPdf(pdfCacheKey, epoResult.body);
         res.writeHead(200, {
           "Content-Type": "application/pdf",
           "Content-Disposition": 'attachment; filename="document.pdf"',
@@ -3658,7 +3671,7 @@ async function runGdProxy(urlPath, res) {
         const cachedPdf = getCachedEpoPdf(office, docNumber, docId) || getCachedEpoPdfByEpoDocId(docId);
         if (cachedPdf) {
           console.log(`[EPO Fallback] manual done, found requested PDF in cache, size=${cachedPdf.length}`);
-          cacheSessionPdf(urlPathNoQuery, cachedPdf);
+          cacheSessionPdf(pdfCacheKey, cachedPdf);
           res.writeHead(200, {
             "Content-Type": "application/pdf",
             "Content-Disposition": 'attachment; filename="document.pdf"',

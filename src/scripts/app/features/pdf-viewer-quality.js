@@ -227,8 +227,9 @@
 
   async function addTextLayers(pdfDoc, scale) {
     const container = typeof document !== "undefined" ? document.getElementById("reader-pdf-container") : null;
-    if (!container || !pdfDoc) return;
+    if (!container || !pdfDoc) return { pages: 0, layers: 0 };
     const wrappers = container.querySelectorAll(".pdf-page-wrapper");
+    let layers = 0;
     for (const wrapper of wrappers) {
       const label = wrapper.querySelector(".pdf-page-label");
       if (label && label.textContent) {
@@ -293,8 +294,115 @@
       }
       // Scans keep their existing OCR interaction; only real text takes priority.
       wrapper.classList.add("has-text-layer");
+      layers++;
       applyTextSelectMode();
     }
+    return { pages: wrappers.length, layers: layers };
+  }
+
+  // GD exposes two renditions for some documents: the /doccontent viewer copy
+  // (used by GD's own reader) and the raw downloadFile attachment. One of them
+  // can be an image-only scan while the other carries the text layer. Remember
+  // the URL the viewer actually fetched so a text-less PDF can try its sibling.
+  let lastDocContentUrl = "";
+  let lastDocContentAt = 0;
+  const attemptedPdfVariants = new Set();
+  const rawFetch = typeof window !== "undefined" && typeof window.fetch === "function"
+    ? window.fetch.bind(window)
+    : null;
+  if (rawFetch && !window.__plPdfVariantFetchInstalled) {
+    window.__plPdfVariantFetchInstalled = true;
+    window.fetch = function (input, init) {
+      const url = typeof input === "string" ? input : (input && typeof input.url === "string" ? input.url : "");
+      if (url.indexOf("/api/gd/doc-content/") !== -1) {
+        // Record the base URL (without pdfVariant) so it can be matched against
+        // pdfViewState.currentDocKey and used to build either rendition.
+        try {
+          const parsed = new URL(url, document.baseURI);
+          parsed.searchParams.delete("pdfVariant");
+          lastDocContentUrl = parsed.pathname + parsed.search;
+        } catch (_) {
+          lastDocContentUrl = url;
+        }
+        lastDocContentAt = Date.now();
+      }
+      return rawFetch(input, init);
+    };
+  }
+
+  function withPdfVariant(url, variant) {
+    try {
+      const parsed = new URL(url, document.baseURI);
+      parsed.searchParams.set("pdfVariant", variant);
+      return parsed.href;
+    } catch (_) {
+      return url + (url.indexOf("?") === -1 ? "?" : "&") + "pdfVariant=" + encodeURIComponent(variant);
+    }
+  }
+
+  async function pdfDocumentHasText(pdfDoc) {
+    for (let pageNumber = 1; pageNumber <= pdfDoc.numPages; pageNumber++) {
+      try {
+        const page = await pdfDoc.getPage(pageNumber);
+        const textContent = await page.getTextContent();
+        if (textContent.items.some(item => item.str && item.str.trim())) return true;
+      } catch (_) { /* Try the next page. */ }
+    }
+    return false;
+  }
+
+  function notify(message) {
+    try {
+      if (typeof showToast === "function") showToast(message, 4000);
+    } catch (_) {}
+  }
+
+  async function tryAlternatePdfVariant(currentDoc, scale, blocks, pageDimensions, version) {
+    if (!lastDocContentUrl || Date.now() - lastDocContentAt > 120000) return null;
+    // EPO 只提供同一份 PDF，切换 GD 版本没有意义。
+    try {
+      if (typeof getEpoDirectMode === "function" && getEpoDirectMode()) return null;
+      if (window.__plDossierSourceChoice && window.__plDossierSourceChoice.isEpoPreferred()) return null;
+    } catch (_) {}
+    // Only trust the recorded URL when it belongs to the document being shown.
+    if (pdfViewState.currentDocKey && pdfViewState.currentDocKey.indexOf(lastDocContentUrl) === -1) return null;
+    notify("该 PDF 没有文字层，正在尝试 GD 的另一份 PDF 版本…");
+    for (const variant of ["viewer", "original"]) {
+      const target = withPdfVariant(lastDocContentUrl, variant);
+      if (attemptedPdfVariants.has(target)) continue;
+      attemptedPdfVariants.add(target);
+      try {
+        const response = await fetch(target, { headers: { Accept: "application/pdf,*/*" } });
+        if (!response.ok) continue;
+        const buffer = await response.arrayBuffer();
+        if (!buffer || buffer.byteLength < 100) continue;
+        const alternate = await pdfjsLib.getDocument({ data: buffer }).promise;
+        if (!(await pdfDocumentHasText(alternate))) {
+          try { await alternate.destroy(); } catch (_) {}
+          continue;
+        }
+        if (pdfViewState.renderVersion !== version) {
+          try { await alternate.destroy(); } catch (_) {}
+          return null;
+        }
+        patchPdfDocument(alternate);
+        pdfViewState.pdfDoc = alternate;
+        pdfViewState.totalPages = alternate.numPages;
+        pdfViewState.renderedPages = {};
+        if (pdfViewState.currentDocKey && window._pdfDocCache) {
+          window._pdfDocCache[pdfViewState.currentDocKey] = alternate;
+        }
+        await originalRenderAllPdfPages(alternate, blocks, pageDimensions, scale);
+        const swapped = await addTextLayers(alternate, scale);
+        if (typeof console !== "undefined") console.info("[PDF文字层] 已切换到含文字的 PDF 版本：" + variant);
+        notify("已切换到含文字层的 PDF 版本，可直接拖选复制");
+        return swapped;
+      } catch (error) {
+        if (typeof console !== "undefined") console.warn("[PDF文字层] 尝试 PDF 版本 " + variant + " 失败:", error && error.message);
+      }
+    }
+    notify("该文档的两个 PDF 版本都没有文字层，可能是扫描件，需要 OCR 后才能复制");
+    return null;
   }
 
   const api = {
@@ -304,6 +412,7 @@
     patchPage,
     patchPdfDocument,
     addTextLayers,
+    withPdfVariant,
     applyTextSelectMode,
     ensureTextSelectButton,
     isTextSelectModeEnabled,
@@ -319,11 +428,23 @@
   const originalRenderAllPdfPages = renderAllPdfPages;
   renderAllPdfPages = async function (pdfDoc, blocks, pageDimensions, scale) {
     try { patchPdfDocument(pdfDoc); } catch (_) {}
+    const version = typeof pdfViewState !== "undefined" ? pdfViewState.renderVersion : 0;
     const result = await originalRenderAllPdfPages(pdfDoc, blocks, pageDimensions, scale);
+    let stats = { pages: 0, layers: 0 };
     try {
-      await addTextLayers(pdfDoc, scale);
+      stats = await addTextLayers(pdfDoc, scale);
     } catch (e) {
       if (typeof console !== "undefined") console.warn("[PDF文字层] 生成失败:", e && e.message);
+    }
+    // 当前版本完全没有文字时，尝试 GD 的另一个 PDF rendition（viewer / original）。
+    // 同一份审查文档在 GD 官方阅读器中可复制、在本地却无文字层，通常就是版本差异。
+    if (stats.pages > 0 && stats.layers === 0) {
+      try {
+        const swapped = await tryAlternatePdfVariant(pdfDoc, scale, blocks || [], pageDimensions || {}, version);
+        if (swapped) stats = swapped;
+      } catch (e) {
+        if (typeof console !== "undefined") console.warn("[PDF文字层] 切换 PDF 版本失败:", e && e.message);
+      }
     }
     try { applyTextSelectMode(); } catch (_) {}
     return result;

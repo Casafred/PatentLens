@@ -108,6 +108,25 @@ test('EPO direct mode never acquires GD token or downloads via GD', async () => 
   assert.equal(response.status, 200); assert.deepEqual(counts(), { gdCalls: 0, epoCalls: 1 });
 });
 
+test('pdfVariant=viewer skips the raw attachment so the GD viewer rendition can supply text', async () => {
+  const { context, request } = setup();
+  const calls = [];
+  context.httpsGet = async (url) => {
+    calls.push(url);
+    if (url.includes('/doc-list/')) {
+      return { statusCode: 200, body: Buffer.from(JSON.stringify({ docNumber: '16976733.A', docs: [
+        { docId: 'D1', mimeTypeData: [{ mimeType: 'pdf', fileNames: ['native.pdf'] }] },
+      ] })) };
+    }
+    return { statusCode: 200, body: Buffer.from('%PDF-' + 'viewer'.repeat(30)) };
+  };
+  await request('/doc-list/svc/doclist/US/16976733/A');
+  const viewer = await request('/doc-content/svc/doccontent/US/16976733/D1/3/PDF?pdfVariant=viewer');
+  assert.equal(viewer.status, 200);
+  assert.equal(viewer.headers['X-PatentLens-Pdf-Variant'], 'viewer');
+  assert.equal(calls.some(url => url.includes('/downloadFile/')), false);
+});
+
 test('fresh login bypasses a pending user-approved EPO request and late EPO data cannot replace successful GD cache', { timeout: 3000 }, async () => {
   const { context, request } = setup();
   let releaseEpo, epoStarted;

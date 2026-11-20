@@ -277,3 +277,13 @@ test('某一页排版失败时退回基础定位，且不影响后续页生成�
     assert.ok(layer.querySelectorAll('span').some((span) => span._text === 'Hello'), '失败页应使用基础定位回退');
   }
 });
+
+test('切换 PDF 版本时保留原有参数并替换 pdfVariant', () => {
+  const { withPdfVariant } = loadQualityHelpers({ URL, document: { baseURI: 'http://127.0.0.1:8080/web.html' } });
+  const viewer = withPdfVariant('/api/gd/doc-content/svc/doccontent/US/15174660/108872/19/PDF?epoPdfUrl=x', 'viewer');
+  assert.match(viewer, /pdfVariant=viewer/);
+  assert.match(viewer, /epoPdfUrl=x/);
+  const original = withPdfVariant(viewer, 'original');
+  assert.match(original, /pdfVariant=original/);
+  assert.doesNotMatch(original, /pdfVariant=viewer/);
+});
