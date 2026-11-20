@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onDataSourceIssue: (callback) => ipcRenderer.on("data-source-issue", (_event, payload) => callback(payload)),
   gdOpenLoginWindow: () => ipcRenderer.invoke("gd-open-login-window"),
   gdAwaitLogin: (options) => ipcRenderer.invoke("gd-await-login", options || {}),
+  localOcrRecognize: (payload) => ipcRenderer.invoke("local-ocr:recognize", payload || {}),
+  localOcrPreload: () => ipcRenderer.invoke("local-ocr:preload"),
   gdNetworkDiagnostics: () => ipcRenderer.invoke("gd-network-diagnostics"),
   onGdNetworkProgress: (callback) => {
     const handler = (_event, payload) => callback(payload);

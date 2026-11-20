@@ -32,6 +32,7 @@
     "electron-builder": "^26"
   },
   "dependencies": {
+    "@arcships/light-ocr-tiny": "0.1.0",
     "@pdf-lib/fontkit": "^1.1.1",
     "pdf-lib": "^1.17.1",
     "xlsx": "^0.18.5"
@@ -47,6 +48,7 @@
       "patent2pic-storage.cjs",
       "patent2pic-ipc.cjs",
       "agent-handoff-ipc.cjs",
+      "local-ocr-ipc.cjs",
       "pdf-session-cache.js",
       "dossier-network.cjs",
       "transfer-bundle.cjs",
@@ -114,7 +116,8 @@
     "asar": true,
     "asarUnpack": [
       "src/PATENTLENSNEWLOGO.png",
-      "fonts/**"
+      "fonts/**",
+      "node_modules/@arcships/**"
     ],
     "beforePack": "./scripts/before-pack.cjs"
   }

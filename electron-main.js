@@ -6229,6 +6229,7 @@ async function prepareImmersiveTranslate() {
 app.whenReady().then(async () => {
   require("./patent2pic-ipc.cjs").registerPatent2PicIPC({ ipcMain, userData: app.getPath("userData"), getPort: () => _serverPort });
   require("./agent-handoff-ipc.cjs").registerAgentHandoffIPC({ ipcMain, clipboard, getPort: () => _serverPort, userData: app.getPath("userData") });
+  require("./local-ocr-ipc.cjs").registerLocalOcrIPC({ ipcMain, app });
   const ses = session.defaultSession;
   ses.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(true);
