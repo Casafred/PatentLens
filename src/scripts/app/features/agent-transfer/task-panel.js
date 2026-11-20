@@ -50,6 +50,7 @@
         '.agent-task-status.success{color:var(--accent,#16815c)}.agent-task-status.error{color:var(--danger,#c43535)}',
         '.agent-task-dialog,.agent-task-dialog button,.agent-task-dialog select,.agent-task-dialog textarea,.agent-task-context,.agent-task-history,.agent-task-tools{border-color:var(--border,#cbd5e1)}',
         '.agent-task-acceptance{font-size:12px;white-space:pre-wrap}.agent-task-empty{padding:16px;background:#16815c0a;border-radius:10px}',
+        '.agent-task-unverified{display:block;margin:5px 0;padding:6px 8px;border-radius:6px;background:#fef3c7;color:#92400e;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}',
         '.agent-task-report{font:inherit;line-height:1.7;overflow-wrap:anywhere}.agent-report-config{margin-bottom:14px}',
         '.agent-task-dialog button:focus-visible,.agent-task-dialog summary:focus-visible{outline:2px solid #16815c;outline-offset:3px}',
         '@media(max-width:600px){.agent-task-overlay{padding:8px}.agent-task-dialog{padding:16px;max-height:calc(100dvh - 16px)}.agent-task-header{top:-16px}.agent-task-nav{gap:4px}.agent-task-nav button{font-size:12px;padding:10px 6px}.agent-task-selector{display:block}}'
@@ -145,7 +146,14 @@
       extra.querySelector('.agent-task-acceptance').textContent = revision ? (revision.acceptance || []).map(function (entry) { return new Date(entry.at).toLocaleString() + ' · ' + entry.note; }).join('\n') : '';
       var evidence = extra.querySelector('.agent-task-evidence'); evidence.replaceChildren();
       if (revision && root.AgentSourceReferences) (revision.payload.evidence || []).forEach(function (item) {
-        var source = (task.input.sources || []).find(function (s) { return s.id === item.sourceId; }); if (!source) return;
+        var source = (task.input.sources || []).find(function (s) { return s.id === item.sourceId; });
+        if (!source) {
+          // 扫描件/PDF 直接引用没有可比对的提取文本：保留引文，但明确标记未验证。
+          var note = document.createElement('span'); note.className = 'agent-task-unverified';
+          note.textContent = '未验证引文 · ' + String(item.quote || '').slice(0, 120);
+          evidence.appendChild(note);
+          return;
+        }
         var button = document.createElement('button'); button.textContent = source.id + ' · ' + item.quote.slice(0, 50); button.onclick = function () { root.AgentSourceReferences.view(source, item.quote); }; evidence.appendChild(button);
       });
     }
