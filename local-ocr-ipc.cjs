@@ -30,9 +30,12 @@ let queue = Promise.resolve();
 // 依赖 DLL 必须在 app.asar.unpacked 中按实体文件加载。
 function unpackAsarPath(target) {
   if (!target) return target;
-  const marker = path.sep + "app.asar" + path.sep;
-  if (target.includes(marker)) {
-    return target.replace(marker, path.sep + "app.asar.unpacked" + path.sep);
+  // 兼容 Windows 原生分隔符与 Electron 可能返回的正斜杠路径
+  if (target.includes("\\app.asar\\")) {
+    return target.replace("\\app.asar\\", "\\app.asar.unpacked\\");
+  }
+  if (target.includes("/app.asar/")) {
+    return target.replace("/app.asar/", "/app.asar.unpacked/");
   }
   return target;
 }

@@ -144,6 +144,10 @@ test('打包后的原生插件改为从 app.asar.unpacked 加载', () => {
   );
   const plain = '/app/node_modules/@arcships/light-ocr-win32-x64/native/light_ocr_node.node';
   assert.equal(unpackAsarPath(plain), plain);
+  assert.equal(
+    unpackAsarPath('C:\\App\\resources\\app.asar\\node_modules\\@arcships\\light-ocr-win32-x64\\native\\light_ocr_node.node'),
+    'C:\\App\\resources\\app.asar.unpacked\\node_modules\\@arcships\\light-ocr-win32-x64\\native\\light_ocr_node.node',
+  );
 });
 
 test('原生插件加载失败时保留底层原因，便于定位缺失依赖', () => {
