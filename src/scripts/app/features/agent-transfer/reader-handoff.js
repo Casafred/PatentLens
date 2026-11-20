@@ -153,19 +153,28 @@
     };
     return refresh;
   }
+  function importTask(task, type) {
+    root.AgentHandoffPanel.open({
+      title: names[type] + ' · 带回 Agent 结果',
+      description: '把 Agent 返回的结果粘贴或拖入下方，核对后采用。',
+      taskType: type, store: workspace.getStore(), taskId: task.taskId, stage: 'receive',
+      createTask: null, apply: apply, accept: accept
+    });
+  }
   async function open(type, selection) {
     var snapshot = context(), question = document.getElementById('chat-input').value.trim(), language = document.getElementById('pdf-translate-lang').value;
     var selected = selection ? (pdfViewState.selectedBlockIds || []).slice() : null;
     await workspace.ready;
-    root.AgentHandoffPanel.open({ title: names[type] + ' · 交给 Agent', description: '只处理当前这篇文档。准备任务 → 复制指令并附上 PDF → 带回答案，核对后采用。', taskType: type, store: workspace.getStore(), reviewFirst: true,
-      configure: function (dialog) {
-        var info = document.createElement('p'); info.textContent = snapshot.document.name + ' · ' + snapshot.dossier + ' · ' + (snapshot.document.pages || '?') + ' 页'; dialog.querySelector('[data-step=prepare]').prepend(info);
-        if (type === 'document-qa') {
-          var input = document.createElement('textarea'); input.value = question; input.placeholder = '你想问这篇文档什么？'; input.setAttribute('aria-label', '交给 Agent 的问题'); input.oninput = function () { question = input.value; }; info.after(input);
-        }
-
-      },
-      createTask: function () { return create(type, snapshot, question, language, selected); }, apply: apply, accept: accept
+    var task = await create(type, snapshot, question, language, selected);
+    // 任务只用于可选的结果回流；失败也不影响本次「打包拖给 Agent」。
+    var saved = true;
+    try { workspace.getStore().put(task); } catch (error) { saved = false; console.warn('[Handoff] 保存任务失败，仍可打包：', error.message); }
+    root.HandoffQuickPanel.open({
+      title: names[type] + ' · 交给 Agent',
+      prompt: protocol.prompt(task),
+      attachment: task.input.attachment,
+      baseName: snapshot.document.name + ' · ' + names[type],
+      onImport: saved ? function () { importTask(task, type); } : null
     });
   }
   function warn(error) { if (typeof showToast === 'function') showToast(error.message); else root.alert(error.message); }

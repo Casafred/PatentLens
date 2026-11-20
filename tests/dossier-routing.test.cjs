@@ -30,11 +30,15 @@ function setup() {
   }
   return { context, request, pdf, counts: () => ({ gdCalls, epoCalls }) };
 }
-test('failed GD family skips repeat GD login for doclist; concurrent EPO fallback is shared and cached', async () => {
+test('default GD failure asks the user instead of auto-EPO; explicit epoFallback is shared and cached', async () => {
   const { request, counts } = setup();
   const family = await request('/patent-family/svc/family/application/EP/19703079');
-  assert.equal(family.status, 200); assert.equal(family.headers['X-PatentLens-Source'], 'epo');
-  const url = '/doc-list/svc/doclist/EP/19703079/A';
+  assert.equal(family.status, 502);
+  const body = JSON.parse(family.body);
+  assert.equal(body.gdFailed, true);
+  assert.equal(body.epoAvailable, true);
+  assert.deepEqual(counts(), { gdCalls: 1, epoCalls: 0 });
+  const url = '/doc-list/svc/doclist/EP/19703079/A?epoFallback=1';
   const [a, b] = await Promise.all([request(url), request(url)]);
   assert.equal(a.status, 200); assert.deepEqual(a.body, b.body);
   assert.deepEqual(counts(), { gdCalls: 1, epoCalls: 1 });
@@ -104,7 +108,7 @@ test('EPO direct mode never acquires GD token or downloads via GD', async () => 
   assert.equal(response.status, 200); assert.deepEqual(counts(), { gdCalls: 0, epoCalls: 1 });
 });
 
-test('fresh login bypasses a pending EPO request and late EPO data cannot replace successful GD cache', { timeout: 3000 }, async () => {
+test('fresh login bypasses a pending user-approved EPO request and late EPO data cannot replace successful GD cache', { timeout: 3000 }, async () => {
   const { context, request } = setup();
   let releaseEpo, epoStarted;
   const enteredEpo = new Promise(resolve => { epoStarted = resolve; });
@@ -114,7 +118,7 @@ test('fresh login bypasses a pending EPO request and late EPO data cannot replac
     return { docs: [{ docId: 'old-epo' }], totalDocs: 1 };
   };
   const url = '/doc-list/svc/doclist/EP/19703079/A';
-  const old = request(url);
+  const old = request(url + '?epoFallback=1');
   await enteredEpo;
   context._gdTokenCache.obtainedAt = Date.now();
   context.httpsGet = async () => ({ statusCode: 200, body: Buffer.from('{"docs":[{"docId":"fresh-gd"}]}') });

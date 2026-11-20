@@ -180,7 +180,7 @@
       dialog.querySelector('.agent-task-prompt').value = task ? prompt(task) : '请先新建交接任务。';
       dialog.querySelector('[data-action="create"]').disabled = !options.createTask;
       extra.querySelector('[data-action="rebind"]').hidden = !options.rebind;
-      if (!stage) setStage(options.initialRaw || options.initialError ? 'receive' : !task ? 'prepare' : task.status === 'pending' ? 'send' : 'receive');
+      if (!stage) setStage(options.stage || (options.initialRaw || options.initialError ? 'receive' : !task ? 'prepare' : task.status === 'pending' ? 'send' : 'receive'));
       if (refreshAttachment) refreshAttachment(task);
     }
     function close() { if (busy) return; overlay.remove(); document.removeEventListener('keydown', keydown, true); if (previous && previous.isConnected) previous.focus(); }

@@ -51,3 +51,15 @@ test('reader adoption refuses another dossier, changed OCR and changes during di
   c.AgentTaskWorkspace.flush = async () => { c.pdfViewState.currentDocIdx = 2; };
   await assert.rejects(api.accept(task, payload, 'revision'), /打开一篇|切换/);
 });
+
+test('reader handoff packs prompt and PDF into one quick panel', async () => {
+  const { c, api } = setup();
+  let captured = null;
+  c.HandoffQuickPanel = { open: (options) => { captured = options; } };
+  c.document.getElementById = (id) => ({ value: id === 'chat-input' ? 'What drives the housing?' : 'zh' });
+  await api.open('document-qa');
+  assert.ok(captured, '应打开一步打包面板');
+  assert.match(captured.prompt, /What drives the housing\?/);
+  assert.equal(captured.attachment.url, '/api/doc1');
+  assert.equal(typeof captured.onImport, 'function');
+});

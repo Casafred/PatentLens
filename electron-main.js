@@ -3307,6 +3307,19 @@ async function runGdProxy(urlPath, res) {
   const _queryString = _qIdx !== -1 ? urlPath.substring(_qIdx + 1) : "";
   const _queryParams = new URLSearchParams(_queryString);
   const epoDirect = _queryParams.get("epoDirect") === "1";
+  // 用户明确选择「改用 EPO」后，前端追加 epoFallback=1。只有携带该标记的请求
+  // 才允许自动降级到 EPO；默认必须先走 GD，避免未登录时几秒内自动弹出 EPO 窗口。
+  const epoFallbackConsent = _queryParams.get("epoFallback") === "1";
+  const epoAllowed = epoDirect || epoFallbackConsent;
+  if (epoFallbackConsent) {
+    // 用户已经明确切到 EPO：停止后台 GD 登录轮询并隐藏登录窗口，
+    // 避免 EPO 抓取结束后又突然弹出 GD 登录窗。
+    if (typeof _gdAuthWatcher !== "undefined" && _gdAuthWatcher) { clearInterval(_gdAuthWatcher); _gdAuthWatcher = null; }
+    if (typeof _gdAuthPromptSuppressedUntil !== "undefined") _gdAuthPromptSuppressedUntil = Date.now() + 10 * 60 * 1000;
+    try {
+      if (typeof _gdAuthWindow !== "undefined" && _gdAuthWindow && !_gdAuthWindow.isDestroyed() && _gdAuthWindow.isVisible()) _gdAuthWindow.hide();
+    } catch (_) {}
+  }
   // 前端可传 epoPdfUrl：直接使用从 dossier 页面解析得到的 documentView 链接，跳过构造
   let epoPdfUrlParam = _queryParams.get("epoPdfUrl");
   if (epoPdfUrlParam && !epoPdfUrlParam.startsWith("http://") && !epoPdfUrlParam.startsWith("https://")) {
@@ -3326,7 +3339,7 @@ async function runGdProxy(urlPath, res) {
   const isFamily = urlPathNoQuery.includes("/patent-family/");
   const isCitation = urlPathNoQuery.includes("/citation-classification/");
   const jsonCacheKey = (isFamily || isDocList) && !epoPdfUrlParam
-    ? (epoDirect ? "epo:" : "gd:") + urlPathNoQuery
+    ? (epoAllowed ? "epo:" : "gd:") + urlPathNoQuery
     : null;
   const pathMatch = urlPathNoQuery.match(/\/svc\/(?:doclist|doccontent)\/([^/]+)\/([^/]+)(?:\/([^/]+)\/([^/]+)\/([^/]+))?/);
   const familyPathMatch = isFamily
@@ -3344,7 +3357,7 @@ async function runGdProxy(urlPath, res) {
     : (familyPathMatch ? decodeURIComponent(familyPathMatch[2]) : null);
   const docId = pathMatch && pathMatch[3] ? decodeURIComponent(pathMatch[3]) : null;
   const supportsEpo = office && EPO_OFFICES.has(office.toUpperCase());
-  const alertSource = epoDirect ? "epo" : (supportsEpo ? "gd_epo" : "gd");
+  const alertSource = epoAllowed ? "epo" : (supportsEpo ? "gd_epo" : "gd");
 
   if (jsonCacheKey) {
     const cachedJson = getCachedGdJson(jsonCacheKey);
@@ -3362,9 +3375,9 @@ async function runGdProxy(urlPath, res) {
     }
   }
 
-  // EPO 降级源（直走/测试模式）没有 GD Citation Data 模块。
+  // EPO 降级源（直走/用户选择的降级模式）没有 GD Citation Data 模块。
   // 直接返回空引用数据并标记 noCitationModule，禁止触发网络错误提醒，避免误导用户。
-  if (isCitation && epoDirect) {
+  if (isCitation && epoAllowed) {
     corsHeaders["Content-Type"] = "application/json";
     res.writeHead(200, {
       ...corsHeaders,
@@ -3403,11 +3416,13 @@ async function runGdProxy(urlPath, res) {
 
   // A service/authentication outage applies to the next document too. A fresh
   // login token immediately re-enables GD; the circuit otherwise expires in 60s.
-  const gdCoolingDown = supportsEpo && Date.now() < _gdUnavailableUntil &&
+  // 该熔断只在用户已同意使用 EPO 时生效；默认 GD 查询不会被熔断跳过，
+  // 否则用户登录 GD 后再次查询也会被误判为失败。
+  const gdCoolingDown = epoAllowed && supportsEpo && Date.now() < _gdUnavailableUntil &&
     (_gdTokenCache.obtainedAt || 0) === _gdFailedTokenStamp;
   const gdDeadline = Date.now() + (isDocContent ? 60000 : 35000);
-  if (epoDirect || gdCoolingDown || (isDocContent && epoPdfUrlParam)) {
-    gdFailReason = "EPO direct mode enabled, skipping GD";
+  if (epoAllowed || gdCoolingDown || (isDocContent && epoPdfUrlParam)) {
+    gdFailReason = epoDirect ? "EPO direct mode enabled, skipping GD" : "EPO fallback requested by user";
     reportStage("epo-direct", "epo");
     console.log("[EPO Direct] proxyGdApi 跳过 GD，直接走 EPO Register:", urlPathNoQuery);
     // doc-content 请求：优先检查 PDF buffer 缓存（用户可能在弹窗中已手动获取过该 PDF）
@@ -3550,6 +3565,26 @@ async function runGdProxy(urlPath, res) {
     res.end(JSON.stringify({
       error: `上游审查文档数据源暂时不可用（${gdFailReason}）。这通常是专利局服务器或网络问题，不是 PatentLens 故障，请稍后重试。`,
       sourceOutage: true,
+    }));
+    return;
+  }
+
+  // 默认只走 GD。GD 失败时不自动降级 EPO、也不自动打开 EPO 窗口，
+  // 而是把失败原因交回渲染层，由用户决定是否「改用 EPO 查询」。
+  if (!epoAllowed) {
+    const loginRequired = /login required|HTTP (401|403)/i.test(gdFailReason);
+    corsHeaders["Content-Type"] = "application/json";
+    res.writeHead(502, { ...corsHeaders, "X-PatentLens-Gd-Failed": "1" });
+    res.end(JSON.stringify({
+      error: loginRequired
+        ? "需要先登录 USPTO Global Dossier 才能获取审查文档"
+        : `USPTO Global Dossier 暂时不可用（${gdFailReason}）`,
+      gdFailed: true,
+      loginRequired,
+      epoAvailable: true,
+      gdReason: gdFailReason,
+      browserUrl: GD_SITE_URL,
+      sourceOutage: !loginRequired,
     }));
     return;
   }
@@ -4623,6 +4658,9 @@ async function extractPdfText(req, res) {
   const engine = urlObj.searchParams.get("engine") || "auto";
   const apiKey = urlObj.searchParams.get("api_key") || "";
   const epoDirect = urlObj.searchParams.get("epoDirect") === "1";
+  // 用户明确选择「改用 EPO」后，OCR 取 PDF 也直接走 EPO。
+  const epoFallbackConsent = urlObj.searchParams.get("epoFallback") === "1";
+  const epoAllowed = epoDirect || epoFallbackConsent;
   // 前端传入的文档查看器链接（首次抓取文档列表时解析得到）
   let epoPdfUrlParam = urlObj.searchParams.get("epoPdfUrl");
   if (epoPdfUrlParam && !/^https?:\/\//i.test(epoPdfUrlParam)) epoPdfUrlParam = null;
@@ -4732,13 +4770,13 @@ async function extractPdfText(req, res) {
   const epDocNum = epMatch ? epMatch[2] : null;
   const epDocId = epMatch ? epMatch[3] : null;
   const epSupported = epOffice && EPO_OFFICES.has(epOffice.toUpperCase());
-  const alertSource = epoDirect ? "epo" : (epSupported ? "gd_epo" : "gd");
+  const alertSource = epoAllowed ? "epo" : (epSupported ? "gd_epo" : "gd");
 
   let pdfBuffer = null;
   let gdFailReason = null;
 
-  if (epoDirect) {
-    gdFailReason = "EPO direct mode enabled, skipping GD";
+  if (epoAllowed) {
+    gdFailReason = epoDirect ? "EPO direct mode enabled, skipping GD" : "EPO fallback requested by user";
     console.log("[EPO Direct] extractPdfText 跳过 GD，直接走 EPO Register:", epOffice + "/" + epDocNum + "/" + epDocId);
   } else {
     try {
