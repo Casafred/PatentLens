@@ -121,7 +121,8 @@
     panel.className = "pl-local-ocr-panel";
     var low = meta.lowConfidence || 0;
     panel.innerHTML =
-      '<div class="pl-local-ocr-head"><strong>本地 OCR（PP-OCRv6 Tiny）</strong>' +
+      '<div class="pl-local-ocr-head"><strong>本地 OCR' +
+        (meta.engineLabel ? "（" + meta.engineLabel + "）" : "") + '</strong>' +
         '<span class="pl-local-ocr-meta">第 ' + meta.page + " 页 · " + meta.lines + " 行 · " +
         meta.ms + "ms" + (low ? " · 低置信度 " + low + " 行" : "") + "</span></div>" +
       '<div class="pl-local-ocr-body">' +
@@ -309,6 +310,7 @@
         lines: cachedLines.length,
         ms: cached.durationMs || 0,
         lowConfidence: cached.lowConfidence || 0,
+        engineLabel: cached.engineLabel || "",
       });
       return;
     }
@@ -333,12 +335,14 @@
         imageHeight: result.imageHeight,
         durationMs: result.durationMs,
         lowConfidence: lowConfidence,
+        engineLabel: result.engineLabel || "",
       };
       showPanel(text, {
         page: pageNumber,
         lines: ordered.length,
         ms: Math.round(performance.now() - startedAt),
         lowConfidence: lowConfidence,
+        engineLabel: result.engineLabel || "",
       });
       toast("本地 OCR 完成：已生成当前页文字层");
     } finally {
