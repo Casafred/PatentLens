@@ -2,9 +2,19 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { after } = require('node:test');
 const vm = require('node:vm');
 
-const { recognizeImage, friendlyOcrError, unpackAsarPath } = require('../local-ocr-ipc.cjs');
+const {
+  recognizeImage,
+  recognizeWithTesseract,
+  closeEngine,
+  friendlyOcrError,
+  unpackAsarPath,
+  pngSize,
+  tidyOcrText,
+  tesseractLines,
+} = require('../local-ocr-ipc.cjs');
 
 function fakeElement(tag) {
   return {
@@ -177,3 +187,55 @@ test('缺少原生平台包时给出可操作的错误提示', async () => {
     /原生组件缺失.*npm install/,
   );
 });
+
+test('从 PNG 头部读取页面尺寸', () => {
+  const png = fs.readFileSync(path.join(__dirname, 'fixtures', 'ocr-sample.png'));
+  assert.deepEqual(pngSize(png), { width: 1100, height: 200 });
+  assert.equal(pngSize(Buffer.from('not a png')), null);
+});
+
+test('中文 OCR 结果去掉字符之间的空格', () => {
+  assert.equal(tidyOcrText('本 发 明 涉 及 一 种 半导体 器件'), '本发明涉及一种半导体器件');
+  assert.equal(tidyOcrText('权利 要求 1 所述 的 方法'), '权利要求 1 所述的方法');
+  assert.equal(tidyOcrText('The present invention'), 'The present invention');
+});
+
+test('tesseract 行结果转换为页面文字层坐标', () => {
+  const lines = tesseractLines({
+    blocks: [{
+      paragraphs: [{
+        lines: [{
+          text: '本发明涉及一种半导体器件\n',
+          confidence: 92,
+          bbox: { x0: 10, y0: 20, x1: 210, y1: 50 },
+        }],
+      }],
+    }],
+  });
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].text, '本发明涉及一种半导体器件');
+  assert.equal(lines[0].confidence, 0.92);
+  assert.deepEqual(lines[0].box[0], { x: 10, y: 20 });
+  assert.deepEqual(lines[0].box[2], { x: 210, y: 50 });
+});
+
+test('WASM 引擎可在离线环境识别印刷文字', async () => {
+  const png = fs.readFileSync(path.join(__dirname, 'fixtures', 'ocr-sample.png'));
+  const result = await recognizeWithTesseract(png);
+  assert.equal(result.imageWidth, 1100);
+  assert.equal(result.imageHeight, 200);
+  const text = result.lines.map((line) => line.text).join(' ');
+  assert.match(text, /semiconductor device/);
+  assert.match(text, /gate electrode structure/);
+});
+
+test('原生引擎不可用时识别请求自动回退并返回文本', async () => {
+  const png = fs.readFileSync(path.join(__dirname, 'fixtures', 'ocr-sample.png'));
+  const result = await recognizeImage(png);
+  assert.equal(result.ok, true);
+  assert.ok(['native', 'tesseract'].includes(result.engine));
+  const text = result.lines.map((line) => line.text).join(' ');
+  assert.match(text, /semiconductor device/);
+});
+
+after(() => closeEngine());

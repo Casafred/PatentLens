@@ -21,13 +21,16 @@
     "dev:tauri": "tauri dev",
     "build:tauri": "tauri build",
     "build:patent2pic": "npm --prefix packages/patent2pic-editor run build",
-    "postinstall": "npm --prefix packages/patent2pic-editor ci --no-audit --no-fund && node scripts/ensure-local-ocr-native.cjs",
+    "postinstall": "npm --prefix packages/patent2pic-editor ci --no-audit --no-fund && node scripts/prepare-local-ocr-assets.cjs && node scripts/ensure-local-ocr-native.cjs",
     "prestart": "npm run build:patent2pic",
     "predev": "npm run build:patent2pic",
     "test:patent2pic-smoke": "electron tests/patent2pic-smoke-main.cjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@tesseract.js-data/chi_sim": "^1.0.0",
+    "@tesseract.js-data/deu": "^1.0.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "electron": "^35",
     "electron-builder": "^26"
   },
@@ -35,6 +38,7 @@
     "@arcships/light-ocr-tiny": "0.1.0",
     "@pdf-lib/fontkit": "^1.1.1",
     "pdf-lib": "^1.17.1",
+    "tesseract.js": "^7.0.0",
     "xlsx": "^0.18.5"
   },
   "optionalDependencies": {
@@ -61,6 +65,14 @@
       "cnipa-preload.js",
       "gd-preload.js",
       "fonts/**",
+      "assets/ocr-tessdata/**",
+      "!node_modules/tesseract.js-core/*.wasm.js",
+      "!node_modules/tesseract.js-core/tesseract-core.js",
+      "!node_modules/tesseract.js-core/tesseract-core.wasm",
+      "!node_modules/tesseract.js-core/tesseract-core-simd.js",
+      "!node_modules/tesseract.js-core/tesseract-core-simd.wasm",
+      "!node_modules/tesseract.js-core/tesseract-core-relaxedsimd.js",
+      "!node_modules/tesseract.js-core/tesseract-core-relaxedsimd.wasm",
       {
         "from": "src",
         "to": "src",
@@ -121,7 +133,14 @@
     "asarUnpack": [
       "src/PATENTLENSNEWLOGO.png",
       "fonts/**",
-      "node_modules/@arcships/**"
+      "node_modules/@arcships/**",
+      "node_modules/tesseract.js/**",
+      "node_modules/tesseract.js-core/**",
+      "node_modules/wasm-feature-detect/**",
+      "node_modules/is-url/**",
+      "node_modules/bmp-js/**",
+      "node_modules/regenerator-runtime/**",
+      "assets/ocr-tessdata/**"
     ],
     "beforePack": "./scripts/before-pack.cjs"
   }

@@ -38,3 +38,6 @@ src-tauri/gen/
 
 # Generated embedded editor; rebuilt before packaging
 src/features/patent2pic/
+
+# 本地 OCR 语言数据（由 scripts/prepare-local-ocr-assets.cjs 生成）
+assets/ocr-tessdata/

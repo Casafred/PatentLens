@@ -62,6 +62,9 @@ module.exports = async function beforePack(context) {
     });
   }
 
+  // 本地 OCR 的语言数据从 devDependencies 复制到 assets，供回退引擎离线使用。
+  require('./prepare-local-ocr-assets.cjs').main();
+
   // 本地 OCR 的原生运行时按平台拆分。打包 Windows 版时必须确保平台包存在，
   // 否则安装包会出现“按钮可见、一点就报无法定位原生包”。
   if (context && context.electronPlatformName === 'win32') {
