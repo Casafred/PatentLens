@@ -1,0 +1,317 @@
+ [DIAG] 1795152943647 diag script loaded
+ [DIAG] 1795152943648 diag monitors installed
+ [DIAG] 1795152943896 activeElement changed: BODY
+ [FOCUS] Desync detector installing...
+ [FOCUS] Desync detector installed
+ [GT-fixes] GT translation fixes module v2 loaded (claims support + hard-kill + scroll fixes + back-to-top)
+ [PatentLensAgent] initialized with tools: Array(24)
+ [patent-utils] gdFetch interceptor installed (family list reordering for correct family-member matching)
+ [DIAG] 1795152945649 OVERLAY DETECTED: input patent-input is covered by IMG at (522,457)
+ [DIAG] 1795152947648 OVERLAY DETECTED: input patent-input is covered by IMG at (522,457)
+ [DIAG] 1795152953648 activeElement changed: BUTTON.history-item-alt-btn
+ [DIAG] 1795152958049 activeElement changed: BUTTON.pl-sc-primary
+ [Cache] 本次查询未拿到审查文档，保留旧缓存不覆盖: US20140373364A1
+ [DataSourceAlert] Object
+ [DIAG] 1795152959661 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152959661 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152961652 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152961652 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152963656 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152963657 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152965650 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152965650 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152967655 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152967655 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152969656 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152969656 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152971651 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152971651 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152973658 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152973658 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152975662 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152975662 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152977662 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152977662 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152979663 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152979663 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152981653 OVERLAY DETECTED: input history-search-input is covered by DIV.pl-source-choice-overlay at (108,174)
+ [DIAG] 1795152981653 OVERLAY DETECTED: input patent-input is covered by DIV.pl-source-choice-overlay at (522,232)
+ [DIAG] 1795152982654 activeElement changed: BODY.pl-unified-tools
+ [DIAG] 1795152989255 activeElement changed: BUTTON.tab-btn.notranslate.active
+ [DIAG] 1795152989850 activeElement changed: BUTTON.tab-btn.notranslate
+ [DIAG] 1795152991652 activeElement changed: BUTTON.btn-small.btn-view-pdf
+ [DIAG] 1795152993659 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795152995649 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [PDF文字层] 第1页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第2页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第3页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第4页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第5页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第6页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第7页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第8页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第9页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第10页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第11页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第12页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第13页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第14页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第15页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第16页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第17页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第18页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第19页没有文字（扫描件或缺少字体映射）
+ [DIAG] 1795152997648 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795152999660 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153001655 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153003654 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153005649 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153007661 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153009651 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153012467 EVENT LOOP BLOCKED for 1000ms
+ [DIAG] 1795153012469 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153013465 EVENT LOOP BLOCKED for 998ms
+ [DIAG] 1795153014477 EVENT LOOP BLOCKED for 1012ms
+ [DIAG] 1795153014478 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153015597 EVENT LOOP BLOCKED for 1120ms
+ [DIAG] 1795153016471 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153016471 EVENT LOOP BLOCKED for 874ms
+ [DIAG] 1795153017474 EVENT LOOP BLOCKED for 1003ms
+ [DIAG] 1795153018472 EVENT LOOP BLOCKED for 998ms
+ [DIAG] 1795153018474 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153019472 EVENT LOOP BLOCKED for 1000ms
+ [DIAG] 1795153020472 EVENT LOOP BLOCKED for 1000ms
+ [DIAG] 1795153020473 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153021470 EVENT LOOP BLOCKED for 998ms
+ [DIAG] 1795153022471 EVENT LOOP BLOCKED for 1001ms
+ [DIAG] 1795153022473 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153023478 EVENT LOOP BLOCKED for 1007ms
+ [DIAG] 1795153024475 EVENT LOOP BLOCKED for 997ms
+ [DIAG] 1795153024479 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153025472 EVENT LOOP BLOCKED for 997ms
+ [DIAG] 1795153026473 EVENT LOOP BLOCKED for 1001ms
+ [DIAG] 1795153026475 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153027466 EVENT LOOP BLOCKED for 993ms
+ [DIAG] 1795153028477 EVENT LOOP BLOCKED for 1011ms
+ [DIAG] 1795153028478 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153029475 EVENT LOOP BLOCKED for 998ms
+ [DIAG] 1795153030472 EVENT LOOP BLOCKED for 997ms
+ [DIAG] 1795153030473 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153031471 EVENT LOOP BLOCKED for 999ms
+ [DIAG] 1795153032465 EVENT LOOP BLOCKED for 994ms
+ [DIAG] 1795153032466 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153033464 EVENT LOOP BLOCKED for 999ms
+ [DIAG] 1795153034476 EVENT LOOP BLOCKED for 1012ms
+ [DIAG] 1795153034477 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153035477 EVENT LOOP BLOCKED for 1001ms
+ [DIAG] 1795153036476 EVENT LOOP BLOCKED for 999ms
+ [DIAG] 1795153036478 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153037473 EVENT LOOP BLOCKED for 997ms
+ [DIAG] 1795153038474 EVENT LOOP BLOCKED for 1001ms
+ [DIAG] 1795153038478 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153039663 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container.pdf-text-select-mode at (487,201)
+ [DIAG] 1795153040454 activeElement changed: BUTTON#reader-close-btn.btn-icon.notranslate
+ [DIAG] 1795153040649 activeElement changed: BODY.pl-unified-tools
+ [DIAG] 1795153044651 activeElement changed: INPUT#patent-input.notranslate
+ [DIAG] 1795153046170 keydown on INPUT#patent-input key=Control defaultPrevented=false canceled=yes
+ [FOCUS] keydown detected: Object
+ [DIAG] 1795153046170 keydown BUBBLE reached for INPUT#patent-input key=Control
+ [DIAG] 1795153046337 keydown on INPUT#patent-input key=v defaultPrevented=false canceled=yes
+ [FOCUS] keydown detected: Object
+ [DIAG] 1795153046337 keydown BUBBLE reached for INPUT#patent-input key=v
+ [DIAG] 1795153046341 INPUT EVENT on INPUT#patent-input value="US 15174660"
+ [DIAG] 1795153048776 keydown on INPUT#patent-input key=Backspace defaultPrevented=false canceled=yes
+ [FOCUS] keydown detected: Object
+ [DIAG] 1795153048776 keydown BUBBLE reached for INPUT#patent-input key=Backspace
+ [DIAG] 1795153048778 INPUT EVENT on INPUT#patent-input value="US15174660"
+ [DIAG] 1795153049656 activeElement changed: BUTTON#search-btn.btn-primary.notranslate
+ [DIAG] 1795153051654 OVERLAY DETECTED: input history-search-input is covered by DIV.cache-confirm-overlay at (108,188)
+ [DIAG] 1795153051654 OVERLAY DETECTED: input patent-input is covered by DIV.cache-confirm-overlay at (814,232)
+ [DIAG] 1795153051655 OVERLAY DETECTED: input kanban-filter-input is covered by DIV.cache-confirm-overlay at (487,501)
+ [DIAG] 1795153051853 activeElement changed: BODY.pl-unified-tools
+ [DIAG] 1795153053649 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#content-loading-overlay.content-loading-overlay at (487,501)
+ [DIAG] 1795153057048 activeElement changed: BUTTON.tab-btn.notranslate
+ [DIAG] 1795153061659 activeElement changed: BUTTON.btn-small.btn-view-pdf
+ [DIAG] 1795153061660 OVERLAY DETECTED: input patent-input is covered by DIV.modal-header.reader-header at (814,50)
+ [DIAG] 1795153061660 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.pdf-page-label at (702,314)
+ [PDF文字层] 第1页没有文字（扫描件或缺少字体映射）
+ [PDF文字层] 第2页没有文字（扫描件或缺少字体映射）
+ [DIAG] 1795153063656 OVERLAY DETECTED: input patent-input is covered by DIV.modal-header.reader-header at (814,50)
+ [DIAG] 1795153063656 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,314)
+ [DIAG] 1795153065663 OVERLAY DETECTED: input patent-input is covered by DIV.modal-header.reader-header at (814,50)
+ [DIAG] 1795153065663 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,314)
+ [DIAG] 1795153067656 OVERLAY DETECTED: input patent-input is covered by DIV.modal-header.reader-header at (814,50)
+ [DIAG] 1795153067656 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.pdf-page-label at (702,314)
+ [DIAG] 1795153068262 activeElement changed: BUTTON#pdf-text-select-btn.pdf-toolbar-btn.pdf-toolbar-btn-text.notranslate
+ [DIAG] 1795153069664 OVERLAY DETECTED: input patent-input is covered by DIV.modal-header.reader-header at (814,50)
+ [DIAG] 1795153069664 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,314)
+ [DIAG] 1795153071660 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153071661 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153072457 activeElement changed: BODY.pl-unified-tools
+ [DIAG] 1795153073656 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153073656 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153075656 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153075656 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.pdf-page-label at (702,497)
+ [DIAG] 1795153077664 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153077664 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153079656 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153079656 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153081660 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153081660 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153082067 activeElement changed: BUTTON#reader-chat-toggle.btn-secondary.notranslate
+ [FOCUS] Calling forceRefocus (one-time, BrowserWindow blur+focus)
+ [DIAG] 1795153082270 activeElement changed: TEXTAREA#chat-input.chat-input.notranslate
+ [DIAG] 1795153083656 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153083656 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153085660 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153085661 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153087660 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153087660 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153088374 INPUT EVENT on TEXTAREA#chat-input value="都说了啥"
+ [DIAG] 1795153089658 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153089658 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153091668 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153091668 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153093668 OVERLAY DETECTED: input patent-input is covered by CANVAS at (814,232)
+ [DIAG] 1795153093668 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,497)
+ [DIAG] 1795153095463 activeElement changed: BUTTON#chat-send-btn.btn-primary.btn-small.notranslate
+ [DIAG] 1795153095663 activeElement changed: DIV.plqh-overlay
+ [DIAG] 1795153095664 OVERLAY DETECTED: input patent-input is covered by DIV.plqh-head at (814,232)
+ [DIAG] 1795153095664 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-drop-actions at (702,497)
+ [DIAG] 1795153095664 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+ [DIAG] 1795153095664 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+ [DIAG] 1795153097665 OVERLAY DETECTED: input patent-input is covered by DIV.plqh-head at (814,232)
+ [DIAG] 1795153097665 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-drop-actions at (702,497)
+ [DIAG] 1795153097665 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+ [DIAG] 1795153097665 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+ [DIAG] 1795153099666 OVERLAY DETECTED: input patent-input is covered by DIV.plqh-head at (814,232)
+ [DIAG] 1795153099666 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-drop-actions at (702,497)
+ [DIAG] 1795153099666 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+ [DIAG] 1795153099667 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+ [DIAG] 1795153101667 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+ [DIAG] 1795153101667 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+ [DIAG] 1795153101668 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+ [DIAG] 1795153103656 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+ [DIAG] 1795153103656 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+ [DIAG] 1795153103656 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+ [DIAG] 1795153105474 EVENT LOOP BLOCKED for 1015ms
+ [DIAG] 1795153106473 EVENT LOOP BLOCKED for 999ms
+ [DIAG] 1795153106475 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+ [DIAG] 1795153106475 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+ [DIAG] 1795153106475 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+ [DIAG] 1795153107472 EVENT LOOP BLOCKED for 999ms
+ [DIAG] 1795153108470 EVENT LOOP BLOCKED for 998ms
+ [DIAG] 1795153108471 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+ [DIAG] 1795153108471 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+ [DIAG] 1795153108471 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+ [DIAG] 1795153109478 EVENT LOOP BLOCKED for 1008ms
+(index):27 [DIAG] 1795153110477 EVENT LOOP BLOCKED for 999ms
+(index):27 [DIAG] 1795153110478 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153110478 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153110478 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153111474 EVENT LOOP BLOCKED for 997ms
+(index):27 [DIAG] 1795153112471 EVENT LOOP BLOCKED for 997ms
+(index):27 [DIAG] 1795153112473 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153112473 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153112473 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153113474 EVENT LOOP BLOCKED for 1003ms
+(index):27 [DIAG] 1795153114470 EVENT LOOP BLOCKED for 996ms
+(index):27 [DIAG] 1795153114473 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153114473 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153114473 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153115482 EVENT LOOP BLOCKED for 1012ms
+(index):27 [DIAG] 1795153115669 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153115669 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153115669 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153117656 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153117656 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153117656 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153119481 EVENT LOOP BLOCKED for 1009ms
+(index):27 [DIAG] 1795153120479 EVENT LOOP BLOCKED for 997ms
+(index):27 [DIAG] 1795153120481 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153120481 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153120481 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153121478 EVENT LOOP BLOCKED for 1000ms
+(index):27 [DIAG] 1795153122473 EVENT LOOP BLOCKED for 995ms
+(index):27 [DIAG] 1795153122475 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153122475 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153122475 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153123503 EVENT LOOP BLOCKED for 1030ms
+(index):27 [DIAG] 1795153124502 EVENT LOOP BLOCKED for 999ms
+(index):27 [DIAG] 1795153124505 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153124505 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153124505 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153125501 EVENT LOOP BLOCKED for 999ms
+(index):27 [DIAG] 1795153126501 EVENT LOOP BLOCKED for 1000ms
+(index):27 [DIAG] 1795153126502 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153126502 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153126502 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153127499 EVENT LOOP BLOCKED for 998ms
+(index):27 [DIAG] 1795153128513 EVENT LOOP BLOCKED for 1013ms
+(index):27 [DIAG] 1795153128515 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153128515 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153128515 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153129511 EVENT LOOP BLOCKED for 999ms
+(index):27 [DIAG] 1795153130508 EVENT LOOP BLOCKED for 997ms
+(index):27 [DIAG] 1795153130509 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153130509 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153130509 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153131510 EVENT LOOP BLOCKED for 1002ms
+(index):27 [DIAG] 1795153132506 EVENT LOOP BLOCKED for 996ms
+(index):27 [DIAG] 1795153132507 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153132507 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153132508 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153133505 EVENT LOOP BLOCKED for 999ms
+(index):27 [DIAG] 1795153134505 EVENT LOOP BLOCKED for 1000ms
+(index):27 [DIAG] 1795153134507 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153134507 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153134507 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153135503 EVENT LOOP BLOCKED for 998ms
+(index):27 [DIAG] 1795153136499 EVENT LOOP BLOCKED for 996ms
+(index):27 [DIAG] 1795153136500 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153136501 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153136501 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153137513 EVENT LOOP BLOCKED for 1014ms
+(index):27 [DIAG] 1795153137964 OVERLAY DETECTED: input doclist-doc-search-input is covered by DIV.plqh-head at (702,223)
+(index):27 [DIAG] 1795153137964 OVERLAY DETECTED: input pdf-search-input is covered by DIV.plqh-overlay at (670,94)
+(index):27 [DIAG] 1795153137964 OVERLAY DETECTED: input chat-input is covered by DIV.plqh-overlay at (1481,860)
+(index):27 [DIAG] 1795153139084 activeElement changed: BUTTON.plqh-close
+(index):27 [DIAG] 1795153139292 activeElement changed: BODY.pl-unified-tools
+(index):27 [DIAG] 1795153139687 OVERLAY DETECTED: input doclist-doc-search-input is covered by CANVAS at (702,223)
+(index):27 [DIAG] 1795153143510 EVENT LOOP BLOCKED for 625ms
+(index):27 [DIAG] 1795153144510 EVENT LOOP BLOCKED for 1000ms
+(index):27 [DIAG] 1795153145512 EVENT LOOP BLOCKED for 1002ms
+(index):27 [DIAG] 1795153146510 EVENT LOOP BLOCKED for 998ms
+(index):27 [DIAG] 1795153147509 EVENT LOOP BLOCKED for 999ms
+(index):27 [DIAG] 1795153148508 EVENT LOOP BLOCKED for 999ms
+(index):27 [DIAG] 1795153149510 EVENT LOOP BLOCKED for 1002ms
+(index):27 [DIAG] 1795153150513 EVENT LOOP BLOCKED for 1003ms
+(index):27 [DIAG] 1795153151510 EVENT LOOP BLOCKED for 997ms
+(index):27 [DIAG] 1795153152510 EVENT LOOP BLOCKED for 1000ms
+(index):27 [DIAG] 1795153153508 EVENT LOOP BLOCKED for 998ms
+(index):27 [DIAG] 1795153154503 EVENT LOOP BLOCKED for 995ms
+(index):27 [DIAG] 1795153155506 EVENT LOOP BLOCKED for 1003ms
+(index):27 [DIAG] 1795153156503 EVENT LOOP BLOCKED for 997ms
+(index):27 [DIAG] 1795153157363 EVENT LOOP BLOCKED for 860ms
+(index):27 [DIAG] 1795153158892 activeElement changed: BUTTON.tab-btn.notranslate
+(index):27 [DIAG] 1795153161493 activeElement changed: BUTTON.btn-small.btn-view-pdf
+(index):27 [DIAG] 1795153161686 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container at (562,227)
+pdf-viewer-quality.js?v=261120c:256 [PDF文字层] 第1页没有文字（扫描件或缺少字体映射）
+pdf-viewer-quality.js?v=261120c:256 [PDF文字层] 第2页没有文字（扫描件或缺少字体映射）
+pdf-viewer-quality.js?v=261120c:256 [PDF文字层] 第3页没有文字（扫描件或缺少字体映射）
+pdf-viewer-quality.js?v=261120c:256 [PDF文字层] 第4页没有文字（扫描件或缺少字体映射）
+pdf-viewer-quality.js?v=261120c:256 [PDF文字层] 第5页没有文字（扫描件或缺少字体映射）
+pdf-viewer-quality.js?v=261120c:256 [PDF文字层] 第6页没有文字（扫描件或缺少字体映射）
+pdf-viewer-quality.js?v=261120c:256 [PDF文字层] 第7页没有文字（扫描件或缺少字体映射）
+(index):27 [DIAG] 1795153163693 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container at (562,227)
+(index):27 [DIAG] 1795153165685 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container at (562,227)
+(index):27 [DIAG] 1795153166691 activeElement changed: BODY.pl-unified-tools
+(index):27 [DIAG] 1795153167693 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container at (562,227)
+(index):27 [DIAG] 1795153169692 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container at (562,227)
+(index):27 [DIAG] 1795153171692 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-pdf-container.reader-pdf-container at (562,227)
+(index):27 [DIAG] 1795153173701 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-doc-list.reader-doc-list at (233,227)
+(index):27 [DIAG] 1795153175697 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-doc-list.reader-doc-list at (233,227)
+(index):27 [DIAG] 1795153177699 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-doc-list.reader-doc-list at (233,227)
+(index):27 [DIAG] 1795153179692 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-doc-list.reader-doc-list at (233,227)
+(index):27 [DIAG] 1795153181687 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-doc-list.reader-doc-list at (233,227)
+(index):27 [DIAG] 1795153183723 OVERLAY DETECTED: input kanban-filter-input is covered by DIV#reader-doc-list.reader-doc-list at (233,227)
