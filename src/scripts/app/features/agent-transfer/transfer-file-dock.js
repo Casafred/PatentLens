@@ -51,6 +51,14 @@ var TransferFileDock = (function () {
     try {
       if (typeof withEpoPdfUrl === "function") url = withEpoPdfUrl(url, doc);
       if (typeof withEpoDirect === "function") url = withEpoDirect(url);
+      // 用户在审查文档页选择「改用 EPO」后，本机 IPC 导出也要走 EPO，
+      // 否则文件交接会在 GD 未登录时失败。
+      try {
+        if (sessionStorage.getItem("patentlens_epo_fallback_session") === "1" &&
+          !/[?&]epoFallback=1(?:&|$)/.test(url)) {
+          url += (url.indexOf("?") === -1 ? "?" : "&") + "epoFallback=1";
+        }
+      } catch (_) {}
     } catch (e) { /* 全局不可用时使用基础 URL */ }
     return url;
   }
