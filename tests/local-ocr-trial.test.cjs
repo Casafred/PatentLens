@@ -11,6 +11,7 @@ const {
   closeEngine,
   friendlyOcrError,
   unpackAsarPath,
+  resolveTesseractWorkerPath,
   pngSize,
   tidyOcrText,
   tesseractLines,
@@ -120,6 +121,34 @@ test('单栏跨行文本保持自上而下顺序', () => {
   assert.deepEqual(Array.from(ordered, (item) => item.text), ['第一行', '第二行']);
 });
 
+test('本地 OCR 页码范围支持单页、区间和去重排序', () => {
+  const context = loadRendererModule();
+  assert.deepEqual(JSON.parse(JSON.stringify(context.__plLocalOcr.pageRangePages('3,1-2,2', 5))), {
+    valid: true,
+    raw: '3,1-2,2',
+    pages: [1, 2, 3],
+  });
+  assert.equal(context.__plLocalOcr.pageRangeText([5, 1, 2, 3]), '1-3,5');
+  assert.equal(context.__plLocalOcr.pageRangePages('1-6', 5).valid, false);
+});
+
+test('本地 OCR 行结果转换为 API OCR 兼容文本块', () => {
+  const context = loadRendererModule();
+  const block = context.__plLocalOcr.toBlock({
+    text: '本地识别文本',
+    confidence: 0.91,
+    box: [{ x: 10, y: 20 }, { x: 110, y: 20 }, { x: 110, y: 50 }, { x: 10, y: 50 }],
+  }, 4, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(block)), {
+    block_id: 'B_p4_2',
+    label: 'text',
+    page: 4,
+    bbox: [10, 20, 110, 50],
+    content: '本地识别文本',
+    confidence: 0.91,
+  });
+});
+
 test('OCR 坐标按画布显示尺寸缩放后生成文字层', () => {
   const context = loadRendererModule();
   const wrapper = fakeElement('div');
@@ -158,6 +187,14 @@ test('打包后的原生插件改为从 app.asar.unpacked 加载', () => {
     unpackAsarPath('C:\\App\\resources\\app.asar\\node_modules\\@arcships\\light-ocr-win32-x64\\native\\light_ocr_node.node'),
     'C:\\App\\resources\\app.asar.unpacked\\node_modules\\@arcships\\light-ocr-win32-x64\\native\\light_ocr_node.node',
   );
+});
+
+test('WASM 回退 worker 固定使用可解包的轻量入口', () => {
+  assert.match(resolveTesseractWorkerPath(), /local-ocr-tesseract-worker\.cjs$/);
+  const build = require('../package.json').build;
+  assert.ok(build.asarUnpack.includes('local-ocr-tesseract-worker.cjs'));
+  assert.ok(build.asarUnpack.includes('node_modules/tesseract.js-core/tesseract-core-lstm.wasm'));
+  assert.ok(!build.asarUnpack.includes('node_modules/tesseract.js/**'));
 });
 
 test('原生插件加载失败时保留底层原因，便于定位缺失依赖', () => {

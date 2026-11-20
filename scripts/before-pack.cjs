@@ -35,7 +35,16 @@ async function extractNativePackage(root, destination) {
 async function ensureWindowsNativePackage(root) {
   const nativeDir = path.join(root, 'node_modules', '@arcships', 'light-ocr-win32-x64');
   const manifest = path.join(nativeDir, 'package.json');
-  if (fs.existsSync(manifest)) return;
+  const nativeBinary = path.join(nativeDir, 'native', 'light_ocr_node.node');
+  const descriptor = path.join(nativeDir, 'native', 'runtime-descriptor.json');
+  if (fs.existsSync(manifest) && fs.existsSync(nativeBinary) && fs.existsSync(descriptor)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+      if (pkg.name === LOCAL_OCR_NATIVE_NAME && pkg.version === LOCAL_OCR_NATIVE_VERSION) return;
+    } catch (_) {
+      // Reinstall a truncated or unreadable optional package below.
+    }
+  }
 
   // 直接 npm pack 平台包再解压。相比 npm install，它不受 optional
   // dependency 策略影响，也不会在 postinstall 中嵌套执行 npm install。
