@@ -200,6 +200,31 @@
     ev.stopPropagation();
   }
 
+  // Fallback for when pdf.js's own text-layer renderer fails on an unusual
+  // font. Positions are less precise than renderTextLayer, but the page still
+  // becomes selectable/copyable instead of looking like a scan.
+  function renderFallbackTextLayer(layer, textContent, viewport) {
+    layer.textContent = "";
+    const items = buildTextItems(textContent, viewport);
+    for (const item of items) {
+      const span = document.createElement("span");
+      span.textContent = item.str;
+      span.style.left = item.left + "px";
+      span.style.top = item.top + "px";
+      span.style.fontSize = item.fontSize + "px";
+      span.style.fontFamily = item.fontFamily;
+      if (Math.abs(item.angle) > 0.001) span.style.transform = "rotate(" + item.angle + "rad)";
+      layer.appendChild(span);
+      if (item.eol) {
+        const eol = document.createElement("span");
+        eol.className = "pdf-text-layer-eol";
+        eol.textContent = "\n";
+        layer.appendChild(eol);
+      }
+    }
+    return items.length;
+  }
+
   async function addTextLayers(pdfDoc, scale) {
     const container = typeof document !== "undefined" ? document.getElementById("reader-pdf-container") : null;
     if (!container || !pdfDoc) return;
@@ -222,11 +247,15 @@
       try {
         page = await pdfDoc.getPage(pageNumber);
         textContent = await page.getTextContent();
-      } catch (_) {
+      } catch (error) {
+        if (typeof console !== "undefined") console.warn("[PDF文字层] 第" + pageNumber + "页读取失败:", error && error.message);
         continue;
       }
       const viewport = page.getViewport({ scale });
-      if (!textContent.items.some(item => item.str)) continue;
+      if (!textContent.items.some(item => item.str)) {
+        if (typeof console !== "undefined") console.info("[PDF文字层] 第" + pageNumber + "页没有文字（扫描件或缺少字体映射）");
+        continue;
+      }
       if (typeof container.contains === "function" && !container.contains(wrapper)) continue;
 
       const layer = document.createElement("div");
@@ -248,8 +277,19 @@
           viewport,
         }).promise;
       } catch (error) {
-        layer.remove();
-        throw error;
+        // One unusual font must not remove text selection from the remaining
+        // pages of the document.
+        if (typeof console !== "undefined") console.warn("[PDF文字层] 第" + pageNumber + "页排版失败，改用基础定位:", error && error.message);
+        try {
+          if (!renderFallbackTextLayer(layer, textContent, viewport)) {
+            layer.remove();
+            continue;
+          }
+        } catch (fallbackError) {
+          layer.remove();
+          if (typeof console !== "undefined") console.warn("[PDF文字层] 第" + pageNumber + "页生成失败:", fallbackError && fallbackError.message);
+          continue;
+        }
       }
       // Scans keep their existing OCR interaction; only real text takes priority.
       wrapper.classList.add("has-text-layer");
