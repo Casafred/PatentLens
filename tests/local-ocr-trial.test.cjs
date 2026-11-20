@@ -135,3 +135,15 @@ test('OCR 坐标按画布显示尺寸缩放后生成文字层', () => {
   assert.equal(span.style.width, '100px');
   assert.equal(span.style.height, '50px');
 });
+
+test('缺少原生平台包时给出可操作的错误提示', async () => {
+  const engine = {
+    async recognizeEncoded() {
+      throw new Error('Unable to locate @arcships/light-ocr-win32-x64');
+    },
+  };
+  await assert.rejects(
+    recognizeImage(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), engine),
+    /原生组件缺失.*npm install/,
+  );
+});

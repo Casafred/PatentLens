@@ -12,6 +12,18 @@ let enginePromise = null;
 // 单引擎内部已有一个 worker；这里再串行化调用，避免多页同时识别抢占 CPU。
 let queue = Promise.resolve();
 
+function friendlyOcrError(error) {
+  const message = String((error && error.message) || error || "");
+  const match = message.match(/Unable to locate (@arcships\/light-ocr-[^\s]+)/);
+  if (match) {
+    return new Error(
+      "本地 OCR 原生组件缺失（" + match[1] + "）。请关闭应用后在项目目录运行 npm install" +
+      "（不要加 --omit=optional），或安装最新版安装包。"
+    );
+  }
+  return error;
+}
+
 function getEngine() {
   if (!enginePromise) {
     enginePromise = (async () => {
@@ -19,7 +31,7 @@ function getEngine() {
       return createEngine();
     })().catch((error) => {
       enginePromise = null;
-      throw error;
+      throw friendlyOcrError(error);
     });
   }
   return enginePromise;
@@ -41,7 +53,12 @@ async function recognizeImage(bytes, engineOverride) {
   const startedAt = Date.now();
   const run = queue.then(() => engine.recognizeEncoded(buffer));
   queue = run.then(() => {}, () => {});
-  const result = await run;
+  let result;
+  try {
+    result = await run;
+  } catch (error) {
+    throw friendlyOcrError(error);
+  }
 
   return {
     ok: true,

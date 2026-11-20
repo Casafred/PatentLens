@@ -37,6 +37,9 @@
     "pdf-lib": "^1.17.1",
     "xlsx": "^0.18.5"
   },
+  "optionalDependencies": {
+    "@arcships/light-ocr-win32-x64": "0.4.0"
+  },
   "build": {
     "appId": "com.patentlens.app",
     "productName": "PatentLens",
@@ -49,6 +52,7 @@
       "patent2pic-ipc.cjs",
       "agent-handoff-ipc.cjs",
       "local-ocr-ipc.cjs",
+      "node_modules/@arcships/**",
       "pdf-session-cache.js",
       "dossier-network.cjs",
       "transfer-bundle.cjs",
