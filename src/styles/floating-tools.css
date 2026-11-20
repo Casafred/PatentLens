@@ -1,5 +1,9 @@
 body.pl-unified-tools .agent-toggle-btn,body.pl-unified-tools .agent-restore-btn,body.pl-unified-tools #patent2pic-entry,body.pl-unified-tools #agent-workspace-entry,body.pl-unified-tools #reader-floating-ball,body.pl-unified-tools #analysis-chat-float-ball{display:none!important}
-#pl-floating-tools{position:fixed;z-index:9500;width:46px;padding:5px;box-sizing:border-box;border:1px solid var(--border,#cbd5e1);border-radius:18px;background:var(--bg-primary,#fff);color:var(--text-primary,#18352f);box-shadow:0 6px 26px #0002;user-select:none;isolation:isolate}
+#pl-floating-tools{position:fixed;z-index:9500;width:46px;padding:5px;box-sizing:border-box;border:1px solid var(--border,#cbd5e1);border-radius:18px;background:var(--bg-primary,#fff);color:var(--text-primary,#18352f);box-shadow:0 6px 26px #0002;user-select:none;isolation:isolate;transition:transform .22s ease}
+/* 贴边隐藏：闲置时只留 12px 抓手，鼠标靠近边缘或聚焦时滑回。 */
+#pl-floating-tools.no-transition{transition:none!important}
+#pl-floating-tools.peeking{transform:translateX(var(--pl-peek-x,0px))}
+#pl-floating-tools.peeking [data-drag]{color:var(--accent,#16815c)}
 #pl-floating-tools button{font:inherit;color:inherit;cursor:pointer;border:0;background:transparent;display:flex;align-items:center;justify-content:center;padding:7px;border-radius:12px}
 #pl-floating-tools button:hover,#pl-floating-tools button:focus-visible{background:var(--accent-dim,#16815c20);outline:2px solid var(--accent,#16815c);outline-offset:1px}
 #pl-floating-tools svg{width:22px;height:22px;flex-shrink:0}
