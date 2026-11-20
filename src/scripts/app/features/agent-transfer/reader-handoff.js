@@ -36,9 +36,18 @@
       if (ids.size !== task.input.sources.length) throw new Error('译文没有完整覆盖所选内容，请补齐全部段落');
     } else {
       if (!text(payload.report)) throw new Error('回答需要非空 report');
+      var sources = Array.isArray(task.input.sources) ? task.input.sources : [];
+      var hasAttachment = !!(task.input.attachment && task.input.attachment.url);
       (payload.evidence || []).forEach(function (e) {
-        var source = task.input.sources.find(function (s) { return s.id === e.sourceId; });
-        if (!source || !text(e.quote) || !source.text.includes(e.quote)) throw new Error('回答的引文无法在当前文档验证');
+        if (!text(e.quote)) throw new Error('回答的引文需要非空 quote');
+        var source = sources.find(function (s) { return s.id === e.sourceId; });
+        if (source) {
+          if (!source.text.includes(e.quote)) throw new Error('回答的引文无法在当前文档验证');
+          return;
+        }
+        // 扫描件没有提取文本，或 Agent 直接引用 PDF 页码时，无法逐字比对。
+        // 只要随任务带了 PDF，就允许把回答带回主页面，引文标记为“未验证”。
+        if (!hasAttachment) throw new Error('回答的引文无法在当前文档验证');
       });
     }
     return payload;

@@ -63,3 +63,28 @@ test('reader handoff packs prompt and PDF into one quick panel', async () => {
   assert.equal(captured.attachment.url, '/api/doc1');
   assert.equal(typeof captured.onImport, 'function');
 });
+
+test('附件型问一问允许带回无法逐字验证的 PDF 引文', async () => {
+  const { api, snapshot } = setup();
+  const scanned = await api.create('document-qa', { ...snapshot, extraction: null }, '这份文件说了什么？', 'zh');
+  assert.equal(scanned.input.sources.length, 0);
+  assert.doesNotThrow(() => api.validate(scanned, {
+    report: '放弃通知。',
+    evidence: [{ sourceId: 'PDF', quote: 'transcribed from the scanned PDF' }],
+  }));
+  assert.throws(() => api.validate(scanned, {
+    report: '放弃通知。',
+    evidence: [{ sourceId: 'PDF', quote: '' }],
+  }), /非空/);
+
+  const extracted = await api.create('document-qa', snapshot, '这份文件说了什么？', 'zh');
+  assert.ok(extracted.input.sources.length > 0);
+  assert.throws(() => api.validate(extracted, {
+    report: '回答',
+    evidence: [{ sourceId: extracted.input.sources[0].id, quote: 'invented quote' }],
+  }), /验证/);
+  assert.doesNotThrow(() => api.validate(extracted, {
+    report: '回答',
+    evidence: [{ sourceId: 'PDF', quote: 'agent read the attached PDF directly' }],
+  }));
+});
