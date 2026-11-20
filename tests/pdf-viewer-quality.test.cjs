@@ -218,3 +218,62 @@ test('文字层使用 PDF.js 的字体布局与换行，保留选字/OCR/标注�
   wrapper.classList.add('ocr-page-selectable');
   const ocr = fire(); assert.equal(ocr.prevented, true); assert.equal(ocr.stopped, false);
 });
+
+test('某一页排版失败时退回基础定位，且不影响后续页生成文字层', async () => {
+  const file = path.resolve(__dirname, '../src/scripts/app/features/pdf-viewer-quality.js');
+  const wrappers = [1, 2].map((page) => {
+    const wrapper = makeFakeElement('div');
+    wrapper._connected = true;
+    wrapper.dataset.page = String(page);
+    return wrapper;
+  });
+  const container = makeFakeElement('div');
+  container._connected = true;
+  wrappers.forEach((wrapper) => container.appendChild(wrapper));
+  container.querySelectorAll = (selector) => (selector === '.pdf-page-wrapper' ? wrappers : []);
+
+  const documentMock = {
+    getElementById: (id) => (id === 'reader-pdf-container' ? container : null),
+    createElement: (tag) => makeFakeElement(tag),
+    querySelector: () => null,
+  };
+  let calls = 0;
+  const sandbox = {
+    window: { localStorage: { getItem: () => null } },
+    document: documentMock,
+    Math,
+    pdfViewState: { annotTool: null },
+    pdfjsLib: {
+      renderTextLayer(params) {
+        calls++;
+        if (calls === 1) return { promise: Promise.reject(new Error('unusual font')) };
+        const span = makeFakeElement('span');
+        span.textContent = params.textContentSource.items[0].str;
+        params.container.appendChild(span);
+        return { promise: Promise.resolve() };
+      },
+    },
+  };
+  sandbox.window.document = documentMock;
+  const context = vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
+
+  const page = {
+    getViewport: () => ({ width: 200, height: 300, scale: 1, transform: [1, 0, 0, 1, 0, 0] }),
+    getTextContent: async () => ({
+      items: [{ str: 'Hello', transform: [1, 0, 0, 1, 10, 20], width: 60, fontName: 'f1' }],
+      styles: { f1: { fontFamily: 'serif' } },
+    }),
+  };
+  const pdfDoc = { getPage: async () => page };
+
+  await context.window.__pdfViewerQuality.addTextLayers(pdfDoc, 1);
+
+  assert.equal(calls, 2);
+  for (const wrapper of wrappers) {
+    const layer = wrapper.querySelector('.pdf-text-layer');
+    assert.ok(layer, '每页都应生成文字层');
+    assert.ok(wrapper.classList.contains('has-text-layer'));
+    assert.ok(layer.querySelectorAll('span').some((span) => span._text === 'Hello'), '失败页应使用基础定位回退');
+  }
+});

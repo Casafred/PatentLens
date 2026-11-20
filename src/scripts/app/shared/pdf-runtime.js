@@ -12,4 +12,19 @@
       workerSrc = /cdnjs\.cloudflare\.com\/ajax\/libs\/pdf\.js\//.test(value) ? local : value;
     },
   });
+
+  // PDFs whose fonts use predefined CID CMaps (common in USPTO/EPO filings)
+  // cannot be convertToUnicode()'d without the bundled .bcmap files: pdf.js
+  // then returns an empty text layer, so the page looks like a scan and cannot
+  // be selected/copied. Always point getDocument at the local CMap folder.
+  var cMapUrl = new URL("scripts/vendor/cmaps/", document.baseURI).href;
+  var getDocument = pdfjsLib.getDocument;
+  if (typeof getDocument === "function") {
+    pdfjsLib.getDocument = function (source) {
+      if (source && typeof source === "object" && !source.cMapUrl) {
+        source = Object.assign({}, source, { cMapUrl: cMapUrl, cMapPacked: true });
+      }
+      return getDocument.call(pdfjsLib, source);
+    };
+  }
 })();
