@@ -148,6 +148,13 @@ function resolveAssetPaths() {
   };
 }
 
+function resolveTesseractWorkerPath() {
+  // Worker threads cannot execute a script from inside app.asar.  Keep the
+  // small, pinned worker beside the main process entry and unpack it with the
+  // Tesseract sources/core it requires.
+  return unpackAsarPath(path.join(__dirname, "local-ocr-tesseract-worker.cjs"));
+}
+
 function getTesseractWorker() {
   if (!tessWorkerPromise) {
     tessWorkerPromise = (async () => {
@@ -156,13 +163,8 @@ function getTesseractWorker() {
         throw new Error("本地 OCR 语言数据缺失，请重新安装最新版应用");
       }
       const { createWorker, OEM } = require("tesseract.js");
-      let workerPath;
-      try {
-        const main = unpackAsarPath(require.resolve("tesseract.js"));
-        workerPath = path.join(path.dirname(path.dirname(main)), "src", "worker-script", "node", "index.js");
-      } catch (_) {}
       return createWorker(TESSERACT_LANGS, OEM.LSTM_ONLY, {
-        workerPath,
+        workerPath: resolveTesseractWorkerPath(),
         langPath: paths.langPath,
         cachePath: paths.cachePath,
         gzip: true,
@@ -378,6 +380,7 @@ module.exports = {
   closeEngine,
   friendlyOcrError,
   unpackAsarPath,
+  resolveTesseractWorkerPath,
   pngSize,
   tidyOcrText,
   tesseractLines,
