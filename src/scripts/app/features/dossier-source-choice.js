@@ -18,7 +18,7 @@
   window.__plDossierSourceChoiceInstalled = true;
 
   var SESSION_KEY = "patentlens_epo_fallback_session";
-  var state = { dialog: null, lastPromptAt: 0, lastGdFailure: null };
+  var state = { dialog: null, lastPromptAt: 0, lastGdFailure: null, loginCancelledAt: 0 };
 
   function epoPreferred() {
     try {
@@ -90,20 +90,62 @@
   }
 
   // 把捕获到的 gdFailed 标志补到 gdFetch 抛出的错误上，交给选择弹窗处理。
+  // 若是“未登录 GD”，先不报错：打开登录窗口并挂起当前查询，登录成功后自动
+  // 重试同一个请求，让 doSearch 像正常查询一样继续。
+  function setLoadingText(text) {
+    try {
+      ["loading-text", "content-loading-text"].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+      });
+    } catch (_) {}
+  }
+
+  function showLoginPending() {
+    toast("需要登录 USPTO Global Dossier，已打开登录窗口；登录完成后会自动继续本次查询…");
+    setLoadingText("等待 USPTO GD 登录...");
+  }
+
   var rawGdFetch = typeof window.gdFetch === "function" ? window.gdFetch : null;
   if (rawGdFetch && !window.__plGdFailureBridgeInstalled) {
     window.__plGdFailureBridgeInstalled = true;
     window.gdFetch = function () {
-      return rawGdFetch.apply(this, arguments).catch(function (error) {
+      var self = this;
+      var args = arguments;
+      function attach(error) {
         var info = state.lastGdFailure;
         state.lastGdFailure = null;
-        if (!error || !info || Date.now() - info.at > 15000) throw error;
+        if (!error || !info || Date.now() - info.at > 15000) return error;
         if (info.flags.gdFailed) error.gdFailed = true;
         if (info.flags.loginRequired) error.loginRequired = true;
         error.epoAvailable = info.flags.epoAvailable !== false;
         if (!error.message && info.flags.message) error.message = info.flags.message;
-        throw error;
-      });
+        return error;
+      }
+      function attempt(canLogin) {
+        return rawGdFetch.apply(self, args).catch(function (error) {
+          error = attach(error);
+          if (!canLogin || !error || !error.loginRequired) throw error;
+          var api = window.electronAPI;
+          if (!api || typeof api.gdAwaitLogin !== "function") throw error;
+          // 用户刚关闭登录窗口时不要在同一次查询里反复弹窗。
+          if (state.loginCancelledAt && Date.now() - state.loginCancelledAt < 30000) throw error;
+          showLoginPending();
+          return api.gdAwaitLogin().then(function (result) {
+            if (!result || !result.ready) {
+              state.loginCancelledAt = Date.now();
+              throw error;
+            }
+            state.loginCancelledAt = 0;
+            setLoadingText("正在查询审查文档...");
+            return attempt(false);
+          }, function () {
+            state.loginCancelledAt = Date.now();
+            throw error;
+          });
+        });
+      }
+      return attempt(true);
     };
   }
 

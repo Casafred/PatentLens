@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onForceClose: (callback) => ipcRenderer.on("force-close-app", () => callback()),
   onDataSourceIssue: (callback) => ipcRenderer.on("data-source-issue", (_event, payload) => callback(payload)),
   gdOpenLoginWindow: () => ipcRenderer.invoke("gd-open-login-window"),
+  gdAwaitLogin: (options) => ipcRenderer.invoke("gd-await-login", options || {}),
   gdNetworkDiagnostics: () => ipcRenderer.invoke("gd-network-diagnostics"),
   onGdNetworkProgress: (callback) => {
     const handler = (_event, payload) => callback(payload);

@@ -127,3 +127,38 @@ test('gdFetch 错误会补回后端 gdFailed 标志供选择框识别', async ()
     return true;
   });
 });
+
+test('GD 未登录时挂起当前查询，登录成功后自动重试且不报错', async () => {
+  let calls = 0;
+  let awaited = 0;
+  const { context } = loadModule((ctx) => {
+    ctx.gdFetch = async () => {
+      calls++;
+      if (calls === 1) {
+        const error = new Error('需要先登录 USPTO Global Dossier');
+        error.loginRequired = true;
+        throw error;
+      }
+      return { ok: true };
+    };
+    ctx.electronAPI = {
+      gdAwaitLogin() { awaited++; return Promise.resolve({ ready: true }); },
+    };
+  });
+  const result = await context.gdFetch('/api/gd/patent-family/svc/family/US/15174660');
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls, 2);
+  assert.equal(awaited, 1);
+});
+
+test('用户关闭登录窗口时保留原始错误，交给数据源选择框', async () => {
+  const { context } = loadModule((ctx) => {
+    ctx.gdFetch = async () => {
+      const error = new Error('需要先登录 USPTO Global Dossier');
+      error.loginRequired = true;
+      throw error;
+    };
+    ctx.electronAPI = { gdAwaitLogin: () => Promise.resolve({ ready: false }) };
+  });
+  await assert.rejects(context.gdFetch('/api/gd/patent-family/svc/family/US/15174660'), /需要先登录/);
+});
