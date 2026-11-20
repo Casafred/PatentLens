@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-const { recognizeImage } = require('../local-ocr-ipc.cjs');
+const { recognizeImage, friendlyOcrError, unpackAsarPath } = require('../local-ocr-ipc.cjs');
 
 function fakeElement(tag) {
   return {
@@ -134,6 +134,36 @@ test('OCR 坐标按画布显示尺寸缩放后生成文字层', () => {
   assert.equal(span.style.top, '100px');
   assert.equal(span.style.width, '100px');
   assert.equal(span.style.height, '50px');
+});
+
+test('打包后的原生插件改为从 app.asar.unpacked 加载', () => {
+  const packed = '/app/resources/app.asar/node_modules/@arcships/light-ocr-win32-x64/native/light_ocr_node.node';
+  assert.equal(
+    unpackAsarPath(packed),
+    '/app/resources/app.asar.unpacked/node_modules/@arcships/light-ocr-win32-x64/native/light_ocr_node.node',
+  );
+  const plain = '/app/node_modules/@arcships/light-ocr-win32-x64/native/light_ocr_node.node';
+  assert.equal(unpackAsarPath(plain), plain);
+  assert.equal(
+    unpackAsarPath('C:\\App\\resources\\app.asar\\node_modules\\@arcships\\light-ocr-win32-x64\\native\\light_ocr_node.node'),
+    'C:\\App\\resources\\app.asar.unpacked\\node_modules\\@arcships\\light-ocr-win32-x64\\native\\light_ocr_node.node',
+  );
+});
+
+test('原生插件加载失败时保留底层原因，便于定位缺失依赖', () => {
+  const cause = Object.assign(new Error('The specified module could not be found.'), { code: 'ERR_DLOPEN_FAILED' });
+  const error = Object.assign(new Error('Unable to load the verified native addon'), { cause });
+  const friendly = friendlyOcrError(error);
+  assert.match(friendly.message, /原生组件加载失败/);
+  assert.match(friendly.message, /ERR_DLOPEN_FAILED/);
+  assert.match(friendly.message, /The specified module could not be found/);
+});
+
+test('原生组件文件损坏时提示重新安装', () => {
+  const error = new Error('Unable to load the verified native addon');
+  error.message = 'Descriptor artifact hash mismatch';
+  const friendly = friendlyOcrError(error);
+  assert.match(friendly.message, /重新安装/);
 });
 
 test('缺少原生平台包时给出可操作的错误提示', async () => {
