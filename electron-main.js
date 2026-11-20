@@ -419,6 +419,8 @@ function _canAutoShowGdLogin() {
 
 function _showGdAuthWindowIfNeeded(win) {
   if (!win || win.isDestroyed() || win.isVisible()) return false;
+  // 启动时的静默探测窗口不主动打扰用户；只有查询需要登录时才显示。
+  if (win.__plSilentProbe) return false;
   if (!_canAutoShowGdLogin()) return false;
   try {
     win.show();
@@ -560,13 +562,78 @@ async function getGdAccessToken(options) {
   }
 }
 
+// 查询过程中发现未登录时，前端会调用这个 IPC：显示登录窗口并等待 token。
+// 与 getGdAccessToken 的短等待不同，这里让当前查询保持挂起；登录成功后前端
+// 自动重试原请求，用户不会先看到一个“查询失败”弹窗。
+let _gdAwaitLogin = null;
+async function awaitGdLogin(maxWaitMs) {
+  if (_gdAwaitLogin) return _gdAwaitLogin;
+  const run = async () => {
+    _gdAuthPromptSuppressedUntil = 0;
+    // 查询阶段的短等待可能已经启动了后台 watcher；这里由前端重试，避免 watcher
+    // 登录成功后再点一次搜索，造成重复查询。
+    if (_gdAuthWatcher) {
+      clearInterval(_gdAuthWatcher);
+      _gdAuthWatcher = null;
+    }
+    const win = _ensureGdAuthWindow();
+    win.__plSilentProbe = false;
+    const wasVisible = (() => { try { return win.isVisible(); } catch (_) { return false; } })();
+    // 先静默探测已有登录态，避免已登录用户看到登录窗口闪现。
+    if (!wasVisible) {
+      const probeUntil = Date.now() + 2000;
+      while (Date.now() < probeUntil) {
+        const info = await _gdReadTokenFromWindow(win);
+        if (info && info.token && info.expiresAtMs - Date.now() > 60000) {
+          _gdTokenCache = { ...info, obtainedAt: Date.now() };
+          try { win.hide(); } catch (_) {}
+          return { ready: true };
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      try { win.show(); win.focus(); } catch (_) {}
+    }
+    const started = Date.now();
+    const waitMs = Math.min(10 * 60 * 1000, Math.max(1000, Number(maxWaitMs) || 10 * 60 * 1000));
+    let lastReloadAt = Date.now();
+    while (Date.now() - started < waitMs) {
+      if (!_gdAuthWindow || _gdAuthWindow !== win || win.isDestroyed()) {
+        return { ready: false, reason: "closed" };
+      }
+      const info = await _gdReadTokenFromWindow(win);
+      const now = Date.now();
+      if (info && info.token && info.expiresAtMs - now > 60000) {
+        _gdTokenCache = { ...info, obtainedAt: now };
+        _gdAuthPromptSuppressedUntil = 0;
+        try { win.hide(); } catch (_) {}
+        console.log("[GD Auth] login completed; resuming suspended query");
+        return { ready: true };
+      }
+      let url = "";
+      try { url = win.webContents.getURL(); } catch (_) {}
+      // 共享 session 已在别处登录、但窗口停在 GD 首页时，定期重载读取 token。
+      if (!info && !_isGdLoginUrl(url) && now - lastReloadAt > 20000) {
+        lastReloadAt = now;
+        try { win.loadURL(GD_SITE_URL); } catch (_) {}
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return { ready: false, reason: "timeout" };
+  };
+  _gdAwaitLogin = run().finally(() => { _gdAwaitLogin = null; });
+  return _gdAwaitLogin;
+}
+
 // 登录超时后，原查询可能已经走 EPO 降级。继续在后台等用户完成登录，
 // token 一到就自动重试当前查询，用户不需要再次点搜索。
 let _gdAuthWatcher = null;
 function _retrySearchAfterGdLogin() {
+  // 前端已通过 gd-await-login 让当前查询保持挂起时，由前端重试，避免重复查询。
+  if (_gdAwaitLogin) return;
   if (!mainWindow || mainWindow.isDestroyed()) return;
   let attempts = 0;
   const tryClick = () => {
+    if (_gdAwaitLogin) return;
     attempts++;
     mainWindow.webContents.executeJavaScript(`(function(){
       try {
@@ -621,6 +688,41 @@ function _startGdAuthWatcher() {
       try { win.loadURL(GD_SITE_URL); } catch (_) {}
     }
   }, 2000);
+}
+
+// 启动后在后台静默加载一次 GD：若默认 session 已有登录态，直接缓存 token，
+// 首次查询不会再触发登录窗口；若未登录，窗口停在登录页但不打扰用户。
+let _gdPrimeTimer = null;
+function primeGdSession() {
+  if (_gdPrimeTimer) return;
+  try {
+    const win = _ensureGdAuthWindow();
+    win.__plSilentProbe = true;
+    let tries = 0;
+    _gdPrimeTimer = setInterval(async () => {
+      tries++;
+      if (!win || win.isDestroyed() || _gdAuthWindow !== win) {
+        clearInterval(_gdPrimeTimer);
+        _gdPrimeTimer = null;
+        return;
+      }
+      const info = await _gdReadTokenFromWindow(win);
+      if (info && info.token && info.expiresAtMs - Date.now() > 60000) {
+        _gdTokenCache = { ...info, obtainedAt: Date.now() };
+        clearInterval(_gdPrimeTimer);
+        _gdPrimeTimer = null;
+        win.__plSilentProbe = false;
+        try { win.hide(); } catch (_) {}
+        console.log("[GD Auth] silent probe found an existing GD login");
+        return;
+      }
+      if (tries >= 20) {
+        clearInterval(_gdPrimeTimer);
+        _gdPrimeTimer = null;
+        win.__plSilentProbe = false;
+      }
+    }, 1000);
+  } catch (_) {}
 }
 
 const MIME_TYPES = {
@@ -5267,6 +5369,8 @@ function createWindow(port) {
   });
 
   mainWindow.loadURL(`http://127.0.0.1:${port}/`);
+  // 启动 3 秒后静默探测默认 session 的 GD 登录态，避免首次查询因会话未加载而报错。
+  setTimeout(() => { try { primeGdSession(); } catch (_) {} }, 3000);
   // 窗口打开处理：本地同域请求允许；外部链接统一通过 createPopoutWindow 创建带工具栏的弹窗
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     console.log("[Electron] mainWindow setWindowOpenHandler url=" + url);
@@ -6195,6 +6299,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("gd-open-login-window", () => {
     const win = _ensureGdAuthWindow();
+    win.__plSilentProbe = false;
     try {
       win.show();
       win.focus();
@@ -6204,6 +6309,7 @@ app.whenReady().then(async () => {
     _startGdAuthWatcher();
     return { ok: true };
   });
+  ipcMain.handle("gd-await-login", (_event, options) => awaitGdLogin(options && options.maxWaitMs));
   ipcMain.handle("gd-network-diagnostics", () => ({
     tokenReady: !!(_gdTokenCache.token && _gdTokenCache.expiresAtMs > Date.now()),
     tokenAgeMs: _gdTokenCache.obtainedAt ? Date.now() - _gdTokenCache.obtainedAt : null,
