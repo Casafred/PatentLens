@@ -21,7 +21,7 @@
     "dev:tauri": "tauri dev",
     "build:tauri": "tauri build",
     "build:patent2pic": "npm --prefix packages/patent2pic-editor run build",
-    "postinstall": "npm --prefix packages/patent2pic-editor ci --no-audit --no-fund",
+    "postinstall": "npm --prefix packages/patent2pic-editor ci --no-audit --no-fund && node scripts/ensure-local-ocr-native.cjs",
     "prestart": "npm run build:patent2pic",
     "predev": "npm run build:patent2pic",
     "test:patent2pic-smoke": "electron tests/patent2pic-smoke-main.cjs"
